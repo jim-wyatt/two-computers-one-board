@@ -146,7 +146,7 @@ it at all**, which is why it can be tested without the microcontroller: on the
 board's Linux side, as an ordinary program.
 
 ```bash
-~/two-computers-one-board/mcu/ztest.sh        # 26 test cases, nothing flashed
+~/two-computers-one-board/mcu/ztest.sh        # the firmware tests, nothing flashed
 ```
 
 Those tests build for `native_sim` — a fake Zephyr "board" that is really just a

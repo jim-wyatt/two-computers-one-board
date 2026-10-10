@@ -89,8 +89,51 @@ with `arduino-router` disabled.
 And the last row disagrees with itself. Line 70 is empirically what makes
 `/dev/ttyHS1` produce bytes, which is why this project calls it a UART enable.
 U-Boot calls it an **SPI ready** line. Both descriptions can be true of one pin,
-but it is evidence that the two chips were wired for a faster channel than a
-115200 serial line, and nothing here uses it. Unresolved — see the open issues.
+and the next section is the other half of that story.
+
+### There is an SPI link between the two chips, and nothing here uses it
+
+U-Boot's name for line 70 is not a mislabel. Linux's own devicetree describes
+an SPI device called the MCU:
+
+```bash
+ls /sys/bus/spi/devices/                                   # spi0.0
+cat /sys/bus/spi/devices/spi0.0/of_node/compatible; echo   # arduino,unoq-mcu
+readlink -f /sys/bus/spi/devices/spi0.0/of_node
+```
+
+```
+/sys/firmware/devicetree/base/soc@0/geniqup@4ac0000/spi@4a94000/mcu@0
+```
+
+| | |
+|---|---|
+| Controller | `spi@4a94000`, a Qualcomm GENI SPI master, `status = "okay"` |
+| Device | `mcu@0`, chip select 0, `compatible = "arduino,unoq-mcu"` |
+| Driver | `spidev` — no protocol driver, just raw access |
+| Seen from Linux as | `/dev/spidev0.0`, group `spi` (your user is in it) |
+
+So the port this project had been treating as a spare SPI bus is wired to the
+microcontroller. On the other side, Zephyr's board definition enables two SPI
+controllers: `spi2`, which goes to the Arduino header, and `spi3` on PG9, PG10,
+PB5 and PG12, which the header does not account for.
+
+What is established, and what is not:
+
+- **Established:** the link exists in the devicetree on the Linux side, and
+  U-Boot names line 70 as its ready signal.
+- **Not verified:** that `spi3` is the microcontroller's end of it, which chip
+  is meant to be the master in practice, and what Arduino's own firmware sends
+  over it. Nothing has been transferred across it from this project.
+- **Not used:** this project's firmware has no SPI code, and everything —
+  frames for the LED matrix, the shell, firmware updates — goes down the
+  115200 serial line. A frame for the panel costs about 9 ms there. This is
+  the obvious faster path, and it is open work:
+  [issue #28](https://github.com/jim-wyatt/two-computers-one-board/issues/28).
+
+One practical consequence today: **do not use `/dev/spidev0.0` as if it were a
+free bus for your own peripherals.** Whatever you clock out of it goes to the
+STM32.
 
 `flash.sh` calls this automatically, and `unoq.MCU` calls it on construction.
 `unoq-link.service` applies it at boot.

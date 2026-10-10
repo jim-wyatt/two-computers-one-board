@@ -82,7 +82,7 @@ that silently does nothing is worse than no gate.
 | | offline | `tools/check-diagram-assets.sh` | the diagram library is on disk, not at a CDN |
 | | settings | `tools/check-config-docs.sh` | [What you can change](configuration.md) names every setting the code reads |
 | `workflows` | lint | `actionlint` | `.github/workflows/`, including the shell inside every `run:` block |
-| `diagrams` | render | `tools/check-diagrams.sh` | every diagram actually draws, in a headless browser |
+| `diagrams` | render | `tools/check-diagrams.sh` | every diagram actually draws: one headless browser, driven over every page that has one, a few seconds |
 | `mcu` | tests | `ztest` on `native_sim` | the protocol in `app_proto.h` and the rasteriser in `bars.c` |
 
 Install the tools, and the pre-commit hook that runs `--fast`:
@@ -146,7 +146,8 @@ to `main` and every pull request.
 | Job | What it does |
 |---|---|
 | `checks` | `tools/check.sh python shell c docs workflows`. Fast, so a missing comma fails in seconds rather than behind a toolchain download. |
-| `changes` | Decides whether a pull request touched anything the firmware is built from. |
+| `changes` | Decides whether a pull request touched anything the firmware is built from, and anything the site is. |
+| `diagrams` | `tools/check.sh diagrams`, in a `chrome-headless-shell` pinned by version and hash rather than whatever browser the runner image ships. Skipped when nothing the site is built from changed. |
 | `firmware` | Runs `mcu/zbuild.sh` — the script the board runs, not a copy — to cross-compile and sign the firmware for the real board, then `mcu/ztest.sh` for the firmware tests. |
 
 Three more workflows:
@@ -227,6 +228,33 @@ not — `cbor2` held at 5.x, mkdocs held below 2.0, OpenOCD built from master �
 and why.
 
 Upgrading Zephyr has its own checklist: [mcu.md](mcu.md#upgrading-zephyr).
+
+### The documentation toolchain is held back on purpose
+
+`mkdocs` is pinned below 2.0 and `mkdocs-material` below 10 in
+`python/pyproject.toml`. MkDocs 2.0 removes the plugin system, and this site
+depends on three plugins: `search`, `privacy` and `offline`. The last two are
+what make it work opened as a file from the USB drive with no network, which is
+the one requirement that cannot be traded away.
+
+The successor is [Zensical](https://zensical.org/), from the same author. It
+builds this site faster and cannot yet build it *offline*: it leaves the
+diagram library at a CDN. That is the whole blocker, and
+[issue #52](https://github.com/jim-wyatt/two-computers-one-board/issues/52)
+holds the ten-minute test that says when it has gone.
+
+So the rule is: **do not move on a version number.** Move when one of these is
+true.
+
+- Zensical ships its `privacy` equivalent and the test in #52 passes.
+- The pinned range stops receiving security fixes.
+- A build with the pinned range stops working on a supported Python.
+
+`tools/check-versions.sh pins` prints the range and the newest release inside
+it, so a range that has gone quiet is visible. If it ever has to be replaced in
+a hurry, what would not survive is small: `tools/mkdocs_hooks.py`, the theme
+configuration in `mkdocs.yml`, and the two index pages. The chapters are plain
+Markdown and would.
 
 ### Rebuilding OpenOCD
 
