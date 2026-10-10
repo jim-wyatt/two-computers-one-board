@@ -50,7 +50,7 @@ size and the drawing no wider than its column, at a desktop window. See
 MIN_TEXT_PX below for the measurement that made this part of the gate.
 
 EXIT STATUS - three answers, because conflating the last two has cost days
-    0   every diagram on every page drew
+    0   every diagram on every page drew, and can be read
     1   the SITE is wrong: some diagram did not draw, or cannot be read
     2   the HARNESS is wrong: the browser did not start, stopped answering, or
         the self-test fixtures came back with the wrong verdicts. Nothing this
