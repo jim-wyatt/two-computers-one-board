@@ -212,9 +212,15 @@
 
 .md-typeset pre.unoq-mermaid {
   overflow-x: auto;
-  text-align: center;
 }
 
+/* Centred with auto margins on a block, not with text-align on the parent.
+ * Auto margins collapse to zero when the drawing is wider than the block, so
+ * a wide diagram starts at the left edge and all of it can be scrolled to.
+ * Centring an overflowing inline box can put its left end where no scrollbar
+ * reaches. */
 .md-typeset pre.unoq-mermaid > svg {
+  display: block;
   max-width: none;
+  margin: 0 auto;
 }

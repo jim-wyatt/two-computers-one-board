@@ -33,8 +33,8 @@ flowchart TB
   MPU --- X --- MCU
 ```
 
-Every line between the two boxes is one this project drives, and getting any of
-them wrong makes a working board look broken. They are the subject of the next
+Every wire listed in the middle box is one this project drives, and getting any
+of them wrong makes a working board look broken. They are the subject of the next
 section.
 
 ---

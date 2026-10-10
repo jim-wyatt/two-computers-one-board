@@ -236,7 +236,15 @@ case "$rc" in
   1)
     cat >&2 <<EOF
 
-Diagrams did not render. Things worth checking, in the order they have bitten:
+A diagram did not draw, or drew and cannot be read. The FAIL lines above say
+which, for each page.
+
+"drew, but:" is a layout problem, and nothing below applies to it. The diagram
+is wider than the 688px text column, or was scaled down to fit it. Lay it out
+top to bottom (flowchart TB), shorten a row, or split it in two.
+
+Anything else is a diagram that did not draw. Things worth checking, in the
+order they have bitten:
 
   1. extra_javascript in mkdocs.yml still lists assets/javascripts/mermaid-init.js.
      Without it the library loads and nothing ever calls mermaid.run().
