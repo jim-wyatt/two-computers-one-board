@@ -129,6 +129,18 @@ configured_for() {
   ran "west build -b arduino_uno_q -d $ZEPHYR_WORKSPACE/build $PROJECT/mcu/app"
 }
 
+@test "a cache that cannot be read is left for west to judge too" {
+  # -f is true of a file nobody may read. sed then fails, and under set -e the
+  # script used to stop at the assignment, before west was ever asked.
+  [ "$(id -u)" -ne 0 ] || skip "root can read anything, so there is no such cache"
+  configured_for /somewhere/else/mcu/app
+  chmod 000 "$ZEPHYR_WORKSPACE/build/CMakeCache.txt"
+  run "$PROJECT/mcu/zbuild.sh"
+  chmod 600 "$ZEPHYR_WORKSPACE/build/CMakeCache.txt"
+  [ "$status" -eq 0 ]
+  ran "west build -b arduino_uno_q -d $ZEPHYR_WORKSPACE/build $PROJECT/mcu/app"
+}
+
 # --- zbuild on a CI runner --------------------------------------------------
 #
 # A runner has west and imgtool on PATH and no venv inside the workspace, and
@@ -292,6 +304,30 @@ SH
   run "$PROJECT/mcu/flash-all.sh"
   [ "$status" -eq 0 ]
   ran_like '^west build'
+}
+
+@test "a bootloader built for another board is rebuilt, not flashed to this one" {
+  # Same two revisions, different BOARD. The stamp used to name the revisions
+  # only, so the second run found "its" bootloader already built.
+  built
+  mcuboot_tree
+  BOARD=some_other_board run "$PROJECT/mcu/flash-all.sh"
+  [ "$status" -eq 0 ]
+  ran_like '^west build -b some_other_board '
+  : >"$STUB_LOG"
+  run "$PROJECT/mcu/flash-all.sh"
+  [ "$status" -eq 0 ]
+  ran_like '^west build -b arduino_uno_q '
+}
+
+@test "the default board and the default named out loud are the same build" {
+  built
+  mcuboot_tree
+  run "$PROJECT/mcu/flash-all.sh"
+  : >"$STUB_LOG"
+  BOARD=arduino_uno_q run "$PROJECT/mcu/flash-all.sh"
+  [ "$status" -eq 0 ]
+  ! ran_like '^west build'
 }
 
 @test "a bootloader image of unknown origin is rebuilt rather than trusted" {

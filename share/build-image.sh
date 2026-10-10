@@ -54,6 +54,13 @@
 # Anything else holding the mount (a shell that has cd'd into it) is named,
 # using fuser, and the script stops there. It never uses `umount -l`: a lazy
 # unmount succeeds in exactly the case where something is still writing.
+#
+# That is true of EVERY place $MOUNT is unmounted, which it was not at first.
+# The remount went through unmount_share; the two branches that replace or
+# reformat the image called `umount "$MOUNT"` themselves, ignored what it
+# returned, and carried on - and with no `set -e` here, carrying on meant
+# moving a new file over an image that was still mounted and still being
+# served. See unmount_share.
 set -uo pipefail
 # shellcheck source=provision/lib.sh
 . "$(cd "$(dirname "$0")/.." && pwd)/provision/lib.sh"
@@ -169,11 +176,19 @@ resume_learn() {
 }
 trap resume_learn EXIT
 
-# unmount_share - unmount $MOUNT, or say who is in the way.
+# unmount_share [why] - unmount $MOUNT, or say who is in the way and stop.
 #
 # `umount: target is busy` names the mount and not the process, which sends you
 # looking at the image when the cause is a shell sitting in the directory.
+#
+# THE ONLY WAY THIS SCRIPT UNMOUNTS $MOUNT. It does the two things a bare
+# `umount` does not: it stops the web server first, which is what holds the
+# mount on every provisioned board, and it does not return if the mount is
+# still there. The callers that replace or format the image rely on the second
+# half - everything after this line may assume nothing has $IMG open through
+# $MOUNT. <why> finishes the sentence "could not unmount $MOUNT ...".
 unmount_share() {
+  local why="${1:-to remount it rw}"
   pause_learn
   umount "$MOUNT" && return 0
   local holders=""
@@ -182,11 +197,11 @@ unmount_share() {
     holders="$(fuser -vm "$MOUNT" 2>&1)"
   fi
   if [ -n "$holders" ]; then
-    fail "could not unmount $MOUNT to remount it rw - still held open by:
+    fail "could not unmount $MOUNT $why - still held open by:
 $holders
   Close those (a shell that has cd'd into $MOUNT counts), then run this again."
   fi
-  fail "could not unmount $MOUNT to remount it rw - something still holds it open.
+  fail "could not unmount $MOUNT $why - something still holds it open.
   Find it with:  sudo fuser -vm $MOUNT   (apt install psmisc)
   Close it (a shell that has cd'd into $MOUNT counts), then run this again."
 }
@@ -213,13 +228,28 @@ if [ -f "$IMG" ] && ! partitioned "$IMG"; then
   did "copying $(du -sh "$OLDMNT" | cut -f1) across (no re-download)"
   cp -a "$OLDMNT/." "$MOUNT.new/" || fail "copy failed - $NEW left in place, $IMG untouched"
   sync
-  umount "$OLDMNT" && rmdir "$OLDMNT"
-  umount "$MOUNT.new" && rmdir "$MOUNT.new"
+  # Both of these have to have worked before $NEW takes the image's name: a
+  # copy still mounted at $MOUNT.new would be mounted a second time, read-write,
+  # at $MOUNT a few lines further on.
+  umount "$OLDMNT" || fail "could not unmount the old image from $OLDMNT - $IMG untouched"
+  rmdir "$OLDMNT"
+  umount "$MOUNT.new" || fail "could not unmount the new image from $MOUNT.new - $IMG untouched"
+  rmdir "$MOUNT.new"
 
   # Only now let go of the old file: everything above could have failed with
   # the original still the one the gadget and the web server were using.
+  #
+  # The mount first, and through unmount_share. This was `mountpoint -q && umount`
+  # with the result thrown away: with unoq-learn serving from $MOUNT the unmount
+  # failed as busy every time, and the mv below then replaced the image while
+  # the old one was still mounted and still being served from an inode with no
+  # name. Now a mount that will not let go stops the run here, with $IMG as it
+  # was, the gadget still holding it, and $NEW left for the next run to
+  # discard. The medium is ejected only once that is known to have worked.
+  if mountpoint -q "$MOUNT"; then
+    unmount_share "before replacing the image under it ($IMG is untouched)"
+  fi
   eject_gadget
-  mountpoint -q "$MOUNT" && umount "$MOUNT"
   mv "$NEW" "$IMG" || fail "could not replace $IMG"
   chown "$TARGET_USER" "$IMG"
   did "repartitioned in place, contents preserved"
@@ -245,8 +275,13 @@ if partitioned "$IMG" && blkid -o value -s TYPE "$IMG" 2>/dev/null | grep -q . 2
 elif partitioned "$IMG"; then
   skip "MBR present"
 else
+  # Same rule as the migration above, and it had the same hole: a busy unmount
+  # was ignored and the image was partitioned and formatted underneath a live
+  # mount. Nothing is written to $IMG until $MOUNT has let go of it.
+  if mountpoint -q "$MOUNT"; then
+    unmount_share "before formatting the image under it (nothing has been written)"
+  fi
   eject_gadget
-  mountpoint -q "$MOUNT" && umount "$MOUNT"
   format_and_mount "$IMG" "$MOUNT"
   did "MBR + FAT32 partition, label UNO-Q"
 fi

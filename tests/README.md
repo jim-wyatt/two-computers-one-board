@@ -72,6 +72,8 @@ without touching `/var/lib`.
 | [`zephyr-sdk.bats`](zephyr-sdk.bats) | The first step of `bootstrap.sh` a stranger's board ever stopped at. It passed on every board it was developed on, and failed on a fresh one. |
 | [`build-flash.bats`](build-flash.bats) | `zbuild` and `zflash` with nothing after them: the right app, and never the unsigned image. Also that CI can run the same script the board does. |
 | [`uplink-fallback.bats`](uplink-fallback.bats) | The last automatic way back onto a network when wifi is off. Wrong one way it strands the board; wrong the other way the radio comes back on every boot. |
+| [`check-links.bats`](check-links.bats) | The monthly link check files an issue with whatever it prints. If it cannot tell "no network" from "every link is dead", one bad night on a runner becomes an issue listing every link in the docs. |
+| [`bootstrap.bats`](bootstrap.bats) | What `bootstrap.sh` says about the microcontroller when the firmware did not go on. Telling someone their chip is as it was, after a flash that stopped half-way, sends them looking in the wrong place. |
 | [`build-image.bats`](build-image.bats) | The web server is stopped for a remount and always started again, on every exit path, and a busy mount is never forced. |
 
 The first two were written first, because both scripts had already failed:

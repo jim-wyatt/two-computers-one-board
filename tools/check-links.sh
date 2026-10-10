@@ -210,7 +210,13 @@ report() {
 
 OWN_BLOB="https://github.com/jim-wyatt/two-computers-one-board/blob/main/"
 echo "checking $total external links..."
+# Two counts, not one. `ok` is every link found good. `answered` is only the
+# ones a server said so about, and it is the one that can tell an outage from
+# a bad month - see the end of this file for what happened while they were the
+# same number.
 ok=0
+answered=0
+asked_network=0
 : >"$TMP/dead"
 : >"$TMP/unverifiable"
 # When each host was last asked, in seconds since this script started. The
@@ -242,8 +248,10 @@ while IFS= read -r url; do
   fi
   code="$(status_of "$url")"
   asked[$host]=$SECONDS
+  asked_network=$((asked_network + 1))
   if alive "$code"; then
     ok=$((ok + 1))
+    answered=$((answered + 1))
   elif [ "$code" = 403 ] && blocks_automation "$url"; then
     report "$url" "$code" >>"$TMP/unverifiable"
   elif [ "$code" = 429 ]; then
@@ -269,8 +277,14 @@ unverifiable="$(grep -c '^  [^ ]' "$TMP/unverifiable")"
 # Nothing answered at all. That is this machine having no network, not a
 # hundred sites dying in the same month - and reporting it as the second would
 # have the scheduled job file an issue listing every link in the docs.
-if [ "$ok" -eq 0 ]; then
-  echo "none of the $total links answered - no network? Nothing can be concluded." >&2
+#
+# Asked of `answered`, not of `ok`. When the links into this repository started
+# being checked against the checkout they were counted as ok too, and they are
+# ok with the cable pulled out - so `ok` was never 0 again, this never fired,
+# and an offline run did exactly what the paragraph above says it must not. A
+# file being on this disk says nothing about whether the network is there.
+if [ "$asked_network" -gt 0 ] && [ "$answered" -eq 0 ]; then
+  echo "none of the $asked_network links that needed the network answered - no network? Nothing can be concluded." >&2
   exit 2
 fi
 
