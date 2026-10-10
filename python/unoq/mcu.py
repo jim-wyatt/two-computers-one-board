@@ -49,6 +49,11 @@ BAUD = 115200
 # What the firmware puts in front of a command it refuses: APP_ERR in
 # app_proto.h. test_contract.py holds the two together.
 ERROR_PREFIX = "Error:"
+# What the Zephyr shell itself says when it will not run a line at all - before
+# any handler of ours is reached, so without our prefix. The second was found
+# on the board: `app matrix px 1 1`, one argument short, came back as two lines
+# of usage text and was returned as though it were the reply.
+_SHELL_REFUSALS = ("command not found", "wrong parameter count")
 
 # The two lines `app temp` can answer with: APP_TEMP_FMT and APP_TEMP_ERR_FMT in
 # app_proto.h, with each %d turned into a signed-integer group. Anchored at both
@@ -285,7 +290,7 @@ class MCU:
         if lines and lines[0] == command:
             lines = lines[1:]
         for line in lines:
-            if "command not found" in line or line.startswith(ERROR_PREFIX):
+            if line.startswith(ERROR_PREFIX) or any(said in line for said in _SHELL_REFUSALS):
                 raise MCUError(f"{command!r}: {line}")
         return lines
 
