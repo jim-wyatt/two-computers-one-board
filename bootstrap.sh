@@ -166,8 +166,31 @@ esac
 if sudo -n true 2>/dev/null; then
   skip "sudo available without a password"
 else
-  echo "  sudo will prompt for your password (once, cached for the run)."
+  echo "  sudo will prompt for your password, once."
   sudo -v || fail "sudo is required"
+  # ONCE, AND THEN KEPT
+  # -------------------
+  # sudo remembers a password for fifteen minutes. The Zephyr workspace alone
+  # takes longer than that to download, and the steps after it need root. So
+  # "once, cached for the run" was true only on a board with passwordless sudo,
+  # which is what this was developed on; a stock board asks again, an hour in,
+  # at a prompt nobody is sitting at. The first stock board to be looked at
+  # after a factory restore showed it: its sudo wants a password.
+  #
+  # So the timestamp is refreshed once a minute for as long as this script is
+  # alive. -n, so that if it has lapsed anyway the refresher stops quietly
+  # rather than putting a second prompt in the middle of somebody else's
+  # output; the step that needs root will then ask, which is no worse than
+  # before. It ends with this script, by the trap and by the check on $$.
+  (
+    while kill -0 "$$" 2>/dev/null; do
+      sleep 60
+      sudo -n -v 2>/dev/null || exit 0
+    done
+  ) &
+  SUDO_KEEPALIVE=$!
+  # shellcheck disable=SC2064  # the PID is known now, and must not change
+  trap "kill $SUDO_KEEPALIVE 2>/dev/null" EXIT
 fi
 
 FREE_MB=$(df -Pm "$HOME" | awk 'NR==2 {print $4}')

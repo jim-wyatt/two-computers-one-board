@@ -142,3 +142,53 @@ bootstrap() {
   [[ "$output" != *"set -uo pipefail"* ]]
   [[ "$output" != *"PROJECT="* ]]
 }
+
+# --- a board whose sudo wants a password ------------------------------------
+#
+# Every board this was developed on had passwordless sudo. A stock one does
+# not, and sudo forgets a password after fifteen minutes - less than the
+# workspace download takes.
+
+needs_a_password() {
+  stub_body sudo <<'SH'
+[ "$*" = "-n true" ] && exit 1
+exit 0
+SH
+}
+
+@test "when sudo needs a password it is asked for once, then kept alive" {
+  needs_a_password
+  bootstrap
+  [ "$status" -eq 0 ]
+  ran "sudo -v"
+  ran "sudo -n -v"
+  [ "$(grep -cx 'sudo -v' "$STUB_LOG")" -eq 1 ]
+}
+
+@test "the refresher does not outlive the run" {
+  needs_a_password
+  bootstrap
+  [ "$status" -eq 0 ]
+  before="$(grep -cx 'sudo -n -v' "$STUB_LOG")"
+  /bin/sleep 0.3
+  [ "$(grep -cx 'sudo -n -v' "$STUB_LOG")" -eq "$before" ]
+}
+
+@test "passwordless sudo is neither prompted nor refreshed" {
+  bootstrap
+  [ "$status" -eq 0 ]
+  ! ran "sudo -v"
+  ! ran "sudo -n -v"
+}
+
+@test "a refused password stops the run before anything is done" {
+  stub_body sudo <<'SH'
+[ "$*" = "-n true" ] && exit 1
+[ "$*" = "-v" ] && exit 1
+exit 0
+SH
+  bootstrap
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"sudo is required"* ]]
+  ! ran_like '^bash .*/provision/'
+}
