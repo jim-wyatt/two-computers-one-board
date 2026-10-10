@@ -226,12 +226,13 @@ step "hand the USB port over"
 # REVERT: systemctl enable --now adbd
 # usb_handover is in lib.sh: it calls the script, or - from `adb shell`, where
 # calling it would kill this run - schedules it. HANDOVER_DEFERRED says which.
-usb_handover
+HANDOVER_FAILED=0
+usb_handover || HANDOVER_FAILED=1
 DEFERRED="$HANDOVER_DEFERRED"
 HANDOVER_DELAY="${UNOQ_HANDOVER_DELAY:-20}"
 
 step "verify"
-G=/sys/kernel/config/usb_gadget/unoq
+G="${UNOQ_GADGET_DIR:-/sys/kernel/config/usb_gadget/unoq}"
 names() { # basenames of a glob, space separated, "<none>" if it matched nothing
   local out=""
   for p in "$@"; do
@@ -247,17 +248,29 @@ elif [ -d "$G" ]; then
   skip "functions: $(names "$G"/functions/*)"
   attached="$(cat "$G/functions/mass_storage.0/lun.0/file" 2>/dev/null)"
   skip "drive backing file: ${attached:-<none>}"
-  udcs="$(names /sys/class/udc/*)"
-  if [ -n "$udcs" ]; then
-    skip "UDC present: $udcs - bound"
-  else
+  # A controller being present is not the gadget being bound to it. What says
+  # bound is the gadget's own UDC file naming a controller.
+  udcs="$(names "${UNOQ_UDC_DIR:-/sys/class/udc}"/*)"
+  bound="$(cat "$G/UDC" 2>/dev/null)"
+  if [ -z "$udcs" ]; then
     skip "no UDC: the board is not plugged into a computer yet (expected)"
+  elif [ -n "$bound" ]; then
+    skip "bound to $bound"
+  else
+    warn "a controller is present ($udcs) and the gadget is not bound to it"
+    warn "  check: journalctl -u unoq-usb-bind -n 40"
+    HANDOVER_FAILED=1
   fi
 else
   warn "no gadget at $G - check the journal"
 fi
 
 summary
+# After the summary, so what was installed is still listed - and non-zero, so
+# bootstrap.sh and anything else calling this step knows it did not finish.
+[ "$HANDOVER_FAILED" = 0 ] ||
+  fail "everything is installed, but the USB port was not handed over - see the warnings above.
+        The board is still reachable the way you reached it. Run this step again once fixed."
 if [ "$DEFERRED" = 1 ]; then
   cat <<EOF
 

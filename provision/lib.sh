@@ -197,6 +197,7 @@ in_unit_cgroup() {
 #
 # Sets HANDOVER_DEFERRED=1 when it was scheduled and has not happened yet, so
 # the caller knows there is nothing to verify and something to tell the user.
+# Returns 1 when it was run here and failed.
 #
 # From `adb shell` this process is adbd's child, and the hand-over stops adbd.
 # So it is given to systemd to run from outside, a little later - long enough
@@ -210,10 +211,13 @@ usb_handover() {
   if ! in_unit_cgroup adbd.service; then
     if "$handover"; then
       did "hand-over ran"
-    else
-      warn "hand-over failed - check: journalctl -t unoq-usb-handover -n 40"
+      return 0
     fi
-    return 0
+    # Returned, not swallowed: the caller is a provisioning step, and a step
+    # that carries on to print "bound" over a hand-over that failed has said
+    # something untrue in the one place a person will look.
+    warn "hand-over failed - check: journalctl -t unoq-usb-handover -n 40"
+    return 1
   fi
   # A hand-over still pending from an earlier run would make the unit name
   # taken. Whatever it was going to do, this one does.

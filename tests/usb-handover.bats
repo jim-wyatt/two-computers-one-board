@@ -364,11 +364,23 @@ SH
   [ -e "$FLAGS/active/adbd.service" ]
 }
 
-@test "a hand-over that fails when run directly is a warning, not silence" {
+@test "a hand-over that fails when run directly is a failure, and says where to look" {
+  # It used to warn and return 0, and the step went on to print "bound".
   printf '#!/bin/bash\nexit 1\n' >"$UNOQ_RUNTIME_DIR/usb/handover.sh"
   load_lib
   run usb_handover
+  [ "$status" -ne 0 ]
   [[ "$output" == *"hand-over failed"* ]]
+  [[ "$output" != *"hand-over ran"* ]]
+}
+
+@test "the step does not let a failed hand-over pass" {
+  # In the file, because running the whole step needs a board: the status of
+  # usb_handover has to be kept, and has to reach a fail.
+  grep -q '^usb_handover || HANDOVER_FAILED=1$' "$GADGET_STEP"
+  grep -q '^\[ "\$HANDOVER_FAILED" = 0 \] ||$' "$GADGET_STEP"
+  # And "bound" is the gadget's own UDC file, not a controller being present.
+  grep -q 'bound="\$(cat "\$G/UDC"' "$GADGET_STEP"
 }
 
 # --- the step that calls it ------------------------------------------------------
@@ -378,14 +390,14 @@ SH
   # nothing in the step may stop adbd by itself - that is handover.sh's job,
   # because only handover.sh can be run from outside adbd.
   ssh_line="$(grep -n '^ensure_ssh' "$GADGET_STEP" | cut -d: -f1)"
-  handover_line="$(grep -n '^usb_handover$' "$GADGET_STEP" | cut -d: -f1)"
+  handover_line="$(grep -n '^usb_handover ' "$GADGET_STEP" | cut -d: -f1)"
   [ -n "$ssh_line" ] && [ -n "$handover_line" ]
   [ "$ssh_line" -lt "$handover_line" ]
   ! grep -nE '^[^#]*(disable_unit|systemctl (stop|disable)[^#]*) adbd' "$GADGET_STEP"
 }
 
 @test "the hand-over is the last thing the step does to the board" {
-  handover_line="$(grep -n '^usb_handover$' "$GADGET_STEP" | cut -d: -f1)"
+  handover_line="$(grep -n '^usb_handover ' "$GADGET_STEP" | cut -d: -f1)"
   last_install="$(grep -nE '^[^#]*(install_unit|install_root_scripts|apt_install|write_file|enable_unit|systemctl enable)' "$GADGET_STEP" | tail -1 | cut -d: -f1)"
   [ "$last_install" -lt "$handover_line" ]
 }
