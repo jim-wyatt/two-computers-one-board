@@ -58,7 +58,7 @@ jobs:
         # to v7, so `@v9` does not resolve and the whole workflow fails to
         # start. Bump this by hand - `latest release` and `latest major tag`
         # are different questions for this action.
-        uses: astral-sh/setup-uv@v9.0.0
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
 
@@ -122,7 +122,7 @@ jobs:
 
       - name: Install uv
         # Exact tag for the reason given in `checks`.
-        uses: astral-sh/setup-uv@v9.0.0
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
 
