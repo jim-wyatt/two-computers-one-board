@@ -5,7 +5,8 @@
 #
 #   sudo bash ~/two-computers-one-board/provision/60-usb-gadget.sh
 #
-# Idempotent, and safe to run over SSH: it does NOT change the USB role. On
+# Idempotent, and safe to run over SSH or from `adb shell` - see the last step
+# for what the second one takes. It does NOT change the USB role. On
 # this board it cannot - dwc3 is dr_mode="otg" with no writable role switch,
 # and the Type-C controller picks host or device from the CC lines. Installing
 # this only arranges for a gadget to be bound IF a USB Device Controller shows
@@ -144,18 +145,12 @@ else
   warn "             sudo bash $PROJECT/share/build-image.sh"
 fi
 
-step "adbd"
-# adbd's ExecStartPost binds its OWN gadget to the first free UDC. With this
-# installed there would be two gadgets racing for one controller, and which
-# one wins is a coin toss. adb over USB and this are mutually exclusive; the
-# network link is the more useful of the two, and adb still works over TCP.
-# REVERT: systemctl enable --now adbd
-if unit_exists adbd.service; then
-  disable_unit adbd.service
-  skip "adb over TCP still works:  adb connect $(hostname).local:5555"
-else
-  skip "adbd not present"
-fi
+step "a way back in"
+# The last step below takes the USB port away from adbd, and with it the
+# `adb shell` that is the only way into a stock board. So before anything is
+# taken away, the thing that replaces it has to be running - and if it cannot
+# be started, this stops here, with adb untouched.
+ensure_ssh
 
 step "udev rule"
 if write_file 0644 /etc/udev/rules.d/99-unoq-usb-gadget.rules \
@@ -221,11 +216,31 @@ else
     fail "could not enable unoq-uplink-fallback.service"
   did "wifi fallback enabled at boot"
 fi
-step "build the gadget now (no bind without a host)"
-if systemctl restart unoq-usb-gadget.service 2>/dev/null; then
-  did "service ran"
+step "hand the USB port over"
+# adbd binds its OWN gadget to the first free UDC. With this installed there
+# would be two gadgets racing for one controller, and which one wins is a coin
+# toss, so adbd goes. That is done last, by usb/handover.sh, and after
+# everything it leaves behind is installed - it used to be done half way down
+# this file, which on a board reached over `adb shell` killed this script
+# before it had installed a single unit: no adb, no gadget, no way in.
+# REVERT: systemctl enable --now adbd
+HANDOVER="$RUNTIME_DIR/usb/handover.sh"
+HANDOVER_DELAY="${UNOQ_HANDOVER_DELAY:-20}"
+DEFERRED=0
+if in_unit_cgroup adbd.service; then
+  # This shell IS adbd's child. Stopping adbd from here stops this, so the
+  # hand-over is given to systemd to run from outside, a little later - long
+  # enough for the rest of this run to finish printing.
+  systemctl stop unoq-usb-handover.timer unoq-usb-handover.service >/dev/null 2>&1
+  systemd-run --quiet --collect --unit=unoq-usb-handover \
+    --on-active="$HANDOVER_DELAY" "$HANDOVER" >/dev/null 2>&1 ||
+    fail "could not schedule the hand-over - adb is untouched, nothing is bound"
+  did "hand-over scheduled in ${HANDOVER_DELAY}s (this is an adb shell, and it will close)"
+  DEFERRED=1
+elif "$HANDOVER"; then
+  did "hand-over ran"
 else
-  warn "service failed - check: journalctl -u unoq-usb-gadget -n 40"
+  warn "hand-over failed - check: journalctl -t unoq-usb-handover -n 40"
 fi
 
 step "verify"
@@ -238,22 +253,37 @@ names() { # basenames of a glob, space separated, "<none>" if it matched nothing
   done
   echo "${out# }"
 }
-if [ -d "$G" ]; then
+if [ "$DEFERRED" = 1 ]; then
+  skip "nothing to verify yet - the gadget is built when the hand-over runs"
+elif [ -d "$G" ]; then
   skip "gadget defined, configs: $(names "$G"/configs/*)"
   skip "functions: $(names "$G"/functions/*)"
   attached="$(cat "$G/functions/mass_storage.0/lun.0/file" 2>/dev/null)"
   skip "drive backing file: ${attached:-<none>}"
+  udcs="$(names /sys/class/udc/*)"
+  if [ -n "$udcs" ]; then
+    skip "UDC present: $udcs - bound"
+  else
+    skip "no UDC: the board is not plugged into a computer yet (expected)"
+  fi
 else
   warn "no gadget at $G - check the journal"
 fi
-udcs="$(names /sys/class/udc/*)"
-if [ -n "$udcs" ]; then
-  skip "UDC present: $udcs - bound"
-else
-  skip "no UDC: the board is not plugged into a computer yet (expected)"
-fi
 
 summary
+if [ "$DEFERRED" = 1 ]; then
+  cat <<EOF
+
+${P_BOLD}This adb shell closes in about ${HANDOVER_DELAY} seconds.${P_OFF} That is the hand-over, not a
+crash: adb's daemon gives up the USB port, and the board comes back on the same
+cable as a network adapter and a drive. From then on the way in is SSH, with
+the password you set for $TARGET_USER:
+
+  ssh $TARGET_USER@$(hostname).local
+
+What it did is in the journal:  journalctl -t unoq-usb-handover
+EOF
+fi
 cat <<EOF
 
 Plug the board's USB-C port into your computer, then on the computer:

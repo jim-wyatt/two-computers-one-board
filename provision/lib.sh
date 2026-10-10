@@ -122,8 +122,15 @@ unit_exists() {
 }
 
 # disable_unit <unit>... - stop, disable, and say which of those was needed.
+#
+# Returns 1 if any unit is still running afterwards, and says so. It used to
+# print "stopped and disabled" on the strength of having asked: on a stock
+# board arduino-router was asked, kept running because a .path unit started it
+# again, and went on holding /dev/ttyHS1 under a line that said it was gone.
+# What systemd was asked for and what is now true are different things, and
+# only the second is worth printing.
 disable_unit() {
-  local u
+  local u rc=0
   for u in "$@"; do
     if ! unit_exists "$u"; then
       skip "$u not present"
@@ -135,8 +142,49 @@ disable_unit() {
       continue
     fi
     systemctl disable --now "$u" >/dev/null 2>&1
-    did "$u stopped and disabled"
+    if systemctl is-active --quiet "$u"; then
+      warn "$u is still running after being stopped - something starts it again."
+      warn "  what does:  systemctl show $u -p TriggeredBy -p WantedBy -p RequiredBy"
+      rc=1
+    else
+      did "$u stopped and disabled"
+    fi
   done
+  return "$rc"
+}
+
+# ensure_ssh - make sure there is an SSH server running, or fail.
+#
+# The stock image ships openssh-server installed and switched off: the factory
+# way in is `adb shell` over the USB cable. Anything that takes that cable away
+# has to leave another door open first, and this is the door.
+#
+# Host keys are generated if there are none, because a server with no host key
+# starts, fails, and reports it only in the journal. `ssh-keygen -A` creates
+# the missing ones and leaves existing ones alone.
+# REVERT: systemctl disable --now ssh
+ensure_ssh() {
+  local unit="ssh.service" k have=0
+  unit_exists "$unit" || fail "no $unit on this board - install openssh-server first"
+  for k in "${UNOQ_SSH_DIR:-/etc/ssh}"/ssh_host_*_key; do
+    [ -e "$k" ] && have=1
+  done
+  if [ "$have" = 0 ]; then
+    ssh-keygen -A >/dev/null 2>&1 || fail "could not generate SSH host keys"
+    did "SSH host keys generated"
+  fi
+  enable_unit "$unit"
+  systemctl is-active --quiet "$unit" ||
+    fail "$unit did not stay running - check: journalctl -u ssh -n 20"
+}
+
+# in_unit_cgroup <unit> - is this process running inside that unit's cgroup?
+#
+# `adb shell` is a child of adbd, and systemd kills a unit's whole cgroup when
+# it stops the unit. So a script started from `adb shell` that stops adbd is
+# stopping itself, part way through whatever it was doing.
+in_unit_cgroup() {
+  grep -qE "/$1(/|\$)" "${UNOQ_CGROUP_FILE:-/proc/self/cgroup}" 2>/dev/null
 }
 
 # mask_unit <unit> - for services that restart themselves on demand.

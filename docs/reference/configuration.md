@@ -87,6 +87,7 @@ These exist so that a board with wifi off cannot lock you out. Read
 | `UNOQ_UPLINK_INTERVAL` | `15` | Seconds between probes while waiting for it. |
 | `UNOQ_UPLINK_PROBE_IPS` | `1.1.1.1 8.8.8.8` | The addresses that count as "the internet" for that decision. |
 | `UNOQ_PROBE_IP` | `1.1.1.1` | The address `usb/wifi.sh off` pings through the cable first. No answer is a warning, not a refusal. |
+| `UNOQ_HANDOVER_DELAY` | `20` | Seconds between `60-usb-gadget.sh` finishing and the USB port changing hands, when the step was started from `adb shell` and so cannot do it itself. See [usb.md](usb.md#running-the-step-from-adb-shell). |
 
 ## The status LEDs
 
@@ -196,6 +197,9 @@ and setting one will mostly make a script look in the wrong place.
 | `UNOQ_WATCHDOG_CONF_DIR` | `/etc/systemd/system.conf.d` | Where `80-watchdog.sh` writes its `systemd` drop-in. |
 | `UNOQ_WATCHDOG_SYSFS` | `/sys/class/watchdog` | Where `80-watchdog.sh` looks for a watchdog device. |
 | `UNOQ_FSTAB` | `/etc/fstab` | The mount table `85-esp-permissions.sh` edits. Its backup is written beside it. |
+| `UNOQ_UDC_DIR` | `/sys/class/udc` | Where `usb/handover.sh` looks for a USB controller to bind to. |
+| `UNOQ_SSH_DIR` | `/etc/ssh` | Where provisioning looks for SSH host keys before switching `sshd` on. |
+| `UNOQ_CGROUP_FILE` | `/proc/self/cgroup` | What a provisioning step reads to find out whether it was started from `adb shell`. |
 
 ## Development only
 

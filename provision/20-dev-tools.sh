@@ -83,10 +83,20 @@ fi
 # --- Router Bridge has nothing to talk to. arduino-router also holds
 # --- /dev/ttyHS1 open, which blocks you from reading the Zephyr console.
 # --- Frees ~105 MB and releases the UART.
-# REVERT: systemctl enable --now arduino-router arduino-app-cli
+#
+# The order is the fix for a board that said "stopped and disabled" and was
+# neither. arduino-router-serial.path watches for /dev/ttyGS0 - the serial port
+# of the factory USB device, so it is there on every stock board - and starts
+# arduino-router-serial.service whenever that exists. That service Requires=
+# the router. Stop the router first and the path unit has the pair running
+# again before the next line. So: the trigger, then what it starts, then what
+# that needs.
+# REVERT: systemctl enable --now arduino-router-serial.path arduino-router \
+#           arduino-router-serial arduino-app-cli
 step "Arduino services"
-disable_unit arduino-router.service arduino-router-serial.service \
-  arduino-app-cli.service arduino-avahi-serial.service
+disable_unit arduino-router-serial.path arduino-router-serial.service \
+  arduino-router.service arduino-app-cli.service arduino-avahi-serial.service ||
+  warn "the MCU's serial port (/dev/ttyHS1) may still be held - see above"
 
 # --- 3. Docker: exists only to run Arduino Brick container images. ~105 MB.
 # REVERT: systemctl enable --now docker docker.socket containerd
