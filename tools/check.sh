@@ -6,7 +6,7 @@
 #   ~/two-computers-one-board/tools/check.sh              # everything
 #   ~/two-computers-one-board/tools/check.sh --fix        # reformat in place, then check
 #   ~/two-computers-one-board/tools/check.sh --fast       # skip the slow ones (MCU build, diagrams)
-#   ~/two-computers-one-board/tools/check.sh python       # one area: python | shell | c | docs | diagrams | mcu
+#   ~/two-computers-one-board/tools/check.sh python       # one area: python | shell | c | docs | workflows | diagrams | mcu
 #
 # Every gate runs even if an earlier one fails, so one pass shows you all the
 # work rather than the first thing to break. Exit status is non-zero if any
@@ -31,14 +31,14 @@ for arg in "$@"; do
       sed -n '2,14p' "$0"
       exit 0
       ;;
-    python | shell | c | mcu | docs | diagrams) AREAS+=("$arg") ;;
+    python | shell | c | mcu | docs | workflows | diagrams) AREAS+=("$arg") ;;
     *)
       echo "unknown argument: $arg (try --help)" >&2
       exit 2
       ;;
   esac
 done
-[ ${#AREAS[@]} -eq 0 ] && AREAS=(python shell c docs diagrams mcu)
+[ ${#AREAS[@]} -eq 0 ] && AREAS=(python shell c docs workflows diagrams mcu)
 
 if [ -t 1 ]; then
   RED=$'\033[31m' GREEN=$'\033[32m' DIM=$'\033[2m' BOLD=$'\033[1m' OFF=$'\033[0m'
@@ -128,6 +128,9 @@ if wanted shell; then
   # is the last place that should have been checked for syntax only.
   need bats "bats (shell behaviour)" &&
     run "bats (shell behaviour)" bats "$PROJECT/tests"
+  # The unit files and udev rules are what start all of that shell on a board,
+  # and systemd will say whether it accepts them without one.
+  run "units and udev rules (systemd)" "$PROJECT/tools/check-units.sh"
 fi
 
 # --- c ---------------------------------------------------------------------
@@ -182,7 +185,20 @@ if wanted docs; then
     # CDN, and every page that needs the init script loads it. The browser gate
     # below proves diagrams DRAW; this proves they COULD without a network.
     run "diagram assets (offline)" "$PROJECT/tools/check-diagram-assets.sh"
+    # The one page that is a list of facts about the code rather than prose
+    # about it, so it is the one page that can be checked against the code.
+    run "settings page matches the code" "$PROJECT/tools/check-config-docs.sh"
   fi
+fi
+
+# --- workflows ---------------------------------------------------------------
+
+if wanted workflows; then
+  cd "$PROJECT" || exit 1
+  # The CI definition is code too, and the only code here that used to be
+  # testable solely by pushing it. actionlint finds its shellcheck on PATH,
+  # which is the pinned one.
+  need actionlint "actionlint" && run "actionlint" actionlint
 fi
 
 # --- diagrams ---------------------------------------------------------------

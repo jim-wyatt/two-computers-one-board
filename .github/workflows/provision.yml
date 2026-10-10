@@ -1,0 +1,129 @@
+# Copyright (c) 2026 Jim Wyatt
+# SPDX-License-Identifier: MIT
+#
+# Run the provisioning scripts themselves, somewhere they have never run before.
+#
+# WHY THIS EXISTS
+# ---------------
+# bootstrap.sh stopped at its fourth step on the first stranger's board that
+# ever ran it, and kept doing so for six weeks. The step passed on every board
+# it had been developed on, because those had been logged into before and a
+# directory was already on PATH; a fresh one had not, and it was not.
+#
+# That is the one class of bug the other workflow cannot see. `checks` runs the
+# scripts' tests and `firmware` builds with a toolchain an action installed.
+# Neither runs the scripts that install the toolchain - so the code path a new
+# user takes first was the only one nothing exercised.
+#
+# So this does what a new user does, as far as a runner can: an empty home
+# directory, a bare PATH, and the user-level steps in the order bootstrap.sh
+# runs them. Then it builds and tests the firmware with what those steps
+# installed, which is the proof that they installed something that works.
+#
+# WHAT IT CANNOT COVER
+# --------------------
+# The root steps (provision/10, 20, 30, ...) remove Debian packages and manage
+# services that exist only on the board's image, and flashing needs the board.
+# Those are still verified by hand, on hardware.
+#
+# WHY NOT ON EVERY PUSH
+# ---------------------
+# It downloads the SDK and about 3 GB of Zephyr. That is fine weekly and when
+# something it tests has changed, and wasteful on a documentation fix. The
+# weekly run is also what notices when an upstream download moves or a release
+# is withdrawn, which no change of ours would trigger.
+name: provisioning
+
+on:
+  pull_request:
+    paths:
+      - 'provision/**'
+      - 'bootstrap.sh'
+      - 'west.yml'
+      - 'west-project-filter'
+      - 'mcu/zbuild.sh'
+      - 'mcu/ztest.sh'
+      - '.github/workflows/provision.yml'
+  schedule:
+    # Mondays, 05:17 UTC. Off the hour, where the scheduler is less crowded.
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  user-steps:
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both architectures: the board is aarch64 and nearly everything else
+        # that will ever run these scripts is x86_64. Each step picks its
+        # downloads by `uname -m`, and only one branch of that was ever run
+        # anywhere but on a board.
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install what the root steps would have
+        # The one thing the user-level steps need from the root ones: the Python
+        # headers, because spidev is a C extension with no wheel and is built
+        # from source. provision/10-optimize-board.sh installs them on a board.
+        run: sudo apt-get install -y --no-install-recommends python3-dev
+
+      - name: Run the user-level steps in an empty home, with a bare PATH
+        # env -i, so nothing the runner image has on PATH or in its environment
+        # can stand in for something a step forgot to set up. That is the whole
+        # test: the runner's own cmake being found is how this would pass
+        # without proving anything.
+        run: |
+          fresh="$RUNNER_TEMP/home"
+          mkdir -p "$fresh"
+          env -i HOME="$fresh" PATH=/usr/bin:/bin TERM=dumb bash -c '
+            set -e
+            bash provision/user/10-host-tools.sh
+            bash provision/user/20-zephyr-sdk.sh
+            bash provision/user/30-zephyr-workspace.sh
+            bash provision/user/40-python-venv.sh
+          '
+
+      - name: Run them again, and require that nothing changes
+        # Idempotence is the property the whole design rests on - running it
+        # twice is the documented recovery path - and it is exactly what the
+        # SDK step once got wrong without anyone noticing, re-downloading the
+        # whole SDK on every run. Each step ends "N changed, M already
+        # correct"; on a second run every N must be 0.
+        run: |
+          fresh="$RUNNER_TEMP/home"
+          env -i HOME="$fresh" PATH=/usr/bin:/bin TERM=dumb bash -c '
+            set -e
+            bash provision/user/10-host-tools.sh
+            bash provision/user/20-zephyr-sdk.sh
+            bash provision/user/30-zephyr-workspace.sh
+            bash provision/user/40-python-venv.sh
+          ' | tee "$RUNNER_TEMP/second-run.log"
+          summaries="$(grep -cE '^[0-9]+ changed, ' "$RUNNER_TEMP/second-run.log")"
+          [ "$summaries" -eq 4 ] || { echo "expected 4 step summaries, saw $summaries" >&2; exit 1; }
+          if grep -E '^[0-9]+ changed, ' "$RUNNER_TEMP/second-run.log" | grep -vE '^0 changed, '; then
+            echo "a second run changed something - a step is not idempotent" >&2
+            exit 1
+          fi
+
+      - name: Build and sign the firmware with what those steps installed
+        run: |
+          fresh="$RUNNER_TEMP/home"
+          env -i HOME="$fresh" PATH=/usr/bin:/bin TERM=dumb bash mcu/zbuild.sh
+          hex="$fresh/zephyrproject/build/zephyr/zephyr.signed.hex"
+          [ -s "$hex" ] || { echo "zbuild.sh produced no $hex" >&2; exit 1; }
+          echo "signed image: $(stat -c %s "$hex") bytes"
+
+      - name: Run the firmware tests the same way
+        run: |
+          fresh="$RUNNER_TEMP/home"
+          env -i HOME="$fresh" PATH=/usr/bin:/bin TERM=dumb bash mcu/ztest.sh

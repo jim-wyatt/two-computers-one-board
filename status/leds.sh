@@ -53,9 +53,12 @@
 # does not, on this kernel.
 #
 # Being listed is not the same as being implemented, and a trigger you can
-# select is not a trigger that fires. So disk activity is not shown here at all -
-# it moved to LED 4, on the MCU, fed from /sys/block/mmcblk0/stat, which does
-# move and can be checked.
+# select is not a trigger that fires. So disk activity is not shown here at all,
+# and it is not shown anywhere else on the board either. Feeding it to LED 4 on
+# the MCU from /sys/block/mmcblk0/stat was tried and dropped: sampled twice a
+# second and pushed down a 115200 link, it was a lamp that sat on through a copy
+# and off otherwise. LED 4 now shows whether Linux is still talking to the MCU -
+# see mcu/app/include/status_leds.h.
 #
 # Relatedly, the MMC subsystem registers an `mmc0::` LED of its own. It is NOT
 # one of the four: it lives under the MMC controller rather than the gpio-leds
@@ -288,10 +291,17 @@ Sampled every ${INTERVAL}s, so the colours correct themselves rather than
 remembering something that has stopped being true. Reachability is probed every
 $((INTERVAL * NET_EVERY))s.
 
-eMMC activity is deliberately NOT here. The kernel's mmc0, disk-activity and
-disk-write triggers are all offered by this kernel and none of them fire -
-measured at 0 of 400 samples under sustained writes. It lives on LED 4, driven
-by the MCU.
+eMMC activity is deliberately NOT shown, on any of the four. The kernel's mmc0,
+disk-activity and disk-write triggers are all offered by this kernel and none
+of them fire - measured at 0 of 400 samples under sustained writes.
+
+LED 3 and LED 4 are the firmware's (mcu/app/include/status_leds.h):
+
+  LED 3    green   running a confirmed firmware image
+           yellow  running an unconfirmed image - the next reset reverts it
+           red     a subsystem failed to start
+  LED 4    green   the MCU heard an 'app' command from Linux in the last 4s
+           red     nothing for longer than that
 
 Learn the colours with:  sudo $0 test
 EOF

@@ -40,10 +40,18 @@ That last one is worth pausing on. Reading whether an LED is lit is a `cat`,
 and turning one on is an `echo`:
 
 ```bash
+sudo systemctl stop unoq-leds          # a service owns this LED; borrow it
 cat /sys/class/leds/unoq:user-blue1/brightness      # 0 = off
 echo 1 | sudo tee /sys/class/leds/unoq:user-blue1/brightness
 echo 0 | sudo tee /sys/class/leds/unoq:user-blue1/brightness
+sudo systemctl start unoq-leds
 ```
+
+(`sudo tee` is how you write to a file only root may write, from a pipe. And
+the first and last lines are there because `unoq-leds` rewrites that LED every
+five seconds to report the board's state. Leave it running and your blue light
+is overwritten almost at once: two writers, one file, and the last one wins.
+[Four lights that tell the truth](four-lights.md) is about that service.)
 
 No library. No driver code. No API to look up. It is a file, and writing to it
 changes the physical world.
@@ -80,8 +88,8 @@ Two things about this that trip people up:
    ```
 
    That is the entire algorithm in [`unoq/cpu.py`](../../python/unoq/cpu.py), and it
-   is why the very first frame the demo draws is meaningless — there is no
-   earlier sample to subtract yet.
+   is why the demo takes one reading, waits, and only then draws its first
+   frame: with a single sample there is nothing to subtract.
 
 2. **A core waiting for the disk is not busy.** `iowait` counts as idle in this
    project, deliberately: a core blocked on storage is a core doing nothing, and
@@ -100,11 +108,14 @@ systemctl list-units 'unoq-*' --no-pager
 ```
 
 ```
-unoq-link.service        Set the MCU control GPIOs at boot
-unoq-cpu-bars.service    Host CPU load on the LED matrix
-unoq-learn.service       Serve this documentation on :8080
-unoq-usb-gadget.service  Be a network adapter and a drive over USB
+unoq-cpu-bars.service  loaded active running Arduino UNO Q host CPU load on the LED matrix
+unoq-leds.service      loaded active running Show the Arduino UNO Q link state on the board LEDs
+unoq-link.service      loaded active exited  Arduino UNO Q MPU<->MCU link (BOOT0 + UART enable GPIOs)
 ```
+
+Those three are what the course's setup gives you. `unoq-link` says `exited`,
+not `running`, and that is success: it sets two pins at boot and has nothing
+more to do. The other optional extras add `unoq-learn` and `unoq-usb-gadget`.
 
 Useful commands, which you will use constantly:
 
@@ -126,7 +137,9 @@ Three constraints that shape everything on this side:
 
 **Memory is finite in a way you will notice.** There are around 3.6 GB, shared
 with everything. A build that would be unremarkable on a laptop can push this
-board into swap.
+board into **swap** — parking memory that is not being used right now to make
+room. (On this board that is less alarming than it sounds: see
+[mpu.md](../reference/mpu.md#swap-in-use-is-not-a-problem-here).)
 
 **Storage is slower and smaller.** The root filesystem is about 10 GB. The
 Zephyr source tree alone is ~3.3 GB.
@@ -138,22 +151,22 @@ look.
 
 ## Try it: watch the demo do its half
 
-Stop the service, and run the same program by hand so you can see its output:
+Stop the service, and run the same program by hand. It prints nothing; watch
+the panel on the board:
 
 ```bash
 sudo systemctl stop unoq-cpu-bars
 cd ~/two-computers-one-board
-./.venv/bin/unoq-cpu-bars --count 20 --interval 0.2
+yes > /dev/null &                                     # one core, flat out, in the background
+./.venv/bin/unoq-cpu-bars --count 50 --interval 0.2   # ten seconds of frames
+kill %1                                               # stop the load
 sudo systemctl start unoq-cpu-bars
 ```
 
-Twenty frames, then it stops. While it runs, load a core and watch the bars
-climb:
-
-```bash
-yes > /dev/null &     # one core, flat out
-sleep 5; kill %1      # stop it
-```
+Fifty frames, then it stops and the panel goes dark. For those ten seconds one
+bar stands well above the others: that is the core `yes` is keeping busy. (`&`
+runs a command in the background so the prompt comes straight back; `kill %1`
+stops the first thing you started that way.)
 
 You have just used the Linux half for the two things it is good at: reading
 system state out of a file, and doing arithmetic on it. It never touched an LED.
@@ -170,4 +183,21 @@ system state out of a file, and doing arithmetic on it. It never touched an LED.
 3. Which of these belongs on the Linux side: computing a percentage, or holding a
    pin high for exactly 40 microseconds?
 
-Next: the other chip, where none of this exists.
+<details markdown="1">
+<summary>Answers — try each one first</summary>
+
+1. **Because the numbers are totals, not rates.** Each one counts jiffies spent
+   in a state since boot. A percentage only appears when you read the file
+   twice and divide the change in busy ticks by the change in total ticks.
+2. **Something else already holds the serial port — most likely the demo.**
+   Only one program can hold the line at a time.
+   `systemctl status unoq-cpu-bars` tells you whether the service is running;
+   stopping it gives you the wire back.
+3. **Computing a percentage.** That is arithmetic on data Linux already has.
+   Holding a pin for exactly 40 microseconds is a timing job, and exact timing
+   is what Linux cannot promise.
+
+</details>
+
+Next: [The microcontroller side](the-microcontroller-side.md) — the other chip,
+where none of this exists.

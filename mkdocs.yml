@@ -14,12 +14,19 @@
 #   build:  tools/build-docs.sh
 #   watch:  .venv/bin/mkdocs serve -f mkdocs.yml -a 0.0.0.0:8000
 
-site_name: Learn the Arduino UNO Q
+site_name: Two computers, one board
 site_description: >-
-  A course in hybrid MPU + MCU development, taught on one board: Linux and a
-  microcontroller sharing a circuit, and how to make them cooperate.
+  An independent course in hybrid MPU + MCU development, taught on the Arduino
+  UNO Q: Linux and a microcontroller sharing a circuit, and how to make them
+  cooperate.
 site_author: Jim Wyatt
-copyright: Copyright &copy; 2026 Jim Wyatt &middot; MIT licensed
+# The second sentence is on every page on purpose. The notice used to live only
+# on the Credits page, which is the one page nobody opens, while every page's
+# title named somebody else's product.
+copyright: >-
+  Copyright &copy; 2026 Jim Wyatt &middot; MIT licensed &middot; An independent
+  project, not affiliated with or endorsed by Arduino, Qualcomm,
+  STMicroelectronics or the Zephyr Project.
 
 # site_url is deliberately NOT set, and this is load-bearing rather than an
 # omission. With it, the `privacy` plugin bakes an ABSOLUTE url into the theme
@@ -230,6 +237,7 @@ markdown_extensions:
 # the course is making, and they are the same four the home page uses.
 nav:
   - Home: index.md
+  - Set up a board: setup.md
   - Course:
       - learn/start-here.md
       - What is actually here:
@@ -259,8 +267,11 @@ nav:
       - reference/mpu.md
       - reference/mcu.md
       - reference/usb.md
+      - reference/configuration.md
+      - reference/provisioning.md
       - reference/troubleshooting.md
       - reference/clean-board-findings.md
+      - reference/development.md
       - Glossary: glossary.md
   - Further reading: further-reading.md
   - Credits: third-party.md

@@ -66,17 +66,20 @@ exist — `write_file`, `install_unit`, `disable_unit`, `apt_install`,
 does not offer idempotently.
 
 The output vocabulary matters too. Every script says one of four things about
-every action:
+every action. The `did` and `skip` in the snippet above are the names of the
+functions that print them; what you see on the screen is the word in the first
+column:
 
-| | |
-|---|---|
-| `did` | I changed something |
-| `skip` | already correct, I did nothing |
-| `warn` | something is not right, but I can continue |
-| `fail` | I cannot continue, and here is what to do |
+| Printed | Function | Meaning |
+|---|---|---|
+| `changed` | `did` | I changed something |
+| `ok` | `skip` | already correct, I did nothing |
+| `warn` | `warn` | something is not right, but I can continue |
+| `FAILED` | `fail` | I cannot continue, and here is what to do |
 
-A second run of a healthy board is a wall of `skip`. That is the signal you are
-looking for, and it is only meaningful because the script genuinely checked.
+Each script ends with a count, such as `0 changed, 9 already correct.` A second
+run of a healthy board is a wall of `ok`. That is the signal you are looking
+for, and it is only meaningful because the script genuinely checked.
 
 ## The shape of the run
 
@@ -86,13 +89,20 @@ flowchart TD
   R1 --> R2["20 dev tools"]
   R2 --> U["as YOU, not root:<br/>uv, Zephyr SDK, workspace,<br/>venv, shell env"]
   U --> R3["30 MCU link GPIOs"]
-  R3 --> B["build + sign + flash<br/>the firmware"]
+  R3 --> R4["35 status LEDs"]
+  R4 --> E4["40 purge Arduino packages<br/><small>only with --with-purge</small>"]
+  E4 --> B["build + sign + flash<br/>the firmware"]
   B --> O{"opt-in extras"}
   O --> E1["50 CPU bars at boot"]
-  O --> E2["60 USB gadget"]
   O --> E3["70 learning web server"]
-  O --> E4["40 purge Arduino packages"]
+  O --> E2["60 USB gadget<br/><small>always last</small>"]
 ```
+
+The purge is an opt-in extra too, but it runs before the firmware is built
+rather than with the others. The USB gadget is always last, because it takes
+the USB host port down with it.
+[Provisioning](../reference/provisioning.md) lists what each numbered step
+changes.
 
 Numbered, because order matters and a reader should be able to see it. Split at
 `provision/user/`, because **half of it must not be root**: the Zephyr
@@ -116,6 +126,13 @@ Each flag costs you something concrete, and the comment beside it says what.
 Running the demo at boot claims the serial port, so the MCU shell stops working
 until you stop the service. The USB gadget turns the only USB port into a
 device, so nothing plugged into it works any more.
+
+> [!NOTE]
+> `--with-learning` serves the files on the drive image, so the image has to
+> exist first. On a board without one, step 70 stops with
+> `/srv/unoq-share has no content` and prints the two commands that build it:
+> `sudo bash share/fetch-vscode.sh`, then `sudo bash share/build-image.sh`. Run
+> those and re-run `bootstrap.sh`.
 
 This is a general principle worth taking away: **a setup script should not
 quietly take something away from you.** If an option has a cost, the cost
@@ -142,9 +159,9 @@ noticing that at the time it is written is much cheaper than noticing it later.
 why:
 
 > It is the one file on this board a person is expected to edit, and a
-> provisioning run that reset the mode every time would undo the change on the
-> next bootstrap — most likely while the board is running on the very link the
-> setting controls.
+> provisioning run that reset it every time would undo the change on the next
+> bootstrap - most likely while the board is running on the very link the
+> settings control.
 
 That is the limit of "the script is the specification". Configuration a human
 owns has to survive the tool, or the tool becomes something people stop running.
@@ -193,7 +210,8 @@ Then see what a second run looks like on something small and safe:
 sudo bash ~/two-computers-one-board/provision/30-mcu-link.sh
 ```
 
-It should be almost entirely `skip`. That wall of "already correct" is
+It should be almost entirely `ok`, and end with a line counting how many things
+it changed and how many were already correct. That wall of "already correct" is
 idempotence, working.
 
 > [!TIP]
@@ -212,4 +230,27 @@ idempotence, working.
 4. A colleague says their setup script "works, I ran it yesterday". What single
    question tells you whether that means anything?
 
-Next: what to build with all of this.
+<details markdown="1">
+<summary>Answers — try each one first</summary>
+
+1. **A script you can run again.** It becomes the recovery path — a run that
+   died forty minutes in is fixed by running it again, not by working out what
+   got done. It is safe on a board that already works, so people actually run
+   it and it stays true. And it is testable: a second run should report
+   "already done" for everything.
+2. **Because half of what it makes belongs to you.** The Zephyr workspace, the
+   Python venv and the shell environment are yours, and a `sudo` in the wrong
+   place leaves a 3.3 GB directory you cannot write to. The split at
+   `provision/user/` prevents that rather than warning about it.
+3. **A bootstrap run undoing your own setting.** It is the one file a person is
+   expected to edit. A run that reset it every time would undo the change on
+   the next bootstrap — most likely while the board is running on the very
+   link the settings control.
+4. **"What did you run it on?"** — a clean, factory-reset board, or the one you
+   have been developing on. "It works on my board" is a claim about your
+   board's history; the only way to find out what you have accidentally
+   depended on is to start from nothing.
+
+</details>
+
+Next: [what to build with all of this](make-it-yours.md).

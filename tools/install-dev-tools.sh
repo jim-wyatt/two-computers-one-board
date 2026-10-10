@@ -42,6 +42,7 @@ export PATH="$BIN:$PATH"
 SHELLCHECK_VERSION="${SHELLCHECK_VERSION:-0.11.0}"
 SHFMT_VERSION="${SHFMT_VERSION:-3.13.1}"
 BATS_VERSION="${BATS_VERSION:-1.14.0}"
+ACTIONLINT_VERSION="${ACTIONLINT_VERSION:-1.7.12}"
 
 case "$(uname -m)" in
   aarch64 | arm64)
@@ -143,6 +144,31 @@ else
   }
   rm -rf "$tmp"
   echo "  installed $("$BIN/bats" --version)"
+fi
+
+echo "=== actionlint $ACTIONLINT_VERSION -> $BIN ==="
+# Reads .github/workflows the way GitHub will, and runs shellcheck over every
+# `run:` block. A workflow is the one kind of file here that could only be
+# tested by pushing it and waiting, which is how an action tag that did not
+# exist got as far as main.
+have=""
+command -v actionlint >/dev/null 2>&1 && have="$(actionlint -version | head -1)"
+if [ "$have" = "$ACTIONLINT_VERSION" ]; then
+  echo "  already $ACTIONLINT_VERSION"
+else
+  [ -n "$have" ] &&
+    echo "  found $have on PATH, installing $ACTIONLINT_VERSION over it (CI and local must match)"
+  tmp=$(mktemp -d)
+  # shfmt's arch names, not shellcheck's: amd64 and arm64.
+  curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_${SHFMT_ARCH}.tar.gz" |
+    tar -xz -C "$tmp" actionlint || {
+    rm -rf "$tmp"
+    echo "  could not download or unpack actionlint v$ACTIONLINT_VERSION" >&2
+    exit 1
+  }
+  install -m 0755 "$tmp/actionlint" "$BIN/actionlint"
+  rm -rf "$tmp"
+  echo "  installed $("$BIN/actionlint" -version | head -1)"
 fi
 
 echo

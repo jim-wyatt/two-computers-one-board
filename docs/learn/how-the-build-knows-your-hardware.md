@@ -48,12 +48,13 @@ disagreeing.
 
 ## You do not edit the board file
 
-Zephyr already ships a description of the UNO Q at
-`zephyr/boards/arduino/uno_q/arduino_uno_q.dts`. You do not change it — it is
+Zephyr already ships a description of the UNO Q. Inside the Zephyr workspace,
+`~/zephyrproject`, it is at `zephyr/boards/arduino/uno_q/arduino_uno_q.dts`. You
+do not change it — it is
 upstream's, it will be updated, and your board is not special enough to fork it.
 
 Instead you write an **overlay**: a small file that is layered on top. This
-project's is 38 lines, and it is worth reading in full because it does exactly
+project's is about forty lines, and it is worth reading in full because it does exactly
 three things.
 
 ### 1. Pick which device plays which role
@@ -105,8 +106,10 @@ See [The LED matrix](the-led-matrix.md).
 };
 ```
 
-`&timers17` reaches into an existing node and overrides part of it. `st,prescaler`
-is a **binding-defined property**: the `st,stm32-timers` binding says a timer may
+`&timers17` reaches into an existing node and overrides part of it. A
+**prescaler** is a divider in front of a timer, which makes it count more slowly
+than the clock feeding it; a value of 4 here divides that clock by 5.
+`st,prescaler` is a **binding-defined property**: the `st,stm32-timers` binding says a timer may
 have one, and what it means. The `counter_matrix:` label is a name your C code
 can use — `DEVICE_DT_GET(DT_NODELABEL(counter_matrix))` — to get a handle on
 exactly this device and no other.
@@ -146,7 +149,7 @@ Everything above is merged at build time into files you can read. This is the
 single most useful debugging trick in Zephyr and almost nobody is shown it.
 
 ```bash
-zbuild ~/two-computers-one-board/mcu/app          # if it is not already built
+zbuild                            # if it is not already built
 cd ~/zephyrproject/build/zephyr
 ```
 
@@ -189,19 +192,30 @@ image. It has all been turned into constants before the first instruction runs.
 The fastest way to believe the two systems are separate is to make them
 disagree.
 
-Comment out one line of `prj.conf`:
+Open `~/two-computers-one-board/mcu/app/prj.conf` in an editor and comment out
+one line, by putting a `#` in front of it:
 
 ```kconfig
 # CONFIG_COUNTER=y
 ```
 
-Rebuild. The overlay still declares `counter_matrix`, the devicetree still has
-the node, and the build fails — because `DEVICE_DT_GET` produced a reference to
-a device object that was never compiled. Read the error carefully; it is a
-*linker* error, not a devicetree one, and knowing that tells you which of the
-two files to go and fix.
+Save, and rebuild:
 
-Put it back and rebuild before moving on.
+```bash
+zbuild
+```
+
+The overlay still declares `counter_matrix`, the devicetree still has the node,
+and the build fails — because `DEVICE_DT_GET` produced a reference to a device
+object that was never compiled. Read the error carefully. It is a *linker*
+error, not a devicetree one: the linker is the last step of a build, the one
+that joins the separately compiled pieces into a single program, and it is
+complaining that one piece refers to something no other piece provides. Knowing
+that tells you which of the two files to go and fix.
+
+Nothing was flashed, so the board is still running the firmware it had. Now take
+the `#` out again, so the line reads `CONFIG_COUNTER=y`, and run `zbuild` once
+more before moving on. It should succeed.
 
 > [!TIP]
 > **Go deeper** — Zephyr's
@@ -222,4 +236,26 @@ Put it back and rebuild before moving on.
 4. Where would you look to find out which file set a devicetree property, when
    three files could have set it?
 
-Next: 104 LEDs, 11 pins, and a chip that has to lie to your eyes to make it work.
+<details markdown="1">
+<summary>Answers — try each one first</summary>
+
+1. **Devicetree describes what hardware exists and how it is wired. Kconfig
+   decides which software is compiled in.** The board *has* a device; your
+   program *uses* one; both must agree.
+2. **The two systems disagree, and either side can be the one line.** On the
+   devicetree side: a missing `status = "okay"`, so the node — or the device
+   it depends on — is still disabled and its clock is never switched on. On
+   the Kconfig side: the `CONFIG_` line for the driver is missing from
+   `prj.conf`, or it is there but an unmet `depends on` quietly turned it into
+   `n`.
+3. **Because existing is not the same as enabled.** Devices in the SoC
+   description are disabled by default. A disabled node is not compiled into
+   the image, gets no driver instance, and its clock is never switched on.
+4. **In the merged `zephyr.dts` in the build directory.** Zephyr annotates
+   every property there with the file and line it came from, which tells you
+   which layer won.
+
+</details>
+
+Next: [The LED matrix](the-led-matrix.md) — 104 LEDs, 11 pins, and a chip that
+has to lie to your eyes to make it work.

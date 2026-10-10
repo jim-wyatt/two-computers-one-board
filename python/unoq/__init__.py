@@ -12,7 +12,7 @@ unoq - talk to the Arduino UNO Q's STM32U585 from the Linux side.
         mcu.cmd('gpio set gpioh 11 1')    # or any other shell command
 
 Wraps the Zephyr shell running on lpuart1 (/dev/ttyHS1). Firmware updates over
-the same UART are in `fota`. See ~/two-computers-one-board/README.md for the hardware notes.
+the same UART are in `fota`. The hardware notes are in docs/reference/hardware.md.
 """
 
 # cpubars is an entry point, not part of the API, and is deliberately not

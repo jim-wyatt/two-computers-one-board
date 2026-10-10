@@ -16,7 +16,7 @@
 # pinning a version that goes stale in the repo.
 #
 # These are Microsoft's binaries under their own licence - they are downloaded
-# onto your board, never redistributed by this project. See THIRD-PARTY.md.
+# onto your board, never redistributed by this project. See docs/third-party.md.
 set -uo pipefail
 # shellcheck source=provision/lib.sh
 . "$(cd "$(dirname "$0")/.." && pwd)/provision/lib.sh"

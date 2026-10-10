@@ -14,8 +14,15 @@ set -euo pipefail
 WS="${ZEPHYR_WORKSPACE:-$HOME/zephyrproject}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
+# Same reason as zbuild.sh: twister runs cmake and ninja by name.
+export PATH="$HOME/.local/bin:$PATH"
 export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
-export ZEPHYR_SDK_INSTALL_DIR="${ZEPHYR_SDK:-$HOME/zephyr-sdk-1.0.1}"
+# Same fallbacks as zbuild.sh, for the same reason: CI runs this script too, and
+# a runner has neither the SDK in $HOME nor a venv inside the workspace.
+SDK="${ZEPHYR_SDK:-$HOME/zephyr-sdk-1.0.1}"
+[ -d "$SDK" ] && export ZEPHYR_SDK_INSTALL_DIR="$SDK"
+PYTHON="$WS/.venv/bin/python"
+[ -x "$PYTHON" ] || PYTHON="$(command -v python3)"
 export ZEPHYR_BASE="$WS/zephyr"
 
 PLATFORM="native_sim/native/64"
@@ -36,7 +43,7 @@ done
 # --clobber-output deletes the previous outdir instead of renaming it. Without
 # it twister keeps every past run as twister-out.1, .2, .3 ... and /tmp here is
 # tmpfs, so each 19 MB run is 19 MB of the board's shared RAM, forever.
-exec "$WS/.venv/bin/python" "$WS/zephyr/scripts/twister" \
+exec "$PYTHON" "$WS/zephyr/scripts/twister" \
   -T "$HERE/tests" \
   -p "$PLATFORM" \
   --outdir /tmp/twister-out \

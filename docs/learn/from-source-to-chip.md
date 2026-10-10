@@ -26,8 +26,10 @@ after its target:
 ~/zephyr-sdk-1.0.1/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc --version
 ```
 
-Read the name backwards: `gcc`, for `eabi` (the calling convention), for
-`zephyr`, on `arm`. Alongside it are `arm-zephyr-eabi-objdump`, `-gdb`, `-size`
+Every part of the name describes the code it *produces*, not the machine it
+runs on: `arm` is the processor that code is for, `zephyr` the system it will
+run under, `eabi` the calling convention (how functions pass arguments to each
+other), and `gcc` is the tool itself. Alongside it are `arm-zephyr-eabi-objdump`, `-gdb`, `-size`
 and the rest — the whole toolchain, doubled.
 
 **Try it.** The difference is visible:
@@ -38,8 +40,12 @@ file zephyr.elf
 ```
 
 ```
-ELF 32-bit LSB executable, ARM, EABI5 ... for the STM32
+ELF 32-bit LSB executable, ARM, EABI5 version 1 (SYSV), statically linked, with debug_info, not stripped
 ```
+
+ELF is the file format compilers produce for a finished program: the machine
+code, plus a header saying what kind of machine it is for. `file` is reading
+that header.
 
 Compare that with any Linux program:
 
@@ -76,11 +82,12 @@ which reads like west is broken but means "I cannot see a workspace from here".
 This project wraps all of it:
 
 ```bash
-zbuild ~/two-computers-one-board/mcu/app
+zbuild
 ```
 
-That sets the board, points at the right workspace, builds, and signs the result
-(more on signing next page). What comes out:
+With nothing after it, `zbuild` builds this project's own firmware, the code in
+`mcu/app`. It sets the board, points at the right workspace, builds, and signs the result
+(more on signing in [Updating safely](updating-safely.md)). What comes out:
 
 | File | What it is |
 |---|---|
@@ -101,13 +108,18 @@ gives you near-total control from outside: halt the processor, read and write
 any memory address, single-step, and write flash. It works even if the chip's
 own program is broken, which is exactly when you need it.
 
-This board has no separate debug probe. Instead, Linux **bit-bangs** SWD
-directly on GPIO pins — driving the two wires in software, one edge at a time,
-via `libgpiod`. The software doing it is **OpenOCD**:
+Normally you would need a **debug probe** for this: a small USB adapter that
+sits between your computer and the chip and speaks SWD for you. This board has
+none. Instead, Linux **bit-bangs** SWD directly on GPIO pins — driving the two
+wires in software, one edge at a time, via `libgpiod`, the standard Linux
+library for setting and reading pins. The software doing it is **OpenOCD**:
 
 ```bash
-zflash ~/zephyrproject/build/zephyr/zephyr.signed.hex
+zflash
 ```
+
+With nothing after it, `zflash` writes the image `zbuild` just made:
+`~/zephyrproject/build/zephyr/zephyr.signed.hex`.
 
 ```
 ** Programming Started **
@@ -127,8 +139,10 @@ Info : flash size = 2048 KiB
 ### Over the serial wire
 
 Once a bootloader is installed, you can also send new firmware down the same
-UART used for the shell — no debug wires, no halting the processor. That is
-**FOTA**, and it is the whole of the next page.
+UART used for the shell — no debug wires, no halting the processor. That is a
+firmware update over the wire, usually called **FOTA** — firmware over the air,
+even when the air is a cable — and it is the whole of a later chapter,
+[Updating safely](updating-safely.md).
 
 The difference matters: SWD is how you recover a board with broken firmware,
 because it does not depend on that firmware working. Serial updates are how you
@@ -138,11 +152,15 @@ update a *working* board conveniently.
 
 An important wrinkle. This project's firmware is built to run **underneath a
 bootloader**, which expects to live at the start of flash with the application
-after it. So the very first time, you must write both:
+after it. So the very first time, both must be written:
 
 ```bash
 ~/two-computers-one-board/mcu/flash-all.sh        # bootloader + application, in order
 ```
+
+You do not need to run that now. `bootstrap.sh` already did, when it set the
+board up, which is why plain `zflash` works for you. You need it again only
+after erasing the chip or changing the bootloader.
 
 Flash only the signed application onto a blank chip and nothing runs. The
 application is sitting at an address nothing jumps to, with no bootloader in
@@ -150,11 +168,43 @@ front of it to do the jumping. The chip is fine; it just has no starting point.
 
 ## Try it: change something and watch it happen
 
+The firmware prints one line on the serial wire every time it starts. Change a
+word of it, and see your word come back from the other chip.
+
+Open `~/two-computers-one-board/mcu/app/src/main.c` in an editor and find this
+line near the bottom, in `main()`:
+
+```c
+printk("\n=== UNO Q MCU up: %s ===\n", CONFIG_BOARD_TARGET);
+```
+
+Change `up` to a word of your own — `awake`, say — and save.
+
+That line is printed once, at the moment the chip starts, so you have to be
+listening before it restarts. You can be: flashing goes over the SWD wires and
+does not touch the serial line, which leaves the serial line free for a
+listener. Open a **second terminal** on the board and start one there:
+
 ```bash
-sudo systemctl stop unoq-cpu-bars
+sudo systemctl stop unoq-cpu-bars      # the demo is holding the serial line
+mcucon                                 # read-only: prints whatever the MCU sends
+```
+
+Back in the first terminal, build and flash:
+
+```bash
+zbuild                                 # ~1 minute
+zflash
+```
+
+`zflash` ends by resetting the chip. Watch the second terminal: the firmware
+starts, and among its first lines is yours, beginning `=== UNO Q MCU awake:`.
+You changed a text file on one computer and a different computer said the word.
+
+Stop `mcucon` with `Ctrl-C`, and ask the chip how long it has been running:
+
+```bash
 cd ~/two-computers-one-board
-zbuild mcu/app                                   # ~1 minute
-zflash ~/zephyrproject/build/zephyr/zephyr.signed.hex
 ./.venv/bin/python -c "
 from unoq import MCU
 with MCU() as mcu: print(mcu.status())
@@ -162,8 +212,15 @@ with MCU() as mcu: print(mcu.status())
 sudo systemctl start unoq-cpu-bars
 ```
 
-Look at `uptime_ms` in the output: it will be a few seconds. You just restarted a
-computer.
+Look at `uptime_ms` in the output: it will be a few seconds. You just restarted
+a computer.
+
+Put the word back if you like, then `zbuild` and `zflash` once more. This
+undoes the edit:
+
+```bash
+git -C ~/two-computers-one-board checkout mcu/app/src/main.c
+```
 
 > [!TIP]
 > **Go deeper** — Zephyr's
@@ -182,5 +239,24 @@ computer.
 3. You flash a signed application onto a completely blank chip. Verification
    passes and nothing runs. What is missing?
 
-Next: how that build knew this board has an LED panel, a TIM17 and a console
-on lpuart1 — because it did not detect any of it.
+<details markdown="1">
+<summary>Answers — try each one first</summary>
+
+1. **Because `gcc` on this board produces a program for this board's chip.**
+   That is 64-bit ARM running Linux; the microcontroller is a 32-bit
+   Cortex-M33 with no Linux and a different instruction encoding. You need the
+   cross-compiler, `arm-zephyr-eabi-gcc`, which runs here but produces code
+   for the other chip.
+2. **You are not inside the workspace.** `west` finds the workspace by walking
+   upwards from your current directory, and `build` only exists once it has
+   found one. Nothing is broken; run it from `~/zephyrproject`, or use
+   `zbuild`.
+3. **The bootloader.** The application is built to sit after a bootloader at
+   the start of flash, so on a blank chip it is at an address nothing jumps
+   to. The first flash must write both, which is what `flash-all.sh` does.
+
+</details>
+
+Next: [How the build knows your hardware](how-the-build-knows-your-hardware.md)
+— how that build knew this board has an LED panel, a TIM17 and a console on
+lpuart1, because it did not detect any of it.

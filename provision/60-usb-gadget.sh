@@ -119,7 +119,8 @@ else
 # After changing:  sudo systemctl restart unoq-usb-gadget
 
 # Uncomment to stop the gadget ever touching the board's default route. It is
-# installed at metric 700, so it already loses to wifi (600) and ethernet (100).
+# installed at metric 700, which loses to wifi (600) and ethernet (100), and is
+# promoted ahead of wifi only once the internet has answered through the cable.
 #UNOQ_USB_DEFAULT_ROUTE=0
 
 # If wifi has been turned off (usb/wifi.sh off) and the USB link has produced no

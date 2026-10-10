@@ -42,6 +42,18 @@
 # neither one's page cache knowing about the other, which corrupts the
 # filesystem in short order. The gadget exports it with ro=1 and the board
 # mounts it ro; --rw is for updating content and is not how it normally runs.
+#
+# THE WEB SERVER IS STOPPED WHILE THE IMAGE IS REMOUNTED
+# ------------------------------------------------------
+# A read-only loop mount cannot be flipped to rw in place, so updating means
+# unmounting - and unoq-learn.service serves from $MOUNT, so on a provisioned
+# board the mount is always busy. If that unit is running when the unmount is
+# needed, this script stops it and starts it again on the way out, on every
+# exit path including a failure. A unit that was not running is left alone.
+#
+# Anything else holding the mount (a shell that has cd'd into it) is named,
+# using fuser, and the script stops there. It never uses `umount -l`: a lazy
+# unmount succeeds in exactly the case where something is still writing.
 set -uo pipefail
 # shellcheck source=provision/lib.sh
 . "$(cd "$(dirname "$0")/.." && pwd)/provision/lib.sh"
@@ -55,6 +67,9 @@ GADGET_LUN=/sys/kernel/config/usb_gadget/unoq/functions/mass_storage.0/lun.0/fil
 # 2048 sectors x 512 bytes. The conventional first-partition offset, and what
 # every partitioning tool picks by default.
 PART_OFFSET=1048576
+# The unit that serves $MOUNT over HTTP, and whether this run stopped it.
+LEARN_UNIT=unoq-learn.service
+LEARN_STOPPED=0
 LEAVE_RW=0
 [ "${1:-}" = "--rw" ] && LEAVE_RW=1
 
@@ -124,6 +139,58 @@ format_and_mount() {
     fail "could not mount $img at $mnt"
 }
 
+# pause_learn / resume_learn - the web server serves from $MOUNT, so it holds
+# the mount busy for as long as it runs. Stop it for the unmount, and put it
+# back afterwards - but only if it was running and it was us that stopped it.
+#
+# resume_learn is called once on the way through and again from the EXIT trap,
+# which is what covers `fail` (it exits) and a signal. The flag is cleared
+# before the start is attempted so the two calls cannot both act.
+#
+# REVERT: systemctl start unoq-learn.service
+pause_learn() {
+  systemctl is-active --quiet "$LEARN_UNIT" 2>/dev/null || return 0
+  # Set before the stop, not after: a stop that fails half-way leaves the unit
+  # in an unknown state, and starting it again is right in every one of them.
+  LEARN_STOPPED=1
+  systemctl stop "$LEARN_UNIT" || fail "could not stop $LEARN_UNIT, which holds $MOUNT open"
+  did "$LEARN_UNIT stopped while $MOUNT is remounted"
+}
+resume_learn() {
+  [ "$LEARN_STOPPED" = 1 ] || return 0
+  LEARN_STOPPED=0
+  if systemctl start "$LEARN_UNIT"; then
+    did "$LEARN_UNIT started again"
+  else
+    warn "$LEARN_UNIT was stopped by this script and did not start again:"
+    warn "  sudo systemctl start $LEARN_UNIT"
+    return 1
+  fi
+}
+trap resume_learn EXIT
+
+# unmount_share - unmount $MOUNT, or say who is in the way.
+#
+# `umount: target is busy` names the mount and not the process, which sends you
+# looking at the image when the cause is a shell sitting in the directory.
+unmount_share() {
+  pause_learn
+  umount "$MOUNT" && return 0
+  local holders=""
+  if command -v fuser >/dev/null 2>&1; then
+    # -v writes its table to stderr; that table is the part worth showing.
+    holders="$(fuser -vm "$MOUNT" 2>&1)"
+  fi
+  if [ -n "$holders" ]; then
+    fail "could not unmount $MOUNT to remount it rw - still held open by:
+$holders
+  Close those (a shell that has cd'd into $MOUNT counts), then run this again."
+  fi
+  fail "could not unmount $MOUNT to remount it rw - something still holds it open.
+  Find it with:  sudo fuser -vm $MOUNT   (apt install psmisc)
+  Close it (a shell that has cd'd into $MOUNT counts), then run this again."
+}
+
 # --- tools -----------------------------------------------------------------
 
 step "tools"
@@ -189,8 +256,10 @@ fi
 step "mount"
 if mountpoint -q "$MOUNT"; then
   mount -o remount,rw "$MOUNT" 2>/dev/null || {
-    umount "$MOUNT" && mount -o loop,rw,offset="$PART_OFFSET",umask=0022,utf8 "$IMG" "$MOUNT"
-  } || fail "could not remount $MOUNT rw"
+    unmount_share
+    mount -o loop,rw,offset="$PART_OFFSET",umask=0022,utf8 "$IMG" "$MOUNT" ||
+      fail "could not remount $MOUNT rw"
+  }
   skip "$MOUNT remounted rw for the update"
 else
   mkdir -p "$MOUNT"
@@ -282,6 +351,11 @@ fi
 
 step "gadget"
 insert_gadget || skip "gadget not bound - nothing to re-insert"
+
+if [ "$LEARN_STOPPED" = 1 ]; then
+  step "web server"
+  resume_learn || fail "$LEARN_UNIT is not running - the image itself is built and in place"
+fi
 
 step "result"
 skip "image:   $IMG ($(du -h --apparent-size "$IMG" | cut -f1) apparent, $(du -h "$IMG" | cut -f1) on disk)"

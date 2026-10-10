@@ -5,12 +5,8 @@ name: docs site
 # Publishes the documentation to GitHub Pages on every push to main - which
 # is normally a merge, but a direct push counts too, and should.
 #
-# This was manual-only until now, on the argument that the repository is about
-# to be renamed (issue #27) and a half-finished site should not sit at an
-# address that is going to change. That trade has been made the other way
-# deliberately: a site nobody can see is not reviewable, and GitHub redirects
-# the old URL after a rename anyway, so the cost of publishing early is a
-# redirect and the cost of not publishing is that no one reads it.
+# It publishes on every push rather than on a tag, deliberately: a site nobody
+# can see is not reviewable.
 #
 # NOT filtered by path. The obvious `paths: [docs/**, mkdocs.yml]` is wrong
 # here: the site embeds source files through pymdownx.snippets, so a change to
@@ -36,7 +32,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -71,7 +67,7 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       pages: write
       id-token: write

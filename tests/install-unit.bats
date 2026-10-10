@@ -129,6 +129,32 @@ unit() {
   [[ "$output" == *"Group=operator"* ]]
 }
 
+@test "a unit that waits for the home directory waits for the right one" {
+  # RequiresMountsFor=/home/arduino is not the checkout path, so the first
+  # substitution never touched it. Under another account the unit then waited
+  # on a mount point that does not exist.
+  load_lib "$BATS_TEST_TMPDIR" "operator"
+  TARGET_HOME=/home/operator
+  src="$(unit m "[Unit]" "RequiresMountsFor=/home/arduino" "[Service]" \
+    "ExecStart=/home/arduino/two-computers-one-board/bin/thing")"
+  run install_unit "$src"
+  [ "$status" -eq 0 ]
+  run cat "$ETC/etc/systemd/system/m.service"
+  [[ "$output" == *"RequiresMountsFor=/home/operator"* ]]
+  [[ "$output" != *"/home/arduino"* ]]
+}
+
+@test "a mount that is not the home directory is left alone" {
+  load_lib "$BATS_TEST_TMPDIR" "operator"
+  TARGET_HOME=/home/operator
+  src="$(unit s "[Unit]" "RequiresMountsFor=/srv/unoq-share" "[Service]" \
+    "ExecStart=/home/arduino/two-computers-one-board/bin/thing")"
+  run install_unit "$src"
+  [ "$status" -eq 0 ]
+  run cat "$ETC/etc/systemd/system/s.service"
+  [[ "$output" == *"RequiresMountsFor=/srv/unoq-share"* ]]
+}
+
 # --- the placeholder that looks real ---------------------------------------
 
 @test "a tilde path is rejected, because systemd will not expand it" {

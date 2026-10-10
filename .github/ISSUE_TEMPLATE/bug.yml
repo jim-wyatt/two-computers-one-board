@@ -1,0 +1,48 @@
+# Copyright (c) 2026 Jim Wyatt
+# SPDX-License-Identifier: MIT
+name: Something did not work
+description: bootstrap.sh stopped, a command failed, or the board is not doing what the docs say
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time. The three things below are usually enough to find it.
+        If `bootstrap.sh` stopped, it is safe to run it again first - a second run picks up where the first one died.
+  - type: textarea
+    id: output
+    attributes:
+      label: What it printed
+      description: For bootstrap.sh, everything from the last `##########` banner to the end. Otherwise the command you ran and its output.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: The command you ran
+      placeholder: ./bootstrap.sh --with-usb-gadget
+    validations:
+      required: true
+  - type: dropdown
+    id: board-state
+    attributes:
+      label: The board, before you started
+      options:
+        - Straight out of the box
+        - Freshly restored to the factory image
+        - Used before (App Lab, sketches, other software)
+        - A previous run of this project
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Which version of this project
+      description: The output of `git -C ~/two-computers-one-board log -1 --format=%h`
+      placeholder: 8b22f52
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: What you expected, what you have already tried, how the board is connected.

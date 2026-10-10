@@ -35,7 +35,7 @@ setup() {
 
   stub nmcli
   stub ping 0
-  stub hostname 0 "quentin"
+  stub hostname 0 "board"
 }
 
 # The board as it actually was when this bug was found: bridge up with an
@@ -47,9 +47,9 @@ case "$*" in
   "link show br-usb")            exit 0 ;;
   "-4 route show default dev br-usb") exit 0 ;;
   "-4 neigh show dev br-usb")    echo "169.254.169.254 FAILED "; exit 0 ;;
-  "-6 neigh show dev br-usb")    echo "fe80::8129:69e7:6217:3cba lladdr 46:f1:82:f7:e1:bb REACHABLE "; exit 0 ;;
-  "neigh show fe80::8129:69e7:6217:3cba dev br-usb")
-    echo "fe80::8129:69e7:6217:3cba lladdr 46:f1:82:f7:e1:bb REACHABLE "; exit 0 ;;
+  "-6 neigh show dev br-usb")    echo "fe80::200:5eff:fe10:2030 lladdr 02:00:5e:10:20:30 REACHABLE "; exit 0 ;;
+  "neigh show fe80::200:5eff:fe10:2030 dev br-usb")
+    echo "fe80::200:5eff:fe10:2030 lladdr 02:00:5e:10:20:30 REACHABLE "; exit 0 ;;
   "-4 -br addr show br-usb")     echo "br-usb UP 169.254.13.209/16"; exit 0 ;;
 esac
 exit 0
@@ -62,7 +62,7 @@ SH
   ip_v6_only_host
   run "$WIFI" check
   [ "$status" -eq 0 ]
-  [[ "$output" == *"fe80::8129:69e7:6217:3cba answers on br-usb"* ]]
+  [[ "$output" == *"fe80::200:5eff:fe10:2030 answers on br-usb"* ]]
 }
 
 @test "the v6 host is not reported as no computer at all" {
@@ -78,7 +78,7 @@ SH
   # this straight back to the neighbour-table fallback for the wrong reason.
   ip_v6_only_host
   run "$WIFI" check
-  ran_like 'ping -6 -c1 -W2 -I br-usb fe80::8129:69e7:6217:3cba'
+  ran_like 'ping -6 -c1 -W2 -I br-usb fe80::200:5eff:fe10:2030'
 }
 
 # --- what must not become a peer --------------------------------------------
@@ -131,9 +131,9 @@ SH
 case "$*" in
   "link show br-usb")            exit 0 ;;
   "-4 route show default dev br-usb") echo "default via 192.168.137.1 dev br-usb metric 700"; exit 0 ;;
-  "-6 neigh show dev br-usb")    echo "fe80::8129:69e7:6217:3cba lladdr 46:f1:82:f7:e1:bb REACHABLE "; exit 0 ;;
+  "-6 neigh show dev br-usb")    echo "fe80::200:5eff:fe10:2030 lladdr 02:00:5e:10:20:30 REACHABLE "; exit 0 ;;
   "neigh show 192.168.137.1 dev br-usb")
-    echo "192.168.137.1 lladdr 46:f1:82:f7:e1:bb REACHABLE "; exit 0 ;;
+    echo "192.168.137.1 lladdr 02:00:5e:10:20:30 REACHABLE "; exit 0 ;;
   "-4 -br addr show br-usb")     echo "br-usb UP 192.168.137.42/24"; exit 0 ;;
 esac
 exit 0
@@ -147,10 +147,10 @@ SH
   stub_body ip <<'SH'
 case "$*" in
   "link show br-usb")            exit 0 ;;
-  "-4 neigh show dev br-usb")    echo "169.254.5.5 lladdr 46:f1:82:f7:e1:bb REACHABLE "; exit 0 ;;
-  "-6 neigh show dev br-usb")    echo "fe80::8129:69e7:6217:3cba lladdr 46:f1:82:f7:e1:bb REACHABLE "; exit 0 ;;
+  "-4 neigh show dev br-usb")    echo "169.254.5.5 lladdr 02:00:5e:10:20:30 REACHABLE "; exit 0 ;;
+  "-6 neigh show dev br-usb")    echo "fe80::200:5eff:fe10:2030 lladdr 02:00:5e:10:20:30 REACHABLE "; exit 0 ;;
   "neigh show 169.254.5.5 dev br-usb")
-    echo "169.254.5.5 lladdr 46:f1:82:f7:e1:bb REACHABLE "; exit 0 ;;
+    echo "169.254.5.5 lladdr 02:00:5e:10:20:30 REACHABLE "; exit 0 ;;
   "-4 -br addr show br-usb")     echo "br-usb UP 169.254.13.209/16"; exit 0 ;;
 esac
 exit 0
@@ -169,7 +169,7 @@ SH
   stub_body ip <<'SH'
 case "$*" in
   "link show br-usb")            exit 0 ;;
-  "-6 neigh show dev br-usb")    echo "fe80::dead lladdr 46:f1:82:f7:e1:bb STALE "; exit 0 ;;
+  "-6 neigh show dev br-usb")    echo "fe80::dead lladdr 02:00:5e:10:20:30 STALE "; exit 0 ;;
   "neigh show fe80::dead dev br-usb") echo "fe80::dead FAILED "; exit 0 ;;
 esac
 exit 0

@@ -58,7 +58,12 @@ set -uo pipefail
 
 CONFIGFS=/sys/kernel/config/usb_gadget
 G="$CONFIGFS/unoq"
-IMG="${UNOQ_SHARE_IMG:-/home/arduino/unoq-share.img}"
+# The image is in the home directory of whoever owns this checkout, which is
+# where provision/60-usb-gadget.sh and share/build-image.sh put it. It used to
+# be spelled /home/arduino here and worked out there, so under any other
+# account provisioning reported the image present and the drive came up empty.
+OWNER_HOME="$(getent passwd "$(stat -c %U "$0")" 2>/dev/null | cut -d: -f6)"
+IMG="${UNOQ_SHARE_IMG:-${OWNER_HOME:-/home/arduino}/unoq-share.img}"
 BUILD_ONLY=0
 [ "${1:-}" = "--build" ] && BUILD_ONLY=1
 

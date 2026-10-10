@@ -41,7 +41,8 @@ gets around to confirming, the next reset **puts the old one back automatically*
 
 The small program that manages all this is a **bootloader**. It runs before your
 application, decides which slot to boot, performs swaps, and enforces probation.
-Ours is **MCUboot**, and this is why the previous page had you flash the
+Ours is **MCUboot**, and this is why
+[From source to chip](from-source-to-chip.md) had `flash-all.sh` write the
 bootloader and the application together.
 
 ```mermaid
@@ -70,17 +71,27 @@ including the reset caused by the thing crashing.
 
 That signature check is why builds produce `zephyr.signed.hex`. `zbuild` signs
 automatically. **Unsigned images are refused** — the bootloader will not run
-code it cannot verify, which is a security property and also stops you shipping
-a corrupted transfer.
+code it cannot verify, which stops you shipping a corrupted transfer.
+
+> [!WARNING]
+> **On this board that check proves the image is intact, not whose it is.**
+> The build signs with MCUboot's published sample key, the one in its own
+> source tree, which everybody has. Anyone can sign an image this bootloader
+> will accept. That is the right default for a board on your desk and the wrong
+> one for anything you deploy: a real product generates its own key, builds the
+> bootloader with the public half, and guards the private half.
 
 ## Try it: the whole cycle
 
-The board keeps its slot table where you can read it.
+The board keeps its slot table where you can read it. Updates travel over the
+same serial line the CPU-bars service holds, so stop it for the whole exercise;
+the last step starts it again. While it is stopped the matrix freezes and LED 4
+turns red, which is correct: nothing is talking to the MCU. `hpy` is the
+project's Python, one of the shortcuts `env.sh` defines.
 
 ```bash
 sudo systemctl stop unoq-cpu-bars
-cd ~/two-computers-one-board
-./.venv/bin/python -c "
+hpy -c "
 from unoq import fota
 for s in fota.images():
     print(f\"slot {s['slot']}  {s['version']}  active={s['active']}  confirmed={s['confirmed']}\")
@@ -94,8 +105,8 @@ slot 0  0.0.0.1786235698  active=True  confirmed=True
 One image, running, confirmed. Now build a new one and stage it:
 
 ```bash
-zbuild mcu/app                    # a fresh build gets a new version stamp
-./.venv/bin/python -c "
+zbuild                            # a fresh build gets a new version stamp
+hpy -c "
 from unoq import fota
 fota.upload('/home/arduino/zephyrproject/build/zephyr/zephyr.signed.bin')
 "
@@ -107,7 +118,7 @@ slot 0 running, slot 1 staged.
 Now the interesting part — mark it pending and reboot into it:
 
 ```bash
-./.venv/bin/python -c "
+hpy -c "
 from unoq import fota
 import time
 fota.test()      # mark the staged image pending
@@ -124,14 +135,16 @@ slot 1  0.0.0.1786235698  active=False  confirmed=True
 ```
 
 **Read that carefully.** The new image is running, and `confirmed=False`. It is
-on probation. The old image is still there, intact, in the other slot.
+on probation. The old image is still there, intact, in the other slot. LED 3 on
+the board says the same thing: it is yellow while the running image is
+unconfirmed, and green once it is confirmed.
 
 ### Watch it undo itself
 
 Reset again *without* confirming, and MCUboot reverts:
 
 ```bash
-./.venv/bin/python -c "
+hpy -c "
 from unoq import fota
 import time
 fota.reset(); time.sleep(14)
@@ -153,7 +166,7 @@ net.** A firmware that cannot survive its first boot cannot keep the board.
 To make an update permanent, confirm it while it is running:
 
 ```bash
-./.venv/bin/python -c "
+hpy -c "
 from unoq import fota
 import time
 staged = [s for s in fota.images() if not s['active']][0]
@@ -214,4 +227,22 @@ keeps those wires available even though you rarely need them.
 3. You have a device in a wall. Which of these can you recover from remotely: a
    broken application, or a broken bootloader?
 
-Next: how one USB cable becomes a network, a disk, and a power supply at once.
+<details markdown="1">
+<summary>Answers — try each one first</summary>
+
+1. **Because the old image is the thing you fall back to.** With two slots the
+   running firmware is never overwritten by the download, so a transfer that
+   fails halfway loses nothing, and an image that never confirms is undone by
+   the next reset. Write over the old one and there is nothing to put back.
+2. **Nothing.** Probation ends the moment you confirm, and a program that
+   confirms in the first line of `main` has done so before it proved anything.
+   Every reset boots the same confirmed, crashing image. Confirm only after the
+   device has proved it can do the job you would have to visit it to restore.
+3. **The broken application — provided it never confirmed itself.** The next
+   reset puts the old image back automatically. MCUboot itself is not updated
+   this way; corrupt it and SWD is your only way back, which means a visit.
+
+</details>
+
+Next: [how one USB cable becomes a network, a disk, and a power supply at
+once](one-cable-many-devices.md).

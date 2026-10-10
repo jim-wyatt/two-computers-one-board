@@ -12,8 +12,8 @@ The revert-on-failure behaviour is the point: an image that boots but cannot
 be confirmed (because it crashed, or you never called confirm) is rolled back
 automatically. That is what makes remote updates safe.
 
-Requires the app to be built with CONFIG_BOOTLOADER_MCUBOOT=y and signed - see
-~/two-computers-one-board/README.md.
+Requires the app to be built with CONFIG_BOOTLOADER_MCUBOOT=y and signed - mcu/zbuild.sh does both,
+and docs/reference/mcu.md has the detail.
 """
 
 from __future__ import annotations

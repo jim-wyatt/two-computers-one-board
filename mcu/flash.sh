@@ -3,8 +3,9 @@
 # SPDX-License-Identifier: MIT
 # Flash the UNO Q's STM32U585 over SWD, bit-banged on the MPU's own GPIO lines.
 #
-#   ./flash.sh build/zephyr/zephyr.hex          # flash a west build
-#   ./flash.sh firmware.bin 0x08000000          # flash a raw binary at address
+#   ./flash.sh                                  # what zbuild.sh last built here
+#   ./flash.sh build/zephyr/zephyr.hex          # any other west build
+#   ./flash.sh firmware.bin 0x08000000          # a raw binary, at an address
 #
 # No root, no Arduino tooling needed.
 #
@@ -15,7 +16,8 @@
 #
 # SWD wiring, per /opt/openocd/openocd_gpiod.cfg - all on /dev/gpiochip1:
 #   swclk = 26   swdio = 25   srst/trst = 38
-# Your user needs to be in the `gpiod` group (it is).
+# Your user needs to be in the `gpiod` group; provision/10-optimize-board.sh
+# adds it.
 set -euo pipefail
 
 # Override to test a rebuilt OpenOCD without replacing the system one:
@@ -24,11 +26,20 @@ OCD_ROOT="${OCD_ROOT:-/opt/openocd}"
 OPENOCD="$OCD_ROOT/bin/openocd"
 CFG="$OCD_ROOT/openocd_gpiod.cfg"
 
-IMG="${1:?usage: flash.sh <firmware.hex|firmware.bin> [load-address]}"
+# No image named means this project's own firmware, where zbuild.sh leaves it.
+# The signed one, always: an unsigned image flashes and verifies, and MCUboot
+# then refuses to start it, which looks exactly like a dead board.
+WS="${ZEPHYR_WORKSPACE:-$HOME/zephyrproject}"
+DEFAULT_IMG="$WS/build/zephyr/zephyr.signed.hex"
+IMG="${1:-$DEFAULT_IMG}"
 ADDR="${2:-}"
 
 [ -f "$IMG" ] || {
-  echo "no such image: $IMG" >&2
+  if [ $# -eq 0 ]; then
+    echo "nothing built yet: $IMG is missing - run zbuild first" >&2
+  else
+    echo "no such image: $IMG" >&2
+  fi
   exit 1
 }
 [ -x "$OPENOCD" ] || {

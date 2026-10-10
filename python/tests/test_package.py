@@ -64,5 +64,5 @@ def test_real_mcu_reports_status() -> None:
 def test_real_link_lines_are_driven() -> None:
     from unoq.link import link_state
 
-    # INPUT here means the link is floating - see docs/hardware.md.
+    # INPUT here means the link is floating - see docs/reference/hardware.md.
     assert link_state() == {"boot0": "OUTPUT", "link_enable": "OUTPUT"}

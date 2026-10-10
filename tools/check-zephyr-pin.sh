@@ -24,9 +24,9 @@ PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
 PROV="$PROJECT/provision/user/30-zephyr-workspace.sh"
 MANIFEST="$PROJECT/west.yml"
 
-# ZEPHYR_VERSION="${ZEPHYR_VERSION:-v4.4.1}"
+# ZEPHYR_VERSION="${ZEPHYR_VERSION:-v4.4.2}"
 prov="$(sed -n 's/^ZEPHYR_VERSION=.*:-\(v[0-9][0-9.]*\)}.*/\1/p' "$PROV" | head -1)"
-#     revision: v4.4.1
+#     revision: v4.4.2
 manifest="$(sed -n 's/^[[:space:]]*revision:[[:space:]]*\(v[0-9][0-9.]*\).*/\1/p' "$MANIFEST" | head -1)"
 
 fail=0

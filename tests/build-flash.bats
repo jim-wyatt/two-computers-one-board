@@ -1,0 +1,271 @@
+#!/usr/bin/env bats
+# Copyright (c) 2026 Jim Wyatt
+# SPDX-License-Identifier: MIT
+#
+# mcu/zbuild.sh and mcu/flash.sh with nothing after them.
+#
+# The two commands a learner types most used to need a path each, and the
+# second path was ~/zephyrproject/build/zephyr/zephyr.signed.hex - forty
+# characters with one way to get them right and a nearby way to get them
+# wrong: zephyr.hex, the unsigned image, sits in the same directory, flashes,
+# verifies, and never boots.
+#
+# So the defaults are the project's own app and its own signed image, and
+# these tests pin both, along with the promise that naming something else
+# still does what it always did.
+
+setup() {
+  load helpers/stub
+  stub_setup
+
+  PROJECT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+
+  export HOME="$BATS_TEST_TMPDIR/home"
+  export ZEPHYR_WORKSPACE="$HOME/zephyrproject"
+  mkdir -p "$ZEPHYR_WORKSPACE/.venv/bin" "$ZEPHYR_WORKSPACE/zephyr/samples/hello_world"
+
+  # zbuild.sh calls the workspace's own west by path, so the fake goes there
+  # rather than on PATH. Same log, same format as the stubs.
+  cat >"$ZEPHYR_WORKSPACE/.venv/bin/west" <<'SH'
+#!/bin/bash
+{ printf 'west'; printf ' %s' "$@"; printf '\n'; } >>"$STUB_LOG"
+SH
+  chmod +x "$ZEPHYR_WORKSPACE/.venv/bin/west"
+
+  # flash.sh finds OpenOCD by OCD_ROOT, and raises BOOT0 through link-up.sh.
+  export OCD_ROOT="$BATS_TEST_TMPDIR/openocd"
+  mkdir -p "$OCD_ROOT/bin"
+  cat >"$OCD_ROOT/bin/openocd" <<'SH'
+#!/bin/bash
+{ printf 'openocd'; printf ' %s' "$@"; printf '\n'; } >>"$STUB_LOG"
+SH
+  chmod +x "$OCD_ROOT/bin/openocd"
+  stub gpioset
+}
+
+built() {
+  mkdir -p "$ZEPHYR_WORKSPACE/build/zephyr"
+  : >"$ZEPHYR_WORKSPACE/build/zephyr/zephyr.signed.hex"
+  : >"$ZEPHYR_WORKSPACE/build/zephyr/zephyr.hex"
+}
+
+# --- zbuild ----------------------------------------------------------------
+
+@test "zbuild with no arguments builds this project's firmware" {
+  run "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -eq 0 ]
+  ran "west build -b arduino_uno_q -d $ZEPHYR_WORKSPACE/build $PROJECT/mcu/app"
+}
+
+@test "zbuild with only west options applies them to this project's firmware" {
+  run "$PROJECT/mcu/zbuild.sh" -p always
+  [ "$status" -eq 0 ]
+  ran "west build -b arduino_uno_q -d $ZEPHYR_WORKSPACE/build $PROJECT/mcu/app -p always"
+}
+
+@test "zbuild with an explicit app still builds that app, in its own directory" {
+  run "$PROJECT/mcu/zbuild.sh" samples/hello_world -p always
+  [ "$status" -eq 0 ]
+  ran "west build -b arduino_uno_q -d $ZEPHYR_WORKSPACE/build-hello_world $ZEPHYR_WORKSPACE/zephyr/samples/hello_world -p always"
+}
+
+@test "zbuild still refuses an app that does not exist" {
+  run "$PROJECT/mcu/zbuild.sh" no/such/app
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no such app"* ]]
+  never_ran west
+}
+
+@test "zbuild puts ~/.local/bin on PATH, where cmake and ninja were installed" {
+  # west runs cmake by name. From bootstrap.sh's first run, a VS Code task or a
+  # unit, nothing else has put that directory on PATH.
+  cat >"$ZEPHYR_WORKSPACE/.venv/bin/west" <<'SH'
+#!/bin/bash
+echo "PATH=$PATH" >>"$STUB_LOG"
+SH
+  run env PATH="$STUB_DIR:/usr/bin:/bin" "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -eq 0 ]
+  ran_like "^PATH=$HOME/\.local/bin:"
+}
+
+# --- zbuild on a CI runner --------------------------------------------------
+#
+# A runner has west and imgtool on PATH and no venv inside the workspace, and
+# its SDK is wherever the setup action put it. CI used to carry its own copy of
+# the build because this script assumed the board's layout; these are what let
+# it run the real one.
+
+on_a_runner() {
+  rm -rf "$ZEPHYR_WORKSPACE/.venv"
+  stub west
+  stub imgtool
+  # What `west build` would have left, so the signing branch is taken.
+  mkdir -p "$ZEPHYR_WORKSPACE/build/zephyr"
+  echo "CONFIG_BOOTLOADER_MCUBOOT=y" >"$ZEPHYR_WORKSPACE/build/zephyr/.config"
+}
+
+@test "with no workspace venv, west and imgtool come from PATH" {
+  on_a_runner
+  IMAGE_VERSION=0.0.0+7 run "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -eq 0 ]
+  ran "west build -b arduino_uno_q -d $ZEPHYR_WORKSPACE/build $PROJECT/mcu/app"
+  ran "west sign -t imgtool -d $ZEPHYR_WORKSPACE/build -p $STUB_DIR/imgtool -- --key $ZEPHYR_WORKSPACE/bootloader/mcuboot/root-rsa-2048.pem --version 0.0.0+7"
+}
+
+@test "an SDK directory that does not exist is not exported" {
+  on_a_runner
+  stub_body west <<'SH'
+echo "SDK=${ZEPHYR_SDK_INSTALL_DIR:-unset}" >>"$STUB_LOG"
+SH
+  run "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -eq 0 ]
+  ran "SDK=unset"
+}
+
+@test "an SDK directory that does exist still is" {
+  on_a_runner
+  mkdir -p "$HOME/zephyr-sdk-1.0.1"
+  stub_body west <<'SH'
+echo "SDK=${ZEPHYR_SDK_INSTALL_DIR:-unset}" >>"$STUB_LOG"
+SH
+  run "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -eq 0 ]
+  ran "SDK=$HOME/zephyr-sdk-1.0.1"
+}
+
+@test "a build that needs signing and has no imgtool fails, rather than shipping unsigned" {
+  on_a_runner
+  rm "$STUB_DIR/imgtool"
+  run env PATH="$STUB_DIR:/usr/bin:/bin" "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"cannot be signed"* ]]
+  ! ran_like '^west sign'
+}
+
+# --- flash -----------------------------------------------------------------
+
+@test "flash with no arguments flashes the signed image zbuild left" {
+  built
+  run "$PROJECT/mcu/flash.sh"
+  [ "$status" -eq 0 ]
+  ran_like "^openocd .*program \"$ZEPHYR_WORKSPACE/build/zephyr/zephyr.signed.hex\" verify reset exit$"
+}
+
+@test "flash with no arguments never picks the unsigned image" {
+  mkdir -p "$ZEPHYR_WORKSPACE/build/zephyr"
+  : >"$ZEPHYR_WORKSPACE/build/zephyr/zephyr.hex"
+  run "$PROJECT/mcu/flash.sh"
+  [ "$status" -eq 1 ]
+  never_ran openocd
+}
+
+@test "flash before any build says to build, and touches nothing" {
+  run "$PROJECT/mcu/flash.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"run zbuild first"* ]]
+  never_ran openocd
+  never_ran gpioset
+}
+
+@test "flash with an explicit image still flashes that image" {
+  : >"$BATS_TEST_TMPDIR/other.hex"
+  run "$PROJECT/mcu/flash.sh" "$BATS_TEST_TMPDIR/other.hex"
+  [ "$status" -eq 0 ]
+  ran_like "^openocd .*program \"$BATS_TEST_TMPDIR/other.hex\" verify reset exit$"
+}
+
+@test "a raw binary still gets a load address" {
+  : >"$BATS_TEST_TMPDIR/fw.bin"
+  run "$PROJECT/mcu/flash.sh" "$BATS_TEST_TMPDIR/fw.bin"
+  [ "$status" -eq 0 ]
+  ran_like "^openocd .*program \"$BATS_TEST_TMPDIR/fw.bin\" verify reset exit 0x08000000$"
+}
+
+@test "BOOT0 is held low before flashing" {
+  built
+  run "$PROJECT/mcu/flash.sh"
+  [ "$status" -eq 0 ]
+  ran "gpioset -c /dev/gpiochip1 -t0 37=0"
+}
+
+# --- flash-all ---------------------------------------------------------------
+#
+# The recovery path: bootloader, then application. The bootloader build used to
+# live in /tmp and be trusted on sight.
+
+mcuboot_tree() {
+  mkdir -p "$ZEPHYR_WORKSPACE/bootloader/mcuboot/boot/zephyr" "$ZEPHYR_WORKSPACE/zephyr"
+  local d
+  for d in "$ZEPHYR_WORKSPACE/zephyr" "$ZEPHYR_WORKSPACE/bootloader/mcuboot"; do
+    git -C "$d" init -q
+    git -C "$d" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m one
+  done
+  # A west whose `build` leaves a bootloader image where -d points.
+  cat >"$ZEPHYR_WORKSPACE/.venv/bin/west" <<'SH'
+#!/bin/bash
+{ printf 'west'; printf ' %s' "$@"; printf '\n'; } >>"$STUB_LOG"
+while [ $# -gt 0 ]; do
+  [ "$1" = -d ] && mkdir -p "$2/zephyr" && : >"$2/zephyr/zephyr.hex"
+  shift
+done
+SH
+  chmod +x "$ZEPHYR_WORKSPACE/.venv/bin/west"
+}
+
+@test "flash-all builds the bootloader inside the workspace, not in /tmp" {
+  built
+  mcuboot_tree
+  run "$PROJECT/mcu/flash-all.sh"
+  [ "$status" -eq 0 ]
+  ran_like "^west build .* -d $ZEPHYR_WORKSPACE/build-mcuboot$"
+  ! ran_like '/tmp/bmcuboot'
+}
+
+@test "flash-all flashes the bootloader first, then the signed application" {
+  built
+  mcuboot_tree
+  run "$PROJECT/mcu/flash-all.sh"
+  [ "$status" -eq 0 ]
+  first="$(grep -n "build-mcuboot/zephyr/zephyr.hex" "$STUB_LOG" | grep openocd | cut -d: -f1)"
+  second="$(grep -n "build/zephyr/zephyr.signed.hex" "$STUB_LOG" | cut -d: -f1)"
+  [ -n "$first" ] && [ -n "$second" ] && [ "$first" -lt "$second" ]
+}
+
+@test "a bootloader already built from these revisions is not built again" {
+  built
+  mcuboot_tree
+  run "$PROJECT/mcu/flash-all.sh"
+  : >"$STUB_LOG"
+  run "$PROJECT/mcu/flash-all.sh"
+  [ "$status" -eq 0 ]
+  ! ran_like '^west build'
+}
+
+@test "a bootloader built before Zephyr moved is rebuilt, not flashed stale" {
+  built
+  mcuboot_tree
+  run "$PROJECT/mcu/flash-all.sh"
+  git -C "$ZEPHYR_WORKSPACE/zephyr" -c user.name=t -c user.email=t@example.invalid \
+    commit -q --allow-empty -m two
+  : >"$STUB_LOG"
+  run "$PROJECT/mcu/flash-all.sh"
+  [ "$status" -eq 0 ]
+  ran_like '^west build'
+}
+
+@test "a bootloader image of unknown origin is rebuilt rather than trusted" {
+  built
+  mcuboot_tree
+  mkdir -p "$ZEPHYR_WORKSPACE/build-mcuboot/zephyr"
+  echo planted >"$ZEPHYR_WORKSPACE/build-mcuboot/zephyr/zephyr.hex"
+  run "$PROJECT/mcu/flash-all.sh"
+  [ "$status" -eq 0 ]
+  ran_like '^west build'
+}
+
+@test "flash-all with no application built flashes nothing at all" {
+  mcuboot_tree
+  run "$PROJECT/mcu/flash-all.sh"
+  [ "$status" -eq 1 ]
+  never_ran openocd
+}

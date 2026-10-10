@@ -22,24 +22,55 @@ runs in CI:
 
 ```bash
 tools/check.sh                # everything
-tools/check.sh --fast         # skip the MCU suite (~70s of Zephyr build)
+tools/check.sh --fast         # skip the two slow gates (see below)
 tools/check.sh --fix          # reformat in place, then check
 tools/check.sh docs           # one area
 ```
 
+`--fast` leaves out two gates: the firmware tests (about 70 seconds of Zephyr
+build) and the check that draws every diagram in a headless browser (about a
+minute). A `--fast` run that passes ends like this:
+
 ```
 --- summary ---
-  PASS  ruff lint            Python mistakes
-  PASS  ruff format          Python layout
-  PASS  mypy (strict)        Python types
-  PASS  pytest + coverage    104 tests, 100% of branches
-  PASS  shellcheck           shell mistakes
-  PASS  shfmt                shell layout
-  PASS  bats (shell behaviour)  35 tests, no board involved
-  PASS  zephyr version pin   the two places it is written agree
-  PASS  clang-format         C layout
-  PASS  docs (mkdocs --strict)  every documentation link resolves
+  PASS  ruff lint
+  PASS  ruff format
+  PASS  mypy (strict)
+  PASS  pytest + coverage
+  PASS  shellcheck
+  PASS  shfmt
+  PASS  bats (shell behaviour)
+  PASS  units and udev rules (systemd)
+  PASS  zephyr version pin
+  PASS  clang-format
+  PASS  docs (mkdocs --strict)
+  PASS  diagram assets (offline)
+  PASS  settings page matches the code
+  PASS  actionlint
+
+All 14 gates passed.
 ```
+
+What each one looks for:
+
+| Gate | What it catches |
+|---|---|
+| `ruff lint`, `ruff format` | Python mistakes, and Python layout |
+| `mypy (strict)` | Python type errors |
+| `pytest + coverage` | Python behaviour, with every branch run by a test |
+| `shellcheck`, `shfmt` | shell mistakes, and shell layout |
+| `bats (shell behaviour)` | what the shell scripts do, with no board involved |
+| `units and udev rules (systemd)` | a unit file or udev rule systemd would reject |
+| `zephyr version pin` | the two places the Zephyr version is written disagreeing |
+| `clang-format` | C layout |
+| `docs (mkdocs --strict)` | a documentation link that does not resolve |
+| `diagram assets (offline)` | a diagram that would need the internet to draw |
+| `settings page matches the code` | a setting the code reads and the documentation omits |
+| `actionlint` | mistakes in the CI definition itself |
+
+A full run adds `diagrams (headless render)` and `ztest (native_sim)`.
+[Working on this project](../reference/development.md#the-quality-gates) has the
+reference version of this table, and how to install the tools.
 
 Three things about that list are deliberate and worth stealing.
 
@@ -57,11 +88,14 @@ because arguing about it in review is expensive and a diff full of whitespace
 hides the change that matters.
 
 > [!WARNING]
-> Formatters are a real source of "works here, fails in CI". This project has an
-> open bug where `clang-format` disagrees with itself between versions on one
-> `enum` in `status_leds.c`, so the gate passes on the board and fails on the
-> runner. If your formatter is not version-pinned, it is not a gate — it is a
-> coin toss with extra steps.
+> Formatters are a real source of "works here, fails in CI". This project had
+> that bug: two versions of `clang-format` disagreed about one `enum` in
+> `status_leds.c`, so the gate passed on the board and failed on the runner.
+> The fix was a pin. `python/pyproject.toml` now names one exact version,
+> `tools/check.sh` uses only the copy in the project's venv, never one that
+> happens to be on `PATH`, and it fails if the version it finds is not the
+> pinned one. If your formatter is not version-pinned, it is not a gate — it is
+> a coin toss with extra steps.
 
 ## Testing firmware without firmware
 
@@ -94,9 +128,9 @@ part is as small and as dumb as possible.
 flowchart LR
   A["CPU percentages"] --> B["bars.c<br/><small>rasteriser</small>"]
   B --> C["104 brightness values"]
-  C --> D["matrix.c<br/><small>registers, ISR</small>"]
+  C --> D["matrix.c<br/><small>registers, interrupt handler</small>"]
   D --> E["the panel"]
-  B -.-> T1["tested on your laptop<br/>(native_sim)"]
+  B -.-> T1["tested without the chip<br/>(native_sim)"]
   D -.-> T2["only testable<br/>on the board"]
 ```
 
@@ -105,8 +139,9 @@ That is the design decision, drawn: the boundary between the two boxes exists
 
 ## Testing Linux-side code without a board
 
-The Python suite is 104 tests and touches no hardware at all. There is no serial
-port, no GPIO chip and no MCU involved; every one of them runs against a fake.
+The Python suite is over a hundred tests and touches no hardware at all. There
+is no serial port, no GPIO chip and no MCU involved; every one of them runs
+against a fake.
 
 That sounds like cheating and is not. What is being tested is the code this
 project wrote — does it frame the message correctly, does it handle a short
@@ -121,22 +156,35 @@ The tests that genuinely need a board exist and are marked:
 
 They are **deselected by default** (`-m "not hardware"`), so the suite is
 runnable on a laptop, in CI, and on a board whose serial port is currently held
-by the demo. Opt in with `pytest -m hardware` when the hardware is there.
+by the demo. Opt in when the hardware is there, with the serial port free:
+
+```bash
+sudo systemctl stop unoq-cpu-bars
+cd ~/two-computers-one-board/python
+hpy -m pytest -m hardware --no-cov
+sudo systemctl start unoq-cpu-bars
+```
+
+`--no-cov` is needed because the project's pytest settings fail any run that
+covers less than 100% of the code, and a run of only the hardware tests covers
+far less than that.
 
 ## Testing shell, which is where the bugs actually were
 
-Here is an uncomfortable measurement of this project:
+Here is an uncomfortable measurement of this project, taken before it had any
+shell tests. The numbers have moved since; the shape has not:
 
-| | lines | checked by |
+| | lines then | checked by, then |
 |---|---:|---|
 | **shell** (40 scripts) | **5,256** | `shellcheck` + `shfmt` |
 | Python | 807 | 104 tests, 100% of branches |
 | C | 965 | ztest on `native_sim` |
 
 The largest component by a factor of five had **no behavioural tests at all**.
-And every one of the twenty-one findings in
+And nearly every finding in
 [the log](../reference/clean-board-findings.md) was in shell or in a `systemd`
-unit — not one was in the Python or the C that all the testing effort went into.
+unit — hardly any were in the Python or the C that all the testing effort went
+into.
 
 That is a very common shape, and it is worth recognising in your own projects:
 **the tested part is usually the part that was easy to test**, not the part most
@@ -160,7 +208,7 @@ case "$1 $2" in "link show") exit 1 ;; esac   # pretend the bridge has gone
 exit 0
 SH
 
-run usb/usb-route.sh add 02:00:00:00:00:01 192.168.137.1
+run usb/usb-route.sh add 192.168.137.1
 [ "$status" -eq 0 ]
 ! ran_like 'ip route'      # it noticed, and did nothing
 ```
@@ -170,13 +218,16 @@ shell.
 
 ### Write the bug down as a test
 
-Both suites exist because those two scripts had already failed in ways that were
-expensive:
+The first two suites exist because two scripts had already failed in ways that
+were expensive:
 
-- **The bind guard counted wrong.** `udev` triggers the bind unit three times on
-  a perfectly healthy plug-in, so counting invocations reached its limit of 3
-  during the first *successful* one and refused to bind ever again — a guard
-  causing exactly the outage it exists to prevent.
+- **The bind guard counted wrong.** At the time, `udev` triggered the bind unit
+  three times on a perfectly healthy plug-in: once for the controller and once
+  for each of the two network interfaces the gadget then had. Counting
+  invocations reached the limit of 3 during the first *successful* plug-in and
+  refused to bind ever again — a guard causing exactly the outage it exists to
+  prevent. (The gadget has one network interface now, so it is two triggers,
+  and the guard counts boots rather than invocations either way.)
 - **The USB route metric was 500**, which beat wifi's 600, so plugging the board
   into a computer silently handed that computer the default route. SSH survived,
   so nothing looked broken, while `apt` and `git` simply stopped.
@@ -218,10 +269,10 @@ flowchart TD
   F["you, before pushing:<br/>check.sh<br/><small>+ the MCU suite</small>"] -.-> D
 ```
 
-The hook runs the fast gates on every commit; ~70 seconds of Zephyr build is too
-slow to sit in front of one. CI runs the same script — that matters, because a
-green CI then means the same thing as a clean local run rather than something
-adjacent to it.
+The hook runs the fast gates on every commit; ~70 seconds of Zephyr build and a
+minute of browser are too slow to sit in front of one. CI runs the same script —
+that matters, because a green CI then means the same thing as a clean local run
+rather than something adjacent to it.
 
 CI splits it into three jobs, and the shape is worth copying:
 
@@ -246,7 +297,7 @@ reference failed `checks` in two seconds, and `firmware` never started.
 > unmergeable forever. Require the job that always runs.
 
 > [!NOTE]
-> Until recently the second job did not exist, and **a change that broke the
+> Until recently the `firmware` job did not exist, and **a change that broke the
 > firmware build got a green tick** — nothing outside the board ever compiled
 > it. That is the failure mode to watch for in any CI setup: not a test that
 > fails, but a thing nobody checks that everyone assumes is checked.
@@ -313,11 +364,39 @@ this gate existed, and nothing noticed for months.
 
 1. Why does `tools/check.sh` treat a missing tool as a failure rather than
    skipping it?
-2. `bars.c` is tested on your laptop and `matrix.c` is not. What is the property
+2. `bars.c` is tested without the chip and `matrix.c` is not. What is the property
    of each that decides that, and how did the design make it true?
 3. Coverage is 100%. Give a concrete bug that could still be in the code.
 4. Nothing in CI runs on real hardware. Describe a change that would pass every
    gate here and still leave the board unable to boot.
 
-Next: how a factory-fresh board becomes this one, one idempotent script at a
-time.
+<details markdown="1">
+<summary>Answers — try each one first</summary>
+
+1. **Because a gate that silently does nothing produces confidence.** An early
+   version reported "All 2 gates passed" on a machine with no `mypy` and no
+   `pytest`, having type-checked nothing and run no tests at all. That is
+   worse than no gate.
+2. **`bars.c` is pure arithmetic; `matrix.c` touches registers.** The
+   rasteriser needs no hardware, so it runs under `native_sim`. The
+   charlieplexing driver writes `MODER` and `BSRR` directly, and there is no
+   such register on a laptop. The design made it true by splitting the code:
+   the interesting logic sits on the testable side, and the untestable part is
+   as small and as dumb as possible.
+3. **No single answer.** Any bug where the line ran and nothing checked the
+   result will do: coverage measures which lines ran, not whether the
+   assertion was any good, and a test that calls every function and asserts
+   nothing scores 100%. A good example names a specific wrong value — say, the
+   rasteriser lighting the wrong pixel in a test that never looks at the
+   pixels.
+4. **No single answer.** A good answer puts the fault in what only the board
+   exercises. CI proves the logic and the build, never the board, and
+   `matrix.c` is only testable on the board — so a mistake in the code that
+   touches registers compiles, signs and passes every suite. So does anything
+   in the shell or `systemd` units that the stubbed tests do not cover, which
+   is where every finding in the log was.
+
+</details>
+
+Next: [how a factory-fresh board becomes this one, one idempotent script at a
+time](from-factory-to-this.md).

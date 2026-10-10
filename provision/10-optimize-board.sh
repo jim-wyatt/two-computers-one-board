@@ -12,8 +12,8 @@
 # Every change has its revert command in the comment above it.
 #
 # TIER 1 is safe on any headless board. TIER 2 depends on what you actually use
-# and is opt-in via UNOQ_TIER2=1 rather than by editing this file, so the
-# bootstrap can pass it through without a patch.
+# - Bluetooth and udisks2 - and is on by default; UNOQ_TIER2=0 leaves those
+# alone, without editing this file, so the bootstrap can pass it through.
 set -uo pipefail
 # shellcheck source=provision/lib.sh
 . "$(cd "$(dirname "$0")" && pwd)/lib.sh"

@@ -20,7 +20,7 @@ This file is NOT in the nav and renders as nothing on its own.
 *[DHCP]: Dynamic Host Configuration Protocol — how a machine is handed an IP address
 *[DT]: Devicetree — a description of what hardware exists and how it is wired
 *[FAT32]: A filesystem every operating system can read, which is why the USB drive uses it
-*[FOTA]: Firmware Over The Air — updating a device's firmware over a link rather than a cable
+*[FOTA]: Firmware Over The Air — updating a device's firmware over a data link instead of a debug probe
 *[GPIO]: General Purpose Input/Output — a pin software can read or drive high or low
 *[HTTP]: HyperText Transfer Protocol — how a browser fetches a page
 *[ICS]: Internet Connection Sharing — Windows' way of sharing a connection with an attached device

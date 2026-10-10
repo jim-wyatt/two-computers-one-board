@@ -9,7 +9,7 @@
 # nothing else in the project needs it, and it is the only unit here that holds
 # a resource you will want back.
 #
-# IT KEEPS /dev/ttyHS1 OPEN. pyserial opens the port exclusively, so while this
+# IT KEEPS /dev/ttyHS1 OPEN. It is opened with an exclusive lock, so while this
 # service runs, `mcucon`, `tio`, unoq.MCU and FOTA all fail with "device busy".
 # Stop it before working on the MCU:
 #

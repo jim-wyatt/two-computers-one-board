@@ -5,7 +5,7 @@ The two MPU GPIO lines the MCU depends on.
 
 These are NOT in the Zephyr board definition and are not documented by Arduino.
 They were driven by `arduino-router`; with that service disabled, a board with
-perfectly good firmware looks dead. See ~/two-computers-one-board/README.md.
+perfectly good firmware looks dead. See docs/reference/hardware.md.
 
     line 37  MCU BOOT0        latched at MCU reset. High/floating -> the STM32
                               boots its ROM bootloader (PC ~0x0bf9xxxx) and the

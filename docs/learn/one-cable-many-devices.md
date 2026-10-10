@@ -11,6 +11,16 @@ this page through exactly that.
 This is the part of the board that most surprises people, so it is worth
 understanding rather than just using.
 
+> [!NOTE]
+> **You need** the USB extra for the commands on this page. It is not part of
+> the course setup. Add it with `./bootstrap.sh --with-usb-gadget` (or
+> `sudo bash ~/two-computers-one-board/provision/60-usb-gadget.sh`), and read
+> what it costs first: the board's only USB port stops being a host while it is
+> plugged into a computer. Without the extra there is no gadget to look at; the
+> explanations still read fine. With it, the gadget is *defined* from boot, and
+> it is *bound* (visible to a computer, with a network link) only while the
+> USB-C port is plugged into one.
+
 ## Host and device
 
 Every USB connection has two ends with different jobs.
@@ -59,14 +69,14 @@ A gadget is assembled from:
 flowchart LR
   subgraph G["the gadget, built in configfs"]
     F1["ncm.usb0<br/><small>network</small>"]
-    F2["rndis.usb0<br/><small>network, for Windows</small>"]
     F3["mass_storage.0<br/><small>the UNO-Q drive</small>"]
   end
   G -->|"write the controller's<br/>name to UDC = bind"| H(["your computer<br/>sees all of it<br/>on one cable"])
 ```
 
 Ours offers a network adapter *and* a drive in one configuration, which is why a
-single cable gives you both.
+single cable gives you both. The network function is `ncm` unless you ask for
+the older `rndis` instead; only the one chosen is created.
 
 **Try it:**
 
@@ -102,7 +112,7 @@ over **mDNS**, and Windows, macOS and Linux all resolve `.local` names with
 nothing installed:
 
 ```bash
-ssh arduino@quentin.local
+ssh arduino@<hostname>.local      # the board's own name: run `hostname` on it
 ```
 
 And if the computer is not sharing anything, so nothing answers the board's
@@ -149,6 +159,11 @@ new thing, fall back automatically if it does not confirm itself.**
 journalctl -b -u unoq-usb-bind -t unoq-bind-guard
 ```
 
+On a board that has never been plugged into a computer the first prints
+`attempts: 0/3` and the second prints nothing, because nothing has tried to
+bind. What to do when the guard has tripped is in
+[usb.md](../reference/usb.md#the-bind-guard).
+
 ## The drive
 
 The board also offers a read-only disk — the one this documentation is on.
@@ -180,5 +195,27 @@ Two details that took experimentation to get right:
    What is the most likely cause?
 3. Why does the bind guard give up the *gadget* rather than retrying it?
 
-Next: four LEDs, and the surprisingly hard question of what an indicator should
-actually say.
+<details markdown="1">
+<summary>Answers — try each one first</summary>
+
+1. **Nothing — the keyboard is simply gone until you disconnect.** The port
+   cannot be host and device at once: there is one USB controller, and it has
+   one job at a time. While the board is a device to your laptop it is not a
+   host, and you cannot switch it from software.
+2. **Both ends insisting on being the DHCP server.** With sharing on, Windows
+   pins its end to `192.168.137.1` and macOS to `192.168.2.1`, each running its
+   own DHCP server, and neither will accept an address from the board. If the
+   board hands out addresses too, the two ends sit on different networks and
+   cannot see each other, which looks exactly like a dead cable. That is why
+   the board always asks and takes whatever the computer offers.
+3. **Because retrying is the failure.** Binding can brown out the board, which
+   reboots with the cable still there and binds again — a loop with no window
+   in which to log in and stop it. After three boots that never proved
+   themselves healthy the guard refuses to bind and keeps the network: the
+   gadget is the thing being experimented with, the network is how you get in
+   to fix it.
+
+</details>
+
+Next: [four LEDs, and the surprisingly hard question of what an indicator should
+actually say](four-lights.md).

@@ -18,7 +18,7 @@
 # WHAT IT DOES NOT DO
 # -------------------
 #   - purge the Arduino stack (--with-purge; it is the one step you cannot
-#     casually undo, and the stock MCU firmware is not redistributable)
+#     casually undo, and the stock MCU firmware is not ours to redistribute)
 #   - claim /dev/ttyHS1 for the LED matrix demo (--with-cpu-bars)
 #   - switch the USB port to peripheral mode (--with-usb-gadget; it drops the
 #     USB host port and every device on it, including a network dongle)
@@ -80,6 +80,40 @@ done
 
 [ "$(id -u)" = 0 ] && fail "run this as yourself, not with sudo - it calls sudo where needed"
 
+# The user-level steps install cmake, ninja, west and uv into ~/.local/bin. On a
+# board that has been logged into since, the login shell put that on PATH. On a
+# first run it did not exist at login, so nothing did - and everything after
+# the step that created it could not find what it had just installed.
+export PATH="$HOME/.local/bin:$PATH"
+
+# --- what this is about to do ----------------------------------------------
+
+# Said before anything happens, not discovered afterwards. The two-line install
+# in the README is all most people read, and it used to be possible to lose a
+# sketch, the desktop and App Lab on the strength of it.
+#
+# A pause, not a prompt: a prompt would stop this being runnable unattended,
+# and re-running it unattended is the recovery path. Only on a terminal, so a
+# script driving this is not held up for a notice nobody is reading.
+echo
+echo "This will change this board. With the options given, it will:"
+echo
+echo "  - switch off the desktop, Arduino's services, Docker and automatic updates"
+echo "  - upgrade the installed packages"
+echo "  - install the Zephyr SDK and workspace into $HOME (~4.5 GB)"
+[ "$SKIP_MCU" = 0 ] &&
+  echo "  - REPLACE THE FIRMWARE ON THE MICROCONTROLLER (the stock image is saved first)"
+[ "$WITH_PURGE" = 1 ] &&
+  echo "  - REMOVE THE ARDUINO PACKAGES (--with-purge; hard to undo)"
+[ "$WITH_USB_GADGET" = 1 ] &&
+  echo "  - give up the USB host port and everything plugged into it (--with-usb-gadget)"
+echo
+echo "Every change is listed, with how to undo it, in docs/setup.md."
+if [ -t 0 ]; then
+  echo "Ctrl-C now if that is not what you want. Starting in 10 seconds..."
+  sleep 10
+fi
+
 # --- preflight -------------------------------------------------------------
 
 step "preflight"
@@ -122,11 +156,14 @@ skip "network reachable"
 # that has been purged or reflashed does not. 40-purge-arduino.sh also saves it,
 # but that step is optional and most people never run it - so on most boards the
 # only copy sits in ~/.arduino15 until the day it is wanted, which is usually
-# the day after something removed it. It is 634 KB and it is not redistributable,
+# the day after something removed it. It is 634 KB and it is not ours to redistribute,
 # so a lost copy means a factory restore to get it back.
-backup_stock_firmware ||
-  warn "no stock MCU firmware found to back up - fine on a board that has already
-        been purged, but restore-arduino-firmware.sh will have nothing to flash"
+HAVE_STOCK_FW=1
+backup_stock_firmware || {
+  HAVE_STOCK_FW=0
+  warn "no stock MCU firmware found to back up, and no earlier copy in
+        ${UNOQ_BACKUP:-$HOME/uno-q-backup}"
+}
 
 # --- run the steps ---------------------------------------------------------
 
@@ -173,6 +210,24 @@ if [ "$SKIP_MCU" = 0 ]; then
   fi
 fi
 
+# No copy of what is on the chip, so do not write over it.
+#
+# This used to be a warning that the flash then walked straight past, while
+# 40-purge-arduino.sh - which only deletes the file the copy is made from -
+# refuses outright in the same situation. The step that overwrites the firmware
+# itself was the one that did not check. A factory restore brings the stock
+# image back, so nothing here was unrecoverable; it was just not what anyone
+# agreed to. The firmware is still built, so the override is one command away.
+if [ "$SKIP_MCU" = 0 ] && [ "$HAVE_STOCK_FW" = 0 ] && [ "${UNOQ_ALLOW_NO_STOCK_FW:-0}" != 1 ]; then
+  step "flash"
+  warn "NOT flashing: there is no copy of the firmware currently on the microcontroller."
+  warn "  If that is fine (the board already runs this firmware, or you do not"
+  warn "  want the stock image back), flash it yourself:"
+  warn "    $PROJECT/mcu/flash-all.sh"
+  warn "  or re-run with UNOQ_ALLOW_NO_STOCK_FW=1 in front of ./bootstrap.sh"
+  SKIP_MCU=1
+fi
+
 if [ "$SKIP_MCU" = 0 ]; then
   step "flash"
   # An MCUboot build must be flashed as the full chain the first time: the
@@ -190,6 +245,16 @@ fi
 
 [ "$WITH_CPU_BARS" = 1 ] &&
   run_step "50  CPU bars at boot (root)" sudo "$PROJECT/provision/50-cpu-bars.sh"
+# Both of the next two hand out the same image: the web server serves from it
+# and the gadget exports it as the drive. Nothing used to build it here, so
+# --with-learning stopped at "has no content. Build the share first" on every
+# board that had not already had it built by hand - which is every fresh one,
+# and it took --everything down with it. build-image.sh renders the
+# documentation itself, so this is the whole of what they need. The VS Code
+# installers are a separate, deliberate download: share/fetch-vscode.sh.
+if [ "$WITH_LEARNING" = 1 ] || [ "$WITH_USB_GADGET" = 1 ]; then
+  run_step "65  the drive image, with this documentation on it (root)" sudo "$PROJECT/share/build-image.sh"
+fi
 [ "$WITH_LEARNING" = 1 ] &&
   run_step "70  learning content web server (root)" sudo "$PROJECT/provision/70-learning-web.sh"
 # Last, always: it takes the USB host port down with it.
@@ -205,7 +270,7 @@ cat <<EOF
   $PROJECT/tools/check.sh         # all quality gates
   mcucon                          # watch the MCU console
 
-  python -c "from unoq import MCU; print(MCU().status())"
+  hpy -c "from unoq import MCU; print(MCU().status())"   # ask the MCU how it is
 
 EOF
 [ "$WITH_CPU_BARS" = 0 ] &&

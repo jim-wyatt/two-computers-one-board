@@ -3,12 +3,13 @@
 # SPDX-License-Identifier: MIT
 # Build a Zephyr application for the Arduino UNO Q (STM32U585) with west.
 #
-#   ./zbuild.sh samples/hello_world             # build a Zephyr sample
-#   ./zbuild.sh ~/two-computers-one-board/mcu/app                # build your own app
-#   ./zbuild.sh samples/hello_world -p          # pristine rebuild
+#   ./zbuild.sh                                 # this project's firmware, mcu/app
+#   ./zbuild.sh -p always                       # the same, pristine
+#   ./zbuild.sh samples/hello_world             # a Zephyr sample
+#   ./zbuild.sh ~/some/other/app -p always      # any other app, pristine
 #
 # Afterwards:
-#   ./flash.sh ~/zephyrproject/build/zephyr/zephyr.hex
+#   ./flash.sh                                  # flashes what the first form built
 #
 # BUILD DIRECTORY
 # ---------------
@@ -28,11 +29,48 @@ PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
 BOARD="${BOARD:-arduino_uno_q}"
 SDK="${ZEPHYR_SDK:-$HOME/zephyr-sdk-1.0.1}"
 
-export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
-export ZEPHYR_SDK_INSTALL_DIR="$SDK"
+# cmake and ninja are in ~/.local/bin, where provision/user/10-host-tools.sh
+# installs them, and west runs both by name. An interactive shell has that
+# directory on PATH because env.sh puts it there. Nothing else does: not
+# bootstrap.sh on its first run, not a VS Code task, not a systemd unit - and
+# there this died with "CMake is not installed or cannot be found", on exactly
+# the boards that had never been logged into before.
+export PATH="$HOME/.local/bin:$PATH"
 
-APP="${1:?usage: zbuild.sh <app-path> [extra west args]}"
-shift || true
+export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
+
+# WHERE THE TOOLS ARE, ON A BOARD AND ON A CI RUNNER
+# --------------------------------------------------
+# On the board west and imgtool live in the workspace's own venv and the SDK is
+# in $HOME, and this script used to assume all three. A CI runner has none of
+# them there: west and imgtool are on PATH, and the SDK is wherever the setup
+# action registered it. So CI could not run this script and carried a second
+# copy of the build instead - which is how its first version came to skip
+# signing without anything pointing that out.
+#
+# Each one now falls back rather than assumes. An SDK directory that does not
+# exist is not exported at all: pointing ZEPHYR_SDK_INSTALL_DIR at nothing
+# breaks a build that would otherwise have found the SDK by itself.
+WEST="$WS/.venv/bin/west"
+[ -x "$WEST" ] || WEST="$(command -v west || true)"
+[ -n "$WEST" ] || {
+  echo "no west: not in $WS/.venv/bin and not on PATH" >&2
+  exit 1
+}
+IMGTOOL="$WS/.venv/bin/imgtool"
+[ -x "$IMGTOOL" ] || IMGTOOL="$(command -v imgtool || true)"
+[ -d "$SDK" ] && export ZEPHYR_SDK_INSTALL_DIR="$SDK"
+
+# No app named means this project's own. It is what nearly every build here is,
+# and "build" should not need a path typed after it. A first argument that
+# starts with a dash is a west option for that default build, not an app.
+case "${1:-}" in
+  "" | -*) APP="$PROJECT/mcu/app" ;;
+  *)
+    APP="$1"
+    shift
+    ;;
+esac
 
 # Accept an app path relative to your cwd, or relative to the Zephyr tree
 # (e.g. samples/hello_world). Resolve to absolute BEFORE the cd below - west
@@ -63,7 +101,7 @@ BUILD="${BUILD_DIR:-$BUILD}"
 cd "$WS"
 echo "building $APP for $BOARD"
 echo "  build dir: $BUILD"
-./.venv/bin/west build -b "$BOARD" -d "$BUILD" "$APP" "$@"
+"$WEST" build -b "$BOARD" -d "$BUILD" "$APP" "$@"
 
 # clangd reads compile_commands.json from the workspace root. west writes it
 # into build/, so link it into both folders you might have open: the Zephyr
@@ -85,7 +123,11 @@ fi
 if grep -q "^CONFIG_BOOTLOADER_MCUBOOT=y" "$BUILD/zephyr/.config" 2>/dev/null; then
   VERSION="${IMAGE_VERSION:-0.0.0+$(date +%s 2>/dev/null || echo 0)}"
   echo "signing for MCUboot (version $VERSION)"
-  "$WS/.venv/bin/west" sign -t imgtool -d "$BUILD" -p "$WS/.venv/bin/imgtool" -- \
+  [ -n "$IMGTOOL" ] || {
+    echo "no imgtool: not in $WS/.venv/bin and not on PATH - the image cannot be signed" >&2
+    exit 1
+  }
+  "$WEST" sign -t imgtool -d "$BUILD" -p "$IMGTOOL" -- \
     --key "$WS/bootloader/mcuboot/root-rsa-2048.pem" \
     --version "$VERSION" >/dev/null
   echo "  -> $(basename "$BUILD")/zephyr/zephyr.signed.bin  (upload with unoq.fota)"
@@ -98,12 +140,16 @@ if [ -f "$BUILD/zephyr/zephyr.signed.hex" ]; then
   # but has no image header, so the bootloader will refuse to boot it.
   ls -la "$BUILD/zephyr/zephyr.signed.hex" "$BUILD/zephyr/zephyr.signed.bin" 2>/dev/null || true
   echo
-  echo "flash over SWD :  ~/two-computers-one-board/mcu/flash.sh $BUILD/zephyr/zephyr.signed.hex"
+  if [ "$OWN_APP" = 1 ] && [ -z "${BUILD_DIR:-}" ]; then
+    echo "flash over SWD :  zflash"
+  else
+    echo "flash over SWD :  zflash $BUILD/zephyr/zephyr.signed.hex"
+  fi
   echo "update over UART:  python -c \"from unoq import fota; \\"
   echo "                     fota.upload('$BUILD/zephyr/zephyr.signed.bin'); \\"
   echo "                     fota.test(); fota.reset()\"   # then fota.confirm()"
 else
   ls -la "$BUILD/zephyr/zephyr.hex" "$BUILD/zephyr/zephyr.bin" 2>/dev/null || true
   echo
-  echo "flash it:  ~/two-computers-one-board/mcu/flash.sh $BUILD/zephyr/zephyr.hex"
+  echo "flash it:  zflash $BUILD/zephyr/zephyr.hex"
 fi

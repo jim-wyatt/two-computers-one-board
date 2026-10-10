@@ -1,0 +1,84 @@
+#!/bin/bash
+# Copyright (c) 2026 Jim Wyatt
+# SPDX-License-Identifier: MIT
+# Ask systemd whether it would accept this project's unit files and udev rules.
+# Run by tools/check.sh shell.
+#
+#   tools/check-units.sh
+#
+# Eight units and a rules file are what actually start everything on the board,
+# and until this existed nothing read them but a person. A unit with a
+# misspelled directive, or one that names a script that has since moved,
+# installs without complaint and fails at boot with 203/EXEC - on a board that
+# may by then be reachable only through the thing that failed.
+#
+# systemd-analyze verify loads each unit the way the manager would, and checks
+# that what it starts exists and is executable. The units name the checkout as
+# /home/arduino/two-computers-one-board, which provision/lib.sh rewrites at
+# install time; this does the same rewrite into a temporary directory, so the
+# check is of the unit as it would be installed from THIS checkout.
+#
+# No root, no board, and nothing is installed or started.
+set -uo pipefail
+
+PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$PROJECT" || exit 1
+
+for tool in systemd-analyze udevadm; do
+  command -v "$tool" >/dev/null 2>&1 || {
+    echo "missing tool: $tool (part of systemd)" >&2
+    exit 1
+  }
+done
+
+WORK="$(mktemp -d)"
+# shellcheck disable=SC2064  # $WORK must expand now, not at trap time
+trap "rm -rf '$WORK'" EXIT
+
+mapfile -t UNITS < <(git ls-files '*.service')
+mapfile -t RULES < <(git ls-files '*.rules')
+[ ${#UNITS[@]} -gt 0 ] || {
+  echo "no unit files found - is this a git checkout?" >&2
+  exit 1
+}
+
+# The account the units run as exists on the board and not on a laptop or a CI
+# runner. Whoever is running this stands in for it.
+ME="$(id -un)"
+for u in "${UNITS[@]}"; do
+  sed -e "s|/home/arduino/two-computers-one-board|$PROJECT|g" \
+    -e "s|^User=.*|User=$ME|" -e "s|^Group=.*|Group=$(id -gn)|" \
+    "$u" >"$WORK/$(basename "$u")"
+done
+
+rc=0
+
+# All of them in one call, from one directory, so that a unit's After= and
+# Requires= on a sibling resolve instead of reading as "unit not found".
+#
+# --man=no: do not go looking for the Documentation= pages.
+# The filter drops complaints about OTHER people's units, which verify also
+# loads when ours depend on them and which differ on every distribution.
+out="$(cd "$WORK" && systemd-analyze verify --man=no ./*.service 2>&1)"
+ours="$(grep -E "^(\./)?unoq-|$WORK" <<<"$out" || true)"
+if [ -n "$ours" ]; then
+  echo "systemd-analyze verify:"
+  # shellcheck disable=SC2001  # a path with slashes in it, not a simple prefix
+  sed "s|$WORK/||g; s|^|  |" <<<"$ours"
+  rc=1
+else
+  echo "${#UNITS[@]} units: systemd accepts every one, and everything they start exists"
+fi
+
+if [ ${#RULES[@]} -gt 0 ]; then
+  if out="$(udevadm verify "${RULES[@]}" 2>&1)"; then
+    echo "${#RULES[@]} udev rules file(s): udev accepts every one"
+  else
+    echo "udevadm verify:"
+    # shellcheck disable=SC2001
+    sed 's|^|  |' <<<"$out"
+    rc=1
+  fi
+fi
+
+exit "$rc"

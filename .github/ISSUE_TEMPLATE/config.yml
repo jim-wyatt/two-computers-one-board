@@ -1,0 +1,10 @@
+# Copyright (c) 2026 Jim Wyatt
+# SPDX-License-Identifier: MIT
+blank_issues_enabled: true
+contact_links:
+  - name: Stuck on something in the course
+    url: https://github.com/jim-wyatt/two-computers-one-board/issues/new
+    about: A sentence that lost you is a bug in the course. Say which page and which sentence.
+  - name: A security problem
+    url: https://github.com/jim-wyatt/two-computers-one-board/security/advisories/new
+    about: Report it privately. SECURITY.md says what is already known.

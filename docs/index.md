@@ -16,10 +16,15 @@ This is a course in making them cooperate — written for someone who can progra
 and has never done embedded development.
 
 [Start the course](learn/start-here.md){ .md-button .md-button--primary }
-[Set up a board](https://github.com/jim-wyatt/two-computers-one-board#readme){ .md-button }
-[Browse the reference](reference/hardware.md){ .md-button }
+[Set up a board](setup.md){ .md-button }
+[Browse the reference](reference/index.md){ .md-button }
 
 </div>
+
+This is an independent project. It is not made, reviewed or endorsed by Arduino,
+Qualcomm, STMicroelectronics, the Zephyr Project or anyone else whose hardware
+and software it describes.
+[Credits and trademarks](third-party.md#trademarks-and-affiliation).
 
 ## The thing you will build
 
@@ -64,7 +69,7 @@ no network to reach.
 
 ## The course
 
-Sixteen short chapters, meant in order. Each one introduces an idea, then puts
+Fifteen short chapters and an introduction, meant in order. Each one introduces an idea, then puts
 you in front of the real board to watch it happen.
 
 <div class="grid cards" markdown>
@@ -103,7 +108,7 @@ you in front of the real board to watch it happen.
     What to build next, where the unfinished work is, and how to change this
     project without breaking the board.
 
-    [:octicons-arrow-right-24: Make it yours](learn/make-it-yours.md)
+    [:octicons-arrow-right-24: Knowing it works](learn/knowing-it-works.md)
 
 </div>
 

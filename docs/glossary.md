@@ -85,11 +85,34 @@ the idea gets explained, this is where you come to be reminded.
 
 ## D
 
+**DDR**
+:   The kind of RAM on the Linux side of the board. It cannot be used until an
+    early boot stage has measured its timing and tuned the memory controller to
+    match, which is called *training* it. See
+    [From power to prompt](learn/from-power-to-prompt.md).
+
+**Debug probe**
+:   A small adapter that sits between a computer and a chip and speaks a debug
+    protocol such as SWD for it. This board has none: Linux drives the SWD wires
+    itself. See [From source to a running chip](learn/from-source-to-chip.md).
+
 **Devicetree**
 :   A description of what hardware exists and how it is wired, as data rather
     than code. Compiled into C macros at build time — there is no devicetree
     parser on the chip. See
     [How the build knows your hardware](learn/how-the-build-knows-your-hardware.md).
+
+## E
+
+**ELF**
+:   The file format a compiler produces for a finished program: the machine
+    code, plus a header saying what kind of machine it is for. `zephyr.elf` is
+    the firmware in that form. See
+    [From source to a running chip](learn/from-source-to-chip.md).
+
+**eMMC**
+:   The storage chip soldered to the board, which holds Linux and everything in
+    its filesystem. See [From power to prompt](learn/from-power-to-prompt.md).
 
 ## F
 
@@ -97,6 +120,11 @@ the idea gets explained, this is where you come to be reminded.
 :   The program running on the microcontroller. The word is doing real work: it
     is the *only* program there, with no operating system beneath it in the
     sense Linux means.
+
+**FOTA** (firmware over the air)
+:   Updating a device's firmware over a link it already has, without debug
+    wires. Here the "air" is the serial line between the two chips. See
+    [Updating safely](learn/updating-safely.md).
 
 **Framing**
 :   Turning a stream of bytes into a sequence of messages. A wire delivers
@@ -114,12 +142,24 @@ the idea gets explained, this is where you come to be reminded.
 :   A pin software can read, or drive high or low. Five of them connect the two
     chips on this board.
 
+## H
+
+**Hypervisor**
+:   A thin layer of software that sits beneath an operating system and controls
+    what it may touch. One stage of this board's Linux-side boot chain. See
+    [From power to prompt](learn/from-power-to-prompt.md).
+
 ## I
 
 **Idempotent**
 :   Doing it twice has the same effect as doing it once. The property that makes
     `bootstrap.sh` a recovery path rather than a one-shot. See
     [From factory to this](learn/from-factory-to-this.md).
+
+**initrd**
+:   A small temporary filesystem loaded into RAM alongside the Linux kernel,
+    holding just enough to find and mount the real one. See
+    [From power to prompt](learn/from-power-to-prompt.md).
 
 **Interrupt**
 :   Hardware stopping whatever the processor was doing to run a specific
@@ -140,6 +180,14 @@ the idea gets explained, this is where you come to be reminded.
 :   The system that decides which software features get compiled in. Distinct
     from devicetree, which describes what hardware exists — the two must agree,
     and most "device not ready" errors are them disagreeing. See
+    [How the build knows your hardware](learn/how-the-build-knows-your-hardware.md).
+
+## L
+
+**Linker**
+:   The last step of a build, which joins the separately compiled pieces into
+    one program. A *linker error* means one piece refers to something no other
+    piece provides. See
     [How the build knows your hardware](learn/how-the-build-knows-your-hardware.md).
 
 ## M
@@ -163,8 +211,8 @@ the idea gets explained, this is where you come to be reminded.
 ## N
 
 **native_sim**
-:   A Zephyr target that compiles firmware as an ordinary program for your
-    laptop, so logic can be tested in seconds without a board. See
+:   A Zephyr target that compiles firmware as an ordinary program for the
+    board's Linux side, so logic can be tested in seconds without the chip. See
     [Knowing it works](learn/knowing-it-works.md).
 
 **NCM / RNDIS**
@@ -187,6 +235,12 @@ the idea gets explained, this is where you come to be reminded.
     picture. The matrix sweeps all 104 LEDs about a thousand times a second;
     your eye integrates. See [The LED matrix](learn/the-led-matrix.md).
 
+**Prescaler**
+:   A divider in front of a timer, which makes it count more slowly than the
+    clock feeding it. This project sets one on the timer that paces the LED
+    matrix. See
+    [How the build knows your hardware](learn/how-the-build-knows-your-hardware.md).
+
 **`/proc/stat`**
 :   A file that is not a file. Reading it asks the kernel for CPU counters,
     formatted as text, generated at the moment you read. The source of every
@@ -197,7 +251,7 @@ the idea gets explained, this is where you come to be reminded.
 **Rasteriser**
 :   The code that turns "core 2 is at 47%" into which pixels are lit at what
     brightness. Pure arithmetic with no hardware in it, which is exactly why it
-    can be tested on a laptop.
+    can be tested without the chip.
 
 **Real-time**
 :   Not "fast". Guaranteeing that something happens **by a deadline**. Linux is
@@ -220,6 +274,11 @@ the idea gets explained, this is where you come to be reminded.
     registers. How firmware gets onto the microcontroller the first time.
 
 ## T
+
+**tio**
+:   A serial terminal: it shows whatever arrives on a serial line and sends
+    whatever you type. How you talk to the microcontroller's shell by hand. See
+    [The microcontroller side](learn/the-microcontroller-side.md).
 
 **Trigger (LED)**
 :   A kernel feature that wires an LED to an event source — disk activity, wifi
@@ -252,5 +311,5 @@ the idea gets explained, this is where you come to be reminded.
     [The microcontroller side](learn/the-microcontroller-side.md).
 
 **ztest**
-:   Zephyr's unit-testing framework. Runs on the chip, or on your laptop via
+:   Zephyr's unit-testing framework. Runs on the chip, or on the Linux side via
     `native_sim`.
