@@ -3,18 +3,20 @@
 name: checks
 
 # Runs the same gates as tools/check.sh, so a green CI means the same thing as
-# a clean local run. Three jobs:
+# a clean local run. Four jobs:
 #
-#   changes    seconds. Decides whether the expensive one below runs at all.
+#   changes    seconds. Decides whether the two gated ones below run at all.
 #   checks     lint, format, types, tests, coverage, docs, units, workflows.
+#   diagrams   opens every page that has a diagram in a pinned headless
+#              browser and checks that each one drew. Under a minute.
 #   firmware   compiles for the real Cortex-M33 and runs the MCU suites. ~5
 #              minutes, because it needs a Zephyr workspace and the SDK.
 #
 # THE SHAPE HERE IS DELIBERATE. `checks` is the one that runs on everything, so
-# it is kept to the gates that are fast and cannot hang. The two slow ones are
-# each gated on `changes`, and both run in PARALLEL with `checks` rather than
-# behind it - a documentation pull request should not wait on a Zephyr download
-# to find out its links are fine.
+# it is kept to the gates that are fast and need nothing downloaded but their
+# own tools. The other two are each gated on `changes`, and neither holds
+# `checks` up - a documentation pull request should not wait on a Zephyr
+# download to find out its links are fine.
 #
 # The cost of getting this wrong is not hypothetical: the browser gate was
 # briefly inside `checks`, which took every pull request in the repository from
@@ -72,48 +74,88 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           tools/check.sh python shell c docs workflows
 
-  # THE BROWSER GATE IS NOT HERE, AND THAT IS DELIBERATE.
+  # Do the diagrams actually draw? The one thing `checks` cannot say: its
+  # `diagram assets` gate proves the library is vendored and every page loads
+  # the init script, in a quarter of a second and with no browser - but not that
+  # mermaid.run() succeeds once called. Only a browser can, so this opens one.
   #
-  # tools/check-diagrams.sh opens a real browser on every page that has a
-  # diagram. It is the only thing that can prove one actually draws, it runs on
-  # the board as part of `tools/check.sh`, and it passes there - 12 diagrams
-  # across 11 pages, every time.
-  #
-  # On a GitHub runner it has never once worked. Three attempts:
+  # THIS JOB WAS REMOVED ONCE (#48) AND IS BACK ON DIFFERENT TERMS (#56). The
+  # old gate launched a browser per page with --dump-dom, using whatever
+  # chromium the runner image shipped, and failed three times without ever
+  # finding a broken diagram:
   #
   #   1. hung, and took an unrelated pull request to the 15-minute job timeout
   #      with chrome still alive
-  #   2. reported "0 of 1 drew" on all 11 pages of a build that renders
-  #      perfectly here - a shared --user-data-dir serialising the launches
-  #   3. chromium 150 never exits from --dump-dom at all. Killed by the
-  #      per-page timeout, exit 124, with the fixture (200, 238 bytes) and the
-  #      library (200, 3566058 bytes) both confirmed served. Nothing wrong
-  #      with the site; --virtual-time-budget simply does not end the process.
+  #   2. reported "0 of 1 drew" on all 11 pages of a build that rendered
+  #      perfectly - a shared --user-data-dir serialising the launches
+  #   3. chromium 150 never exits from --dump-dom at all;
+  #      --virtual-time-budget simply does not end the process
   #
-  # Three rounds, three infrastructure failures, zero true findings. A gate
-  # with that record is not protecting the site, it is taxing every pull
-  # request and training us to ignore a red tick.
+  # All three were about LAUNCHING a browser and waiting for it to EXIT, and
+  # two were the runner image's browser changing underneath the job. Neither
+  # can happen now:
   #
-  # WHAT STILL GUARDS THE INVARIANT: `checks` above runs `diagram assets`,
-  # which asserts in 0.26s and with no browser that the library is vendored
-  # rather than fetched, that the theme bundle references it relatively, that
-  # mermaid-init.js shipped, and that every page carrying a diagram loads it.
-  # That is the entire regression class that has ever actually bitten us, and
-  # it is checked on every pull request. What is left uncovered is narrow:
-  # mermaid.run() throwing once called. The board checks that before each push.
+  #   - one browser is launched and driven over the DevTools protocol, so
+  #     nothing waits on a process exiting, and there is one profile and no
+  #     per-page launch to collide over it. See tools/check_diagrams.py.
+  #   - the browser is a chrome-headless-shell pinned by version AND hash in
+  #     tools/install-diagram-browser.sh, not the image's. It moves when a
+  #     commit here moves it.
+  #   - a browser that stops answering is killed and reported as "the harness
+  #     is broken", in seconds, as a different failure from "a diagram did not
+  #     draw". The step timeout below is a third line of defence, not the first.
   #
-  # TO BRING IT BACK, one of:
-  #   - pin chrome-headless-shell (the supported --dump-dom path) rather than
-  #     using whatever chromium the runner image ships
-  #   - drive one long-lived browser over the DevTools protocol instead of
-  #     launching one per page, which also makes it ~10x faster
-  # Tracked as issue #56; do not re-add it by simply uncommenting a job.
+  # Its own job rather than a step in `checks`, so that the day it does break
+  # it is one red tick with an obvious name and the fast gates have already
+  # answered. Gated on `changes`: firmware-only pull requests cannot affect a
+  # diagram. The same NOTE about branch protection as on `firmware` applies.
+  diagrams:
+    needs: changes
+    if: needs.changes.outputs.diagrams == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
 
-  # Does this change touch anything the firmware is built from?
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        # Exact tag for the reason given in `checks`.
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install the site's toolchain
+        # Only the [docs] extra: this job builds the site and looks at it, and
+        # needs none of the linters. The gate's own helper is standard-library
+        # python and runs under the runner's python3.
+        run: |
+          uv venv .venv
+          uv pip install --python .venv/bin/python -q -e 'python[docs]'
+
+      - name: Install the pinned browser
+        run: |
+          browser="$(tools/install-diagram-browser.sh "$RUNNER_TEMP/diagram-browser")"
+          echo "UNOQ_DIAGRAM_BROWSER=$browser" >>"$GITHUB_ENV"
+
+      - name: Render every diagram
+        # Through check.sh, so this is the command a person would run. It
+        # builds the site itself. Seconds when it works; the timeout is for
+        # the day it does not, and is far below the job's on purpose.
+        timeout-minutes: 5
+        run: tools/check.sh diagrams
+
+  # Does this change touch anything the firmware is built from? Anything the
+  # site is?
   #
   # Seconds, and it decides whether the five-minute job below runs at all. Most
   # pull requests here are documentation - the course alone is 6,000 lines - and
-  # none of them can affect a Cortex-M33 binary.
+  # none of them can affect a Cortex-M33 binary. And the reverse for `diagrams`
+  # above: a change under mcu/ cannot alter a page.
   #
   # Asking the API for the changed files rather than using a paths-filter action
   # keeps this dependency-free, and rather than `git diff` because a shallow
@@ -123,6 +165,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       firmware: ${{ steps.filter.outputs.firmware }}
+      diagrams: ${{ steps.filter.outputs.diagrams }}
     steps:
       - id: filter
         env:
@@ -133,7 +176,8 @@ jobs:
           # excuses; main should always have a proven firmware build.
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "firmware=true" >>"$GITHUB_OUTPUT"
-            echo "not a pull request - building"
+            echo "diagrams=true" >>"$GITHUB_OUTPUT"
+            echo "not a pull request - building, and rendering the diagrams"
             exit 0
           fi
           files=$(gh api --paginate \
@@ -148,6 +192,17 @@ jobs:
           else
             echo "firmware=false" >>"$GITHUB_OUTPUT"
             echo "nothing under mcu/ changed - skipping the firmware build"
+          fi
+
+          # Everything a page is made from: the pages, the site's configuration
+          # and its hooks and gates under tools/, the versions of mkdocs and
+          # the theme, and this workflow.
+          if grep -qE '^(docs/|mkdocs\.yml|tools/|python/pyproject\.toml|\.github/workflows/ci\.yml)' <<<"$files"; then
+            echo "diagrams=true" >>"$GITHUB_OUTPUT"
+            echo "site inputs changed - rendering the diagrams"
+          else
+            echo "diagrams=false" >>"$GITHUB_OUTPUT"
+            echo "nothing the site is built from changed - skipping the browser"
           fi
 
 

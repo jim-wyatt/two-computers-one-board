@@ -22,6 +22,7 @@ from . import fota
 from .cpu import CpuSampler, read_cpu_times
 from .link import BOOT0_LINE, LINK_ENABLE_LINE, link_state, link_up
 from .mcu import MCU, MCUError, PortBusy, ShellTimeout, open_port, port_holders
+from .thermal import hottest, read_temps
 
 __all__ = [
     "fota",
@@ -37,5 +38,7 @@ __all__ = [
     "LINK_ENABLE_LINE",
     "CpuSampler",
     "read_cpu_times",
+    "read_temps",
+    "hottest",
 ]
 __version__ = "0.1.0"

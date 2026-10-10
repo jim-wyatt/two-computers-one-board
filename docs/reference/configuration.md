@@ -192,8 +192,9 @@ Read by the scripts under `tools/`, on whatever machine runs the quality gates.
 | `UNOQ_BIN` | `~/.local/bin` | Where `install-dev-tools.sh` puts `shellcheck`, `shfmt` and `bats`. |
 | `UNOQ_SITE` | `share/learn` | The built site the diagram checks inspect. |
 | `UNOQ_DIAGRAM_PORT` | `8099` | The port `check-diagrams.sh` serves the site on while it renders. |
-| `UNOQ_DIAGRAM_BUDGET_MS` | `8000` | How long each page is given to draw its diagrams. |
-| `UNOQ_DIAGRAM_PAGE_TIMEOUT` | `45` | Seconds before a page that never finishes is killed. |
+| `UNOQ_DIAGRAM_BROWSER` | the first Chromium or Chrome on `PATH` | The browser `check-diagrams.sh` drives. CI sets it to the pinned one that `install-diagram-browser.sh` fetches. |
+| `UNOQ_DIAGRAM_BUDGET_MS` | `8000` | How long each page is given to draw its diagrams before it is reported as not drawn. |
+| `UNOQ_DIAGRAM_PAGE_TIMEOUT` | `45` | Seconds the browser is given to start, and to answer on any one page, before it is killed and the gate fails. |
 
 ## Set for you
 

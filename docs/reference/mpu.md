@@ -24,7 +24,7 @@ import gpiod, smbus2, spidev, serial
 |---|---|---|
 | GPIO | `/dev/gpiochip0..2` | chip1 has 127 lines; also carries SWD + BOOT0 |
 | I²C | `/dev/i2c-0..2` | needs the `i2c` group |
-| SPI | `/dev/spidev0.0` | needs the `spi` group + udev rule |
+| SPI | `/dev/spidev0.0` | needs the `spi` group + udev rule. **It is wired to the MCU**, not a free bus: see [hardware.md](hardware.md#there-is-an-spi-link-between-the-two-chips-and-nothing-here-uses-it) |
 | Serial | `/dev/ttyHS1` | the MCU link |
 
 Group membership (`i2c`, `spi`, `gpiod`) and the SPI udev rule are set up by
@@ -74,6 +74,29 @@ fota.upload(path); fota.test(); fota.reset(); fota.confirm()
 ```
 
 See [mcu.md](mcu.md#update-over-serial-no-swd).
+
+### Temperatures
+
+```python
+from unoq import read_temps, hottest
+
+for name, celsius in read_temps():
+    print(f"{name:20} {celsius:5.1f}")   # cpuss0-thermal        35.8
+
+hottest(read_temps(), "cpu")             # ('cpuss1-thermal', 36.1)
+```
+
+`read_temps()` reads the kernel's thermal zones from `/sys/class/thermal` and
+returns `(type, degrees Celsius)` pairs in zone order. It is a list of pairs
+rather than a dict because nothing makes a zone's `type` unique, and how many
+zones there are is the kernel's business: this board showed six on one kernel
+and ten on the next. A zone whose sensor will not answer is left out rather
+than raised, and a machine with no thermal zones reads as an empty list.
+`hottest()` picks the warmest pair, optionally narrowed by a name prefix, and
+returns `None` if nothing matches. Nothing here writes to sysfs.
+
+These are the Linux side's sensors. None of them says anything about the
+microcontroller.
 
 ## What runs at boot
 

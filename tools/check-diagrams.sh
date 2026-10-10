@@ -15,42 +15,73 @@
 # Nothing in a static-site build can catch that. The failure is in the browser,
 # after the page loads, and the page is perfectly valid either way. The only
 # honest test is to open it in a browser and look, so that is what this does:
-# serves the built site, loads each page that contains a diagram in headless
-# Chromium, and counts how many `pre.mermaid` blocks mermaid actually marked as
-# `data-processed`.
+# serves the built site, loads each page that contains a diagram in a headless
+# browser, and asks the page how many of its diagrams are now SVG.
 #
-# It is slow (a second or two per page) and it needs a browser. That is the
-# price of testing the one thing that cannot be tested any other way.
+# HOW, AND WHY NOT THE WAY IT USED TO
+# -----------------------------------
+# It used to launch a browser per page with --dump-dom and grep what came out.
+# Launching was nearly all of the cost (~5.5s of each ~7s page on the board)
+# and all of the trouble: on a CI runner it hung, then tripped over a profile
+# lock shared between launches, then met a chromium that never exits from
+# --dump-dom, and was taken out of CI with zero true findings to its name.
+#
+# Now ONE browser is launched and driven over the DevTools protocol - navigate,
+# ask, navigate, ask - by tools/check_diagrams.py, which explains the protocol
+# choice (a pipe, not a WebSocket, so no dependency at all). Nothing waits for a
+# browser to exit any more, so "the browser is stuck" and "the diagram did not
+# draw" can no longer be the same symptom. A dozen pages take a few seconds.
+#
+# This script is the part around that: find a browser, build and serve the
+# site, write the self-test fixtures, and take everything down again - on every
+# way out, including the ones where the helper is killed.
+#
+# It needs a browser and python3, and nothing from the venv.
 set -uo pipefail
 
 PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
 SITE="${UNOQ_SITE:-$PROJECT/share/learn}"
 PORT="${UNOQ_DIAGRAM_PORT:-8099}"
-# What actually costs the time here is chromium STARTUP - about 5.5s per launch
-# on this board, eleven launches, so ~60s regardless of this number. Lowering it
-# from 25000 changed nothing measurable, and running the pages four at a time
-# was WORSE (77s): four chromium instances on a four-core 3.6 GB board contend
-# more than they gain.
-#
-# Making it genuinely fast means driving one browser over the DevTools protocol
-# instead of launching one per page, which is a dependency this gate does not
-# currently justify. It is excluded from --fast for that reason.
+# How long a page has to draw its diagrams. Running out is that PAGE failing.
+# A healthy page is done in well under a second; this is only ever spent in
+# full on a page that is not going to draw however long it is given.
 BUDGET_MS="${UNOQ_DIAGRAM_BUDGET_MS:-8000}"
-# Wall-clock ceiling per page, so a browser that never exits cannot hang a job.
+# How long the browser has to start, and to answer while on any one page.
+# Running out is the BROWSER failing: it is killed and the gate stops there,
+# rather than spending this long again on each of the pages left.
 PAGE_TIMEOUT="${UNOQ_DIAGRAM_PAGE_TIMEOUT:-45}"
 
-# GitHub's ubuntu runners ship google-chrome; this board has chromium. Try the
-# usual names rather than assuming either.
-BROWSER=""
-for candidate in chromium chromium-browser google-chrome google-chrome-stable; do
-  if command -v "$candidate" >/dev/null 2>&1; then
-    BROWSER="$candidate"
-    break
+# Which browser. Anything Chromium-based that understands
+# --remote-debugging-pipe, which is all of them:
+#
+#   the board    Debian's `chromium`, aarch64
+#   CI           a pinned chrome-headless-shell, handed over in
+#                UNOQ_DIAGRAM_BROWSER - see the diagrams job in ci.yml for why
+#                it is not whatever the runner image happens to ship
+#   elsewhere    whichever of the usual names is on PATH
+#
+# chromium first, so the board and a laptop with both installed agree.
+BROWSER="${UNOQ_DIAGRAM_BROWSER:-}"
+if [ -n "$BROWSER" ]; then
+  # Set means MEANT. Falling back to PATH when the named one is missing would
+  # quietly test with a different browser from the one somebody pinned.
+  if ! command -v "$BROWSER" >/dev/null 2>&1; then
+    echo "UNOQ_DIAGRAM_BROWSER=$BROWSER is not an executable" >&2
+    exit 1
   fi
-done
+else
+  for candidate in chromium chromium-browser chrome-headless-shell \
+    google-chrome google-chrome-stable chrome; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      BROWSER="$candidate"
+      break
+    fi
+  done
+fi
 if [ -z "$BROWSER" ]; then
   echo "no chromium/chrome on PATH - cannot check whether the diagrams render" >&2
-  echo "  install one, or skip this gate with: tools/check.sh python shell c docs" >&2
+  echo "  install one, or point UNOQ_DIAGRAM_BROWSER at one, or skip this gate with:" >&2
+  echo "  tools/check.sh python shell c docs workflows" >&2
   exit 1
 fi
 
@@ -71,186 +102,130 @@ if [ ! -d "$SITE" ]; then
   exit 1
 fi
 
-# Serve over HTTP rather than pointing the browser at file://. The site is
-# meant to work both ways, but a local server is what the board and Pages both
-# do, and file:// adds its own failure modes that would muddy this test.
-python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$SITE" >/dev/null 2>&1 &
-SERVER=$!
-cleanup() { kill "$SERVER" 2>/dev/null; }
-trap cleanup EXIT
-
-# Give it a moment to bind, and confirm rather than sleeping and hoping.
-for _ in $(seq 1 20); do
-  curl -sSf -o /dev/null "http://127.0.0.1:$PORT/index.html" 2>/dev/null && break
-  sleep 0.25
-done
-
-WORK="$(mktemp -d)"
-trap 'cleanup; rm -rf "$WORK"' EXIT
-
-# render <url> - print the number of diagrams the browser marked as drawn, or
-# the word "broken" if the browser itself failed. Those two are DIFFERENT
-# ANSWERS and conflating them cost a whole debugging session: `grep -c` prints
-# "0" for empty input, so a browser that produced nothing at all was reported as
-# "0 of 1 diagrams drew" - which reads as "your markup is wrong" when it means
-# "the browser never ran".
-render() {
-  local url="$1" dom rc
-  # A FRESH PROFILE PER LAUNCH. Chrome puts a SingletonLock in the profile
-  # directory, and a previous instance that has not finished tearing down makes
-  # the next one wait on it. Sharing one directory across eleven sequential
-  # launches worked on this board and produced a 45s-then-1s alternating pattern
-  # on the runner - half the pages timing out, the rest returning empty.
-  local profile="$WORK/profile.$$.$RANDOM"
-  # HARD TIMEOUT, non-negotiable. On a GitHub runner an earlier version of this
-  # hung on the first page and took the whole job to its fifteen-minute limit
-  # with chrome still alive. A gate that can hang is worse than no gate: it
-  # turns an unrelated pull request into a fifteen-minute wait and a red tick.
-  #
-  # Plain --headless, NOT --headless=old: old headless was removed from Chrome
-  # in 132, so on any current runner that flag is at best ignored. The board's
-  # Chromium 151 draws diagrams identically under both, which is exactly why
-  # the difference stayed invisible here.
-  #
-  # --disable-dev-shm-usage because CI containers give /dev/shm 64 MB, where
-  # chrome deadlocks rather than failing.
-  dom="$(timeout "$PAGE_TIMEOUT" "$BROWSER" \
-    --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
-    --no-first-run --disable-extensions --disable-background-networking \
-    --user-data-dir="$profile" \
-    --virtual-time-budget="$BUDGET_MS" \
-    --dump-dom "$url" 2>/dev/null)"
-  rc=$?
-  rm -rf "$profile"
-  # Empty output means the browser died or timed out. A real page always comes
-  # back with at least an <html> element, diagrams or not.
-  if [ "$rc" != 0 ] || [ -z "$dom" ]; then
-    echo broken
-    return
-  fi
-  # A rendered ERROR is not a rendered diagram, and counting data-processed
-  # alone could not tell them apart. mermaid sets data-processed on the element
-  # whether it drew the flowchart or its own "Syntax error in text" graphic, so
-  # this gate reported eleven confident passes while every diagram on the site
-  # was an error box. Same class of failure it was written to catch, one level
-  # down. The error graphic is identifiable by its role:
-  #
-  #   <svg ... aria-roledescription="error">
-  #     <text class="error-text">Syntax error in text</text>
-  if grep -q 'aria-roledescription="error"\|class="error-text"' <<<"$dom"; then
-    echo syntax-error
-    return
-  fi
-  grep -c 'data-processed="true"' <<<"$dom"
-}
-
-# SELF-TEST FIRST, against a fixture this script writes itself.
-#
-# Without this, every failure looks like "the diagrams are broken" - and the
-# last two were not. One was a profile lock, one was a headless-mode flag. Both
-# reported eleven confident failures about markup that was perfectly correct,
-# which is the most expensive kind of wrong a gate can be.
-#
-# The fixture uses the SAME vendored library and the SAME init script as the
-# real pages, so if it draws, the browser and the library both work and a zero
-# on a real page is genuinely that page's fault.
 lib="$(cd "$SITE" && find assets/external -name 'mermaid*.js' 2>/dev/null | head -1)"
 if [ -z "$lib" ]; then
   echo "no vendored mermaid in $SITE - run tools/check-diagram-assets.sh for why" >&2
   exit 1
 fi
-# The fixture uses the <code> wrapper because THAT IS WHAT MKDOCS EMITS.
-#
-# It did not, and that single difference is why this gate passed while every
-# real page failed. superfences renders a fence as
-# `<pre class="mermaid"><code>...</code></pre>`, mermaid parses innerHTML, and
-# the `<code>` made the source a syntax error - but the fixture wrote bare text
-# inside the <pre>, which parses fine. A fixture that does not reproduce the
-# real markup only proves the browser works.
-#
-# Entities too: mkdocs escapes `-->` to `--&gt;` inside the block, so the
-# fixture has to carry it escaped or it is not testing the decode path either.
-cat >"$SITE/_selftest.html" <<EOF
-<!doctype html><html><body>
-<pre class="unoq-mermaid"><code>graph LR
-  A[in] --&gt; B[out]</code></pre>
-<script src="$lib"></script>
-<script src="assets/javascripts/mermaid-init.js"></script>
-</body></html>
-EOF
-trap 'cleanup; rm -rf "$WORK"; rm -f "$SITE/_selftest.html"' EXIT
 
-self="$(render "http://127.0.0.1:$PORT/_selftest.html")"
-if [ "$self" != 1 ]; then
-  # Run it ONCE more with stderr kept. Everywhere else stderr is discarded,
-  # because a working chromium is noisy (dbus, UPower, GPU probing) and it would
-  # bury the per-page results. Here it is the only thing that can say WHY, and
-  # the alternative is another guess and another CI round - which is how this
-  # gate has already burned an afternoon.
-  echo "--- what the browser said, verbatim ---" >&2
-  timeout "$PAGE_TIMEOUT" "$BROWSER" \
-    --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
-    --no-first-run --disable-extensions --disable-background-networking \
-    --user-data-dir="$WORK/diag" \
-    --virtual-time-budget="$BUDGET_MS" \
-    --dump-dom "http://127.0.0.1:$PORT/_selftest.html" 2>&1 >/dev/null |
-    head -20 >&2
-  diag_rc="${PIPESTATUS[0]}"
-  echo "--- exit status: $diag_rc  (124 = killed by the ${PAGE_TIMEOUT}s timeout) ---" >&2
-  # And prove the server is serving, so a fixture that 404s is never mistaken
-  # for a browser that cannot render.
-  printf 'fixture over HTTP: %s\nlibrary over HTTP: %s\n\n' \
-    "$(curl -sS -o /dev/null -w '%{http_code}, %{size_download} bytes' \
-      "http://127.0.0.1:$PORT/_selftest.html" 2>&1)" \
-    "$(curl -sS -o /dev/null -w '%{http_code}, %{size_download} bytes' \
-      "http://127.0.0.1:$PORT/$lib" 2>&1)" >&2
-  cat >&2 <<EOF
-THE HARNESS IS BROKEN, not the site.
+# ONE cleanup, installed before anything it has to undo exists, and written so
+# that every line is safe to run when its thing was never created.
+SERVER=""
+WORK=""
+# shellcheck disable=SC2329  # it IS invoked, by the EXIT trap; shellcheck loses
+# sight of that in a script whose last line is an explicit `exit`.
+cleanup() {
+  [ -n "$SERVER" ] && kill "$SERVER" 2>/dev/null
+  if [ -n "$WORK" ]; then
+    # The helper kills its own browser on the way out. This is for the day it
+    # cannot - killed with -9, or by the ceiling below - and would otherwise
+    # leave a headless chromium running on a board with 3.6 GB to its name.
+    # The browser leads its own process group, so the pid is the group.
+    if [ -s "$WORK/pid" ]; then
+      kill -KILL -- "-$(cat "$WORK/pid")" 2>/dev/null
+      sleep 0.2
+    fi
+    rm -rf "$WORK" 2>/dev/null || { sleep 1 && rm -rf "$WORK"; }
+  fi
+  rm -f "$SITE"/_selftest-*.html
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
 
-A one-diagram fixture, using this build's own vendored library and init script,
-came back as "$self" instead of 1. That is the browser, this script, or the
-library - not the documentation. Nothing below would have been trustworthy, so
-no pages were checked.
+WORK="$(mktemp -d)"
 
-  browser:  $BROWSER ($("$BROWSER" --version 2>/dev/null || echo 'version unknown'))
-  library:  $lib
+# Serve over HTTP rather than pointing the browser at file://. The site is
+# meant to work both ways, but a local server is what the board and Pages both
+# do, and file:// adds its own failure modes that would muddy this test.
+python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$SITE" >/dev/null 2>&1 &
+SERVER=$!
 
-Reproduce it by hand:
-  python3 -m http.server $PORT --directory $SITE &
-  $BROWSER --headless --no-sandbox --dump-dom http://127.0.0.1:$PORT/_selftest.html
-EOF
+# Give it a moment to bind, and confirm rather than sleeping and hoping.
+for _ in $(seq 1 40); do
+  curl -sSf -o /dev/null "http://127.0.0.1:$PORT/index.html" 2>/dev/null && break
+  kill -0 "$SERVER" 2>/dev/null || break
+  sleep 0.25
+done
+# ...and confirm it is OURS. If the port was taken, http.server has already
+# exited, and the curl above may have been answered by whatever took it - which
+# would have every page checked against somebody else's site.
+if ! kill -0 "$SERVER" 2>/dev/null; then
+  echo "could not serve $SITE on 127.0.0.1:$PORT - is the port in use?" >&2
+  echo "  choose another with UNOQ_DIAGRAM_PORT" >&2
   exit 1
 fi
 
-fail=0
-checked=0
-total=0
+# THE SELF-TEST FIXTURES. Written here, judged by the helper before any real
+# page is looked at.
+#
+# Without them, every failure looks like "the diagrams are broken" - and the
+# first two were not. One was a profile lock, one was a headless-mode flag. Both
+# reported eleven confident failures about markup that was perfectly correct,
+# which is the most expensive kind of wrong a gate can be.
+#
+# All three use the SAME vendored library as the real pages, and the first the
+# same init script, so if it draws, the browser and the library both work and a
+# failure on a real page is genuinely that page's fault.
+#
+# They use the <code> wrapper because THAT IS WHAT MKDOCS EMITS.
+#
+# The first fixture once did not, and that single difference is why this gate
+# passed while every real page failed. superfences renders a fence as
+# `<pre class="unoq-mermaid"><code>...</code></pre>`, mermaid parses innerHTML,
+# and the `<code>` made the source a syntax error - but the fixture wrote bare
+# text inside the <pre>, which parses fine. A fixture that does not reproduce
+# the real markup only proves the browser works.
+#
+# Entities too: mkdocs escapes `-->` to `--&gt;` inside the block, so the
+# fixture has to carry it escaped or it is not testing the decode path either.
+fixture() {
+  local name="$1" source="$2" init="$3"
+  {
+    printf '<!doctype html><html><body>\n'
+    printf '<pre class="unoq-mermaid"><code>%s</code></pre>\n' "$source"
+    printf '<script src="%s"></script>\n' "$lib"
+    [ "$init" = yes ] &&
+      printf '<script src="assets/javascripts/mermaid-init.js"></script>\n'
+    printf '</body></html>\n'
+  } >"$SITE/$name"
+}
+GOOD='graph LR
+  A[in] --&gt; B[out]'
+# Must draw.
+fixture _selftest-ok.html "$GOOD" yes
+# Must NOT pass, in the two ways a diagram has actually failed here: the source
+# does not parse and mermaid draws its error graphic instead, and nothing calls
+# mermaid.run() so the source sits there as grey text. A gate that cannot fail
+# these two is not checking anything, however green it is.
+fixture _selftest-syntax.html 'graph LR
+  A[in] --&gt;' yes
+fixture _selftest-undrawn.html "$GOOD" no
 
-while IFS= read -r page; do
-  want="$(grep -c 'class="unoq-mermaid"' "$SITE/$page")"
-  [ "$want" = 0 ] && continue
-  checked=$((checked + 1))
-  got="$(render "http://127.0.0.1:$PORT/$page")"
-  if [ "$got" = broken ]; then
-    printf '  FAIL  %-46s the browser produced nothing (timed out after %ss?)\n' \
-      "$page" "$PAGE_TIMEOUT"
-    fail=1
-    continue
-  fi
-  if [ "$got" = syntax-error ]; then
-    printf '  FAIL  %-46s mermaid drew its "Syntax error in text" graphic\n' "$page"
-    fail=1
-    continue
-  fi
-  total=$((total + got))
-  if [ "$got" != "$want" ]; then
-    printf '  FAIL  %-46s %s of %s diagrams drew\n' "$page" "$got" "$want"
-    fail=1
-  fi
-done < <(cd "$SITE" && find . -name '*.html' ! -name '_selftest.html' -printf '%P\n' | sort)
+# A ceiling on the whole run, as well as the helper's own clocks. The helper
+# bounds every wait it makes; this is for the wait nobody thought of. It is
+# generous on purpose - every page failing as slowly as it can, plus the
+# browser taking its full allowance twice - because reaching it means a bug in
+# the helper, and it must never fire on a run that was merely slow.
+pages="$(grep -rl --include='*.html' 'class="unoq-mermaid"' "$SITE" | wc -l)"
+CEILING=$((pages * (BUDGET_MS / 1000 + 2) + 2 * PAGE_TIMEOUT))
 
-if [ "$fail" != 0 ]; then
-  cat >&2 <<EOF
+timeout -k 10 "$CEILING" python3 "$PROJECT/tools/check_diagrams.py" \
+  --browser "$BROWSER" \
+  --site "$SITE" \
+  --base "http://127.0.0.1:$PORT" \
+  --work "$WORK" \
+  --budget-ms "$BUDGET_MS" \
+  --page-timeout "$PAGE_TIMEOUT" \
+  --selftest-ok _selftest-ok.html \
+  --selftest-bad _selftest-syntax.html \
+  --selftest-bad _selftest-undrawn.html
+rc=$?
+
+case "$rc" in
+  0) exit 0 ;;
+  1)
+    cat >&2 <<EOF
 
 Diagrams did not render. Things worth checking, in the order they have bitten:
 
@@ -262,8 +237,37 @@ Diagrams did not render. Things worth checking, in the order they have bitten:
      share/learn/assets/external/.../mermaid.min.js and look for
      globalThis["mermaid"] - if that has gone, mermaid-init.js needs rewriting
      as a module.
+  4. The diagram's own source. Paste the fence into https://mermaid.live - a
+     syntax error there is a syntax error here.
 EOF
-  exit 1
-fi
+    exit 1
+    ;;
+esac
 
-printf '%s diagrams drew across %s pages\n' "$total" "$checked"
+# Anything else is the harness, and the helper has already said what it saw.
+# Add what only this script knows.
+if [ "$rc" = 124 ] || [ "$rc" = 137 ]; then
+  echo "THE HARNESS IS BROKEN, not the site: the helper itself ran past the" >&2
+  echo "${CEILING}s ceiling and was killed. That is a bug in tools/check_diagrams.py." >&2
+fi
+# Prove the server is serving, so a fixture that 404s is never mistaken for a
+# browser that cannot render.
+printf '\nfixture over HTTP: %s\nlibrary over HTTP: %s\n' \
+  "$(curl -sS -m 10 -o /dev/null -w '%{http_code}, %{size_download} bytes' \
+    "http://127.0.0.1:$PORT/_selftest-ok.html" 2>&1)" \
+  "$(curl -sS -m 10 -o /dev/null -w '%{http_code}, %{size_download} bytes' \
+    "http://127.0.0.1:$PORT/$lib" 2>&1)" >&2
+cat >&2 <<EOF
+
+That is the browser, this script, or the library - not the documentation.
+Nothing above about the site's own pages should be believed.
+
+  browser:  $BROWSER ($(timeout 5 "$BROWSER" --version 2>/dev/null || echo 'version unknown'))
+  library:  $lib
+
+Reproduce it by hand, and keep the browser's stderr this time:
+  python3 -m http.server $PORT --bind 127.0.0.1 --directory $SITE &
+  python3 $PROJECT/tools/check_diagrams.py --browser $BROWSER --site $SITE \\
+    --base http://127.0.0.1:$PORT --work \$(mktemp -d)
+EOF
+exit 2

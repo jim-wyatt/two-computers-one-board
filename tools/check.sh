@@ -210,7 +210,10 @@ if wanted diagrams; then
   else
     # The only gate that opens a browser, and the only one that can catch a
     # diagram silently coming out as grey text - which is exactly what twelve of
-    # them did, through a clean --strict build, for hours. ~60s.
+    # them did, through a clean --strict build, for hours. It drives ONE browser
+    # over every page, so it is seconds plus a site build rather than the minute
+    # it used to be; it stays out of --fast because it still needs a browser,
+    # which a machine making a commit may not have.
     run "diagrams (headless render)" "$PROJECT/tools/check-diagrams.sh"
   fi
 fi
