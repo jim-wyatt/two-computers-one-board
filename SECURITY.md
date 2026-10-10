@@ -65,6 +65,14 @@ documentation, and the installers on the drive image, over plain HTTP on port
 filesystem and runs as an unprivileged user with a restricted sandbox, but
 anyone who can reach the board can read what it serves.
 
+**`--with-usb-gadget` switches SSH on.** The factory image ships `sshd`
+installed and off, and its way in is `adb shell` over the cable. The gadget
+takes that cable, so the step enables `sshd` first and leaves it on: password
+login for `arduino`, on every network interface the board has, including wifi.
+The password is the one you chose with `arduino-passwd`, and it is now what
+stands between your network and a shell with `sudo`. See
+[usb.md](docs/reference/usb.md#adb-is-disabled-and-ssh-is-switched-on).
+
 **The serial console is a login.** The board's own serial console offers a
 login prompt to anyone with physical access to it. See
 [hardware.md](docs/reference/hardware.md).

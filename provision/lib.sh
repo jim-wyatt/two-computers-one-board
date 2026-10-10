@@ -122,8 +122,15 @@ unit_exists() {
 }
 
 # disable_unit <unit>... - stop, disable, and say which of those was needed.
+#
+# Returns 1 if any unit is still running afterwards, and says so. It used to
+# print "stopped and disabled" on the strength of having asked: on a stock
+# board arduino-router was asked, kept running because a .path unit started it
+# again, and went on holding /dev/ttyHS1 under a line that said it was gone.
+# What systemd was asked for and what is now true are different things, and
+# only the second is worth printing.
 disable_unit() {
-  local u
+  local u rc=0
   for u in "$@"; do
     if ! unit_exists "$u"; then
       skip "$u not present"
@@ -135,8 +142,96 @@ disable_unit() {
       continue
     fi
     systemctl disable --now "$u" >/dev/null 2>&1
-    did "$u stopped and disabled"
+    if systemctl is-active --quiet "$u"; then
+      warn "$u is still running after being stopped - something starts it again."
+      warn "  what does:  systemctl show $u -p TriggeredBy -p WantedBy -p RequiredBy"
+      rc=1
+    elif [ "$(systemctl is-enabled "$u" 2>/dev/null)" = "enabled" ]; then
+      # Stopped now, and back at the next boot: the half that is easy to miss,
+      # because everything looks right until then.
+      warn "$u stopped, but is still enabled - it will start again at boot."
+      warn "  why:  systemctl disable $u"
+      rc=1
+    else
+      did "$u stopped and disabled"
+    fi
   done
+  return "$rc"
+}
+
+# ensure_ssh - make sure there is an SSH server running, or fail.
+#
+# The stock image ships openssh-server installed and switched off: the factory
+# way in is `adb shell` over the USB cable. Anything that takes that cable away
+# has to leave another door open first, and this is the door.
+#
+# Host keys are generated if there are none, because a server with no host key
+# starts, fails, and reports it only in the journal. `ssh-keygen -A` creates
+# the missing ones and leaves existing ones alone.
+# REVERT: systemctl disable --now ssh
+ensure_ssh() {
+  local unit="ssh.service" k have=0
+  unit_exists "$unit" || fail "no $unit on this board - install openssh-server first"
+  for k in "${UNOQ_SSH_DIR:-/etc/ssh}"/ssh_host_*_key; do
+    [ -e "$k" ] && have=1
+  done
+  if [ "$have" = 0 ]; then
+    ssh-keygen -A >/dev/null 2>&1 || fail "could not generate SSH host keys"
+    did "SSH host keys generated"
+  fi
+  enable_unit "$unit"
+  systemctl is-active --quiet "$unit" ||
+    fail "$unit did not stay running - check: journalctl -u ssh -n 20"
+}
+
+# in_unit_cgroup <unit> - is this process running inside that unit's cgroup?
+#
+# `adb shell` is a child of adbd, and systemd kills a unit's whole cgroup when
+# it stops the unit. So a script started from `adb shell` that stops adbd is
+# stopping itself, part way through whatever it was doing.
+in_unit_cgroup() {
+  grep -qE "/$1(/|\$)" "${UNOQ_CGROUP_FILE:-/proc/self/cgroup}" 2>/dev/null
+}
+
+# usb_handover - run usb/handover.sh, or arrange for it to be run.
+#
+# Sets HANDOVER_DEFERRED=1 when it was scheduled and has not happened yet, so
+# the caller knows there is nothing to verify and something to tell the user.
+# Returns 1 when it was run here and failed.
+#
+# From `adb shell` this process is adbd's child, and the hand-over stops adbd.
+# So it is given to systemd to run from outside, a little later - long enough
+# for the rest of the run to finish printing. Anywhere else it is just called.
+usb_handover() {
+  local handover="$RUNTIME_DIR/usb/handover.sh"
+  local delay="${UNOQ_HANDOVER_DELAY:-20}"
+  # Read by the caller, which shellcheck cannot see from here.
+  # shellcheck disable=SC2034
+  HANDOVER_DEFERRED=0
+  if ! in_unit_cgroup adbd.service; then
+    if "$handover"; then
+      did "hand-over ran"
+      return 0
+    fi
+    # Returned, not swallowed: the caller is a provisioning step, and a step
+    # that carries on to print "bound" over a hand-over that failed has said
+    # something untrue in the one place a person will look.
+    warn "hand-over failed - check: journalctl -t unoq-usb-handover -n 40"
+    return 1
+  fi
+  # A hand-over still pending from an earlier run would make the unit name
+  # taken. Whatever it was going to do, this one does.
+  systemctl stop unoq-usb-handover.timer unoq-usb-handover.service >/dev/null 2>&1
+  # AccuracySec, because a timer's default accuracy is a minute: "20 seconds"
+  # was measured firing 30 seconds late, with nothing to say why the board was
+  # still sitting there on adb.
+  systemd-run --quiet --collect --unit=unoq-usb-handover \
+    --on-active="$delay" --timer-property=AccuracySec=1s \
+    "$handover" >/dev/null 2>&1 ||
+    fail "could not schedule the hand-over - adb is untouched, nothing is bound"
+  did "hand-over scheduled in ${delay}s (this is an adb shell, and it will close)"
+  # shellcheck disable=SC2034
+  HANDOVER_DEFERRED=1
 }
 
 # mask_unit <unit> - for services that restart themselves on demand.

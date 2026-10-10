@@ -705,17 +705,41 @@ otherwise hold it. If something else is holding `/srv/unoq-share` — a shell
 that has `cd`'d into it is the usual one — the script stops and names the
 process, rather than forcing the unmount.
 
-## adb is disabled
+## adb is disabled, and SSH is switched on
 
 `adbd` binds its *own* gadget to the first free UDC. With this installed there
-would be two gadgets racing for one controller. `provision/60-usb-gadget.sh`
-disables `adbd` for that reason.
+would be two gadgets racing for one controller, so the last thing
+`provision/60-usb-gadget.sh` does is hand the port over: `usb/handover.sh`
+stops and disables `adbd`, rebuilds the gadget definition, and binds it if a
+cable is already in.
 
-adb over TCP still works once the link is up:
+`adb shell` is the only way into a factory-fresh board, so the step opens
+another door before it closes that one. It enables `ssh`, generating host keys
+if the board has none, and it refuses to touch `adbd` unless `sshd` is running.
+After the hand-over, the way in is:
 
 ```bash
-adb connect <hostname>.local:5555
+ssh arduino@<hostname>.local
 ```
+
+That is password login, with the password you set with `sudo arduino-passwd`.
+It is reachable from whatever the board is connected to: the cable, and wifi if
+that is on.
+
+### Running the step from `adb shell`
+
+`adb shell` is a child of `adbd`, and systemd stops a unit by killing everything
+in it. A script that stops `adbd` from inside `adb shell` stops itself. So when
+the step sees it was started that way, it does not run the hand-over: it
+schedules it with `systemd-run`, 20 seconds out, and says so. The run finishes
+printing, the shell closes, and the board comes back on the same cable as a
+network adapter and a drive.
+
+```bash
+journalctl -t unoq-usb-handover     # what the hand-over did, read over SSH afterwards
+```
+
+`UNOQ_HANDOVER_DELAY` changes the 20 seconds.
 
 ### Removing the gadget, and going back to adb over USB
 
@@ -738,6 +762,9 @@ sudo udevadm control --reload
 sudo rm -f /var/lib/unoq/usb-bind-attempts
 sudo systemctl enable --now adbd
 ```
+
+SSH is left on. `sudo systemctl disable --now ssh` turns it off, once adb is
+back and you have checked that it works.
 
 Three things are left behind on purpose. `/etc/default/unoq-usb` holds your
 settings, and `unoq-leds` reads its LED settings from the same file; delete it
