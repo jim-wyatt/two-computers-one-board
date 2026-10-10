@@ -3,7 +3,9 @@
 # SPDX-License-Identifier: MIT
 #
 # install_unit rewrites every systemd unit in this project on its way into
-# /etc/systemd/system, substituting the checkout path and the owning user.
+# /etc/systemd/system, substituting the owning user and one of two paths: the
+# checkout, or - on the Exec lines of a unit that runs as root - the directory
+# of root-owned copies that install_runtime makes (tests/install-runtime.bats).
 #
 # The failure it has to prevent is a unit that installs happily and then fails
 # at boot with 203/EXEC - a status that names the unit but not the path it
@@ -52,6 +54,21 @@ setup() {
   mkdir -p "$BIN"
   printf '#!/bin/sh\n' >"$BIN/thing"
   chmod +x "$BIN/thing"
+
+  # Where root's copies of the scripts live, for the units that run as root.
+  # Deliberately NOT under the directory the tests use as the checkout: the
+  # two rewrites would otherwise produce paths that only differ in the middle,
+  # and an assertion could match the wrong one. It has the same bin/thing in
+  # it, because most fixtures below are units with no User= - which is to say
+  # root units - and they are about something other than where root's copy is.
+  RT="$BATS_TEST_TMPDIR-runtime"
+  mkdir -p "$RT/bin"
+  cp "$BIN/thing" "$RT/bin/thing"
+  export UNOQ_RUNTIME_DIR="$RT"
+}
+
+teardown() {
+  rm -rf "$BATS_TEST_TMPDIR-runtime"
 }
 
 # Source lib.sh with the pieces that touch the real system replaced.
@@ -109,13 +126,241 @@ unit() {
 # --- substitution ----------------------------------------------------------
 
 @test "the project path is substituted into ExecStart" {
+  # A unit that runs as the user: the venv entry points, which live in the
+  # checkout and stay there.
   load_lib "$BATS_TEST_TMPDIR"
-  src="$(unit ok "[Service]" "ExecStart=/home/arduino/two-computers-one-board/bin/thing")"
+  src="$(unit ok "[Service]" "User=arduino" \
+    "ExecStart=/home/arduino/two-computers-one-board/bin/thing")"
   run install_unit "$src"
   [ "$status" -eq 0 ]
   run cat "$ETC/etc/systemd/system/ok.service"
   [[ "$output" == *"ExecStart=$BATS_TEST_TMPDIR/bin/thing"* ]]
   [[ "$output" != *"/home/arduino/two-computers-one-board"* ]]
+  [[ "$output" != *"$RT"* ]]
+}
+
+# --- who runs it decides where it runs from --------------------------------
+#
+# A unit with no User= runs as root, and root must not execute a directory the
+# user can write. So on such a unit's Exec lines the placeholder becomes the
+# root-owned copy, and everywhere else it stays the checkout.
+
+@test "a unit that runs as root is pointed at root's copy, not the checkout" {
+  load_lib "$BATS_TEST_TMPDIR"
+  src="$(unit root "[Service]" "ExecStart=/home/arduino/two-computers-one-board/bin/thing run")"
+  run install_unit "$src"
+  [ "$status" -eq 0 ]
+  run cat "$ETC/etc/systemd/system/root.service"
+  [[ "$output" == *"ExecStart=$RT/bin/thing run"* ]]
+  [[ "$output" != *"ExecStart=$BATS_TEST_TMPDIR/"* ]]
+  [[ "$output" != *"/home/arduino/two-computers-one-board"* ]]
+}
+
+@test "every Exec line of a root unit is rewritten, not just ExecStart" {
+  # unoq-leds has an ExecStopPost and unoq-usb-bind an ExecStartPre. One line
+  # left behind is root still executing the checkout, on the path nobody
+  # watches: the one that runs when the service stops.
+  load_lib "$BATS_TEST_TMPDIR"
+  src="$(unit all "[Service]" \
+    "ExecCondition=/home/arduino/two-computers-one-board/bin/thing a" \
+    "ExecStartPre=-/home/arduino/two-computers-one-board/bin/thing b" \
+    "ExecStart=/home/arduino/two-computers-one-board/bin/thing c" \
+    "ExecStartPost=+/home/arduino/two-computers-one-board/bin/thing d" \
+    "ExecReload=/home/arduino/two-computers-one-board/bin/thing e" \
+    "ExecStop=/home/arduino/two-computers-one-board/bin/thing f" \
+    "ExecStopPost=/home/arduino/two-computers-one-board/bin/thing g")"
+  run install_unit "$src"
+  [ "$status" -eq 0 ]
+  run grep -c "=[-+]*$RT/bin/thing [a-g]\$" "$ETC/etc/systemd/system/all.service"
+  [ "$output" = 7 ]
+  run grep -c "$BATS_TEST_TMPDIR/bin/thing" "$ETC/etc/systemd/system/all.service"
+  [ "$output" = 0 ]
+}
+
+@test "a unit with User= keeps pointing at the checkout, on every Exec line" {
+  # unoq-cpu-bars and unoq-learn: the venv is in the checkout and a virtualenv
+  # cannot be copied. Sending these to root's directory would be a unit that
+  # names a path nothing ever puts there.
+  load_lib "$BATS_TEST_TMPDIR" "operator"
+  src="$(unit user "[Service]" "User=arduino" "Group=arduino" \
+    "ExecStartPre=/home/arduino/two-computers-one-board/bin/thing pre" \
+    "ExecStart=/home/arduino/two-computers-one-board/bin/thing" \
+    "ExecStopPost=/home/arduino/two-computers-one-board/bin/thing post")"
+  run install_unit "$src"
+  [ "$status" -eq 0 ]
+  run grep -c "^Exec[A-Za-z]*=$BATS_TEST_TMPDIR/bin/thing" "$ETC/etc/systemd/system/user.service"
+  [ "$output" = 3 ]
+  run grep -c "$RT" "$ETC/etc/systemd/system/user.service"
+  [ "$output" = 0 ]
+}
+
+@test "User=root is root, however it is spelled" {
+  # Naming root explicitly must not be a way to opt out of root's directory.
+  load_lib "$BATS_TEST_TMPDIR"
+  for who in root 0; do
+    src="$(unit "explicit$who" "[Service]" "User=$who" \
+      "ExecStart=/home/arduino/two-computers-one-board/bin/thing")"
+    run install_unit "$src"
+    [ "$status" -eq 0 ]
+    run cat "$ETC/etc/systemd/system/explicit$who.service"
+    [[ "$output" == *"ExecStart=$RT/bin/thing"* ]]
+  done
+}
+
+@test "a root unit whose script was not copied is refused, though the checkout has it" {
+  # The rule has no fallback, on purpose. The script exists in the checkout,
+  # executable, and a check against the checkout would pass - and then root
+  # would be running the checkout again, or the unit would name nothing.
+  load_lib "$BATS_TEST_TMPDIR"
+  printf '#!/bin/sh\n' >"$BIN/only-in-checkout"
+  chmod +x "$BIN/only-in-checkout"
+  src="$(unit uncopied "[Service]" \
+    "ExecStart=/home/arduino/two-computers-one-board/bin/only-in-checkout")"
+  run install_unit "$src"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"runs a program that is not there"* ]]
+  [[ "$output" == *"$RT/bin/only-in-checkout"* ]]
+  [ ! -f "$ETC/etc/systemd/system/uncopied.service" ]
+}
+
+@test "the same script in a User= unit is accepted from the checkout" {
+  # The other half of the test above: it was refused for where root would have
+  # run it from, not for anything about the script.
+  load_lib "$BATS_TEST_TMPDIR"
+  printf '#!/bin/sh\n' >"$BIN/only-in-checkout"
+  chmod +x "$BIN/only-in-checkout"
+  src="$(unit copied "[Service]" "User=arduino" \
+    "ExecStart=/home/arduino/two-computers-one-board/bin/only-in-checkout")"
+  run install_unit "$src"
+  [ "$status" -eq 0 ]
+}
+
+@test "an ExecStopPost that does not exist is caught, like the others" {
+  # It is rewritten now, so it is checked now. unoq-leds turns the LEDs off
+  # from one, and a missing script there leaves the board glowing "link up"
+  # after the thing that checks the link has died.
+  load_lib "$BATS_TEST_TMPDIR"
+  src="$(unit stoppost "[Service]" "ExecStart=$BIN/thing" \
+    "ExecStopPost=/home/arduino/two-computers-one-board/bin/absent off")"
+  run install_unit "$src"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"$RT/bin/absent"* ]]
+}
+
+@test "what a root unit only mentions still names the checkout" {
+  # Documentation= is for a person, and the file a person reads and edits is
+  # the one in the checkout. Nothing executes it.
+  load_lib "$BATS_TEST_TMPDIR"
+  src="$(unit doc "[Unit]" \
+    "Documentation=file:/home/arduino/two-computers-one-board/bin/thing" \
+    "[Service]" "ExecStart=/home/arduino/two-computers-one-board/bin/thing")"
+  run install_unit "$src"
+  [ "$status" -eq 0 ]
+  run cat "$ETC/etc/systemd/system/doc.service"
+  [[ "$output" == *"Documentation=file:$BATS_TEST_TMPDIR/bin/thing"* ]]
+  [[ "$output" == *"ExecStart=$RT/bin/thing"* ]]
+}
+
+@test "a root unit still waits for the right home directory" {
+  # unoq-usb-gadget runs root's copy of gadget-up.sh but the image it shares is
+  # still in the home directory, so the mount rewrite has to survive alongside
+  # the new one.
+  load_lib "$BATS_TEST_TMPDIR" "operator"
+  TARGET_HOME=/home/operator
+  src="$(unit rootmount "[Unit]" "RequiresMountsFor=/home/arduino" "[Service]" \
+    "ExecStart=/home/arduino/two-computers-one-board/bin/thing")"
+  run install_unit "$src"
+  [ "$status" -eq 0 ]
+  run cat "$ETC/etc/systemd/system/rootmount.service"
+  [[ "$output" == *"RequiresMountsFor=/home/operator"* ]]
+  [[ "$output" == *"ExecStart=$RT/bin/thing"* ]]
+}
+
+# --- a board provisioned before root had its own copies --------------------
+
+# lib.sh's own write_file, aimed at the temp root. load_lib replaces it with a
+# stub that always writes, which is right for every test above and useless
+# here: whether an existing unit is recognised as out of date IS the test.
+# shellcheck disable=SC2329  # the three functions are called by install_unit
+real_write_file() {
+  eval "$(
+    # shellcheck disable=SC1090,SC1091
+    source "$BATS_TEST_DIRNAME/../provision/lib.sh"
+    declare -f write_file | sed '1s/write_file/lib_write_file/'
+  )"
+  write_file() { lib_write_file "$1" "$ETC$2"; }
+  skip() { echo "ok $*"; }
+  did() { echo "changed $*"; }
+}
+
+@test "a unit that still names the checkout is rewritten in place" {
+  # What a re-run does on a board set up before this: the installed unit is
+  # exactly what the old install_unit rendered, and the new one must see that
+  # as a change, write it, and tell systemd.
+  load_lib "$BATS_TEST_TMPDIR"
+  real_write_file
+  printf '[Service]\nExecStart=%s/bin/thing\n' "$BATS_TEST_TMPDIR" \
+    >"$ETC/etc/systemd/system/old.service"
+  src="$(unit old "[Service]" "ExecStart=/home/arduino/two-computers-one-board/bin/thing")"
+  run install_unit "$src"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"changed wrote"*"old.service"* ]]
+  run cat "$ETC/etc/systemd/system/old.service"
+  [[ "$output" == *"ExecStart=$RT/bin/thing"* ]]
+  ran "systemctl daemon-reload"
+}
+
+@test "and the run after that changes nothing" {
+  load_lib "$BATS_TEST_TMPDIR"
+  real_write_file
+  src="$(unit twice "[Service]" "ExecStart=/home/arduino/two-computers-one-board/bin/thing")"
+  run install_unit "$src"
+  [ "$status" -eq 0 ]
+  : >"$STUB_LOG"
+  run install_unit "$src"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"up to date"* ]]
+  [[ "$output" != *"changed"* ]]
+  never_ran systemctl
+}
+
+@test "installed root units that still run from the checkout are named" {
+  # bootstrap.sh only runs the optional steps it is asked for, so a board can
+  # be re-provisioned and keep four USB units on the old arrangement. Every
+  # step's summary says which, until there are none.
+  load_lib /home/operator/checkout "operator"
+  TARGET_HOME=/home/operator
+  D="$BATS_TEST_TMPDIR/installed"
+  mkdir -p "$D"
+  printf '[Service]\nExecStartPre=/home/operator/checkout/usb/bind-guard.sh check\nExecStart=%s/usb/gadget-up.sh\n' "$RT" \
+    >"$D/unoq-usb-bind.service"
+  printf '[Service]\nExecStart=%s/status/leds.sh run\nExecStopPost=/home/operator/elsewhere/leds.sh off\n' "$RT" \
+    >"$D/unoq-leds.service"
+  printf '[Unit]\nDocumentation=file:/home/operator/checkout/mcu/link-up.sh\n[Service]\nExecStart=%s/mcu/link-up.sh\n' "$RT" \
+    >"$D/unoq-link.service"
+  printf '[Service]\nUser=operator\nExecStart=/home/operator/checkout/.venv/bin/unoq-learn\n' \
+    >"$D/unoq-learn.service"
+  printf '[Service]\nExecStart=/home/operator/checkout/not-ours\n' >"$D/other.service"
+  run stale_root_units "$D"
+  [ "$status" -eq 0 ]
+  # The bind unit for one stale line of two; the LEDs for a path in the home
+  # directory that is not the checkout. Not the link unit, whose only mention
+  # of the checkout is documentation; not the venv unit, which runs as the
+  # user; not a unit that is not this project's.
+  [ "$output" = "unoq-leds.service
+unoq-usb-bind.service" ]
+}
+
+@test "a board with nothing stale says nothing" {
+  load_lib /home/operator/checkout "operator"
+  TARGET_HOME=/home/operator
+  D="$BATS_TEST_TMPDIR/installed"
+  mkdir -p "$D"
+  printf '[Service]\nExecStart=%s/status/leds.sh run\n' "$RT" >"$D/unoq-leds.service"
+  run stale_root_units "$D"
+  [ -z "$output" ]
+  run stale_root_units "$BATS_TEST_TMPDIR/no-such-directory"
+  [ -z "$output" ]
 }
 
 @test "User and Group are substituted" {
@@ -281,18 +526,67 @@ unit() {
   # spelling the project path some other way.
   REAL="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   load_lib "$REAL"
+  # As a step does it: root's copies first, then the units that name them.
+  RUNTIME_DIR="$BATS_TEST_TMPDIR/real-runtime"
+  install_root_scripts >/dev/null
   for src in "$REAL"/*/*.service; do
     [ -e "$src" ] || continue
-    # Skip units whose programs are venv entry points that may not be built in
-    # this environment - the substitution check still runs on all of them.
     run install_unit "$src"
     if [ "$status" -ne 0 ]; then
-      [[ "$output" == *"runs a program that is not there"* ]] ||
-        {
-          echo "unexpected failure for $src: $output"
-          false
-        }
+      # Tolerated for ONE reason: a venv entry point that is not built in this
+      # environment. That is only ever a unit with User=. A root unit has no
+      # such excuse - everything it runs was copied a few lines up - and
+      # excusing it here is how a unit naming an uncopied script would pass.
+      if unit_runs_as_root "$src" ||
+        [[ "$output" != *"runs a program that is not there"*"/.venv/bin/"* ]]; then
+        echo "unexpected failure for $src: $output"
+        false
+      fi
     fi
+  done
+}
+
+@test "no unit in the repository leaves root executing the checkout" {
+  # The property the whole arrangement exists for, asserted of the real units
+  # rather than of fixtures: six run as root and name only root's copies, two
+  # run as the user and name only the venv.
+  REAL="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  load_lib "$REAL"
+  RUNTIME_DIR="$BATS_TEST_TMPDIR/real-runtime"
+  root_units=0 user_units=0
+  for src in "$REAL"/*/*.service; do
+    execs="$(render_unit "$src" | grep -E '^Exec[A-Za-z]+=')"
+    if unit_runs_as_root "$src"; then
+      root_units=$((root_units + 1))
+      if grep -qF "$REAL/" <<<"$execs"; then
+        echo "$src runs as root from the checkout: $execs"
+        false
+      fi
+      grep -qF "$RUNTIME_DIR/" <<<"$execs"
+    else
+      user_units=$((user_units + 1))
+      if grep -qF "$RUNTIME_DIR" <<<"$execs"; then
+        echo "$src runs as a user but names root's directory: $execs"
+        false
+      fi
+      grep -qF "$REAL/.venv/bin/" <<<"$execs"
+    fi
+  done
+  [ "$root_units" = 6 ]
+  [ "$user_units" = 2 ]
+}
+
+@test "the udev rule names no script, so it has no path to rewrite" {
+  # It is installed byte for byte. That is only right while it starts units and
+  # runs nothing itself: a RUN+= or a path into the checkout here would be
+  # root executing the checkout again, by a route install_unit never sees.
+  REAL="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  for rules in "$REAL"/*/*.rules; do
+    rules_body="$(grep -v '^[[:space:]]*#' "$rules")"
+    [[ "$rules_body" != *"RUN"* ]]
+    [[ "$rules_body" != *"PROGRAM"* ]]
+    [[ "$rules_body" != *"IMPORT"* ]]
+    [[ "$rules_body" != *"/home/"* ]]
   done
 }
 

@@ -56,13 +56,35 @@
 # warning where the existing-gadget case is handled below.
 set -uo pipefail
 
-CONFIGFS=/sys/kernel/config/usb_gadget
-G="$CONFIGFS/unoq"
-# The image is in the home directory of whoever owns this checkout, which is
+# Overridable for the tests only, like the other scripts that read this path:
+# nothing on a running board sets it.
+G="${UNOQ_GADGET_DIR:-/sys/kernel/config/usb_gadget/unoq}"
+CONFIGFS="$(dirname "$G")"
+# The image is in the home directory of whoever this board belongs to, which is
 # where provision/60-usb-gadget.sh and share/build-image.sh put it. It used to
 # be spelled /home/arduino here and worked out there, so under any other
 # account provisioning reported the image present and the drive came up empty.
-OWNER_HOME="$(getent passwd "$(stat -c %U "$0")" 2>/dev/null | cut -d: -f6)"
+#
+# WHOSE HOME, AND HOW THIS SCRIPT KNOWS
+# -------------------------------------
+# It used to ask who owned this file. That stopped being an answer when the
+# units began running root's own copy of it from /usr/local/lib/unoq: the owner
+# of that copy is root, the image is not in /root, and the result would have
+# been the same empty drive for a different reason.
+#
+# So provisioning writes the answer down. install_runtime (provision/lib.sh)
+# puts an `env` file at the top of the directory it copies these scripts into,
+# and that is read here - as data, one line of it, not sourced. Run from a
+# checkout there is no such file beside usb/, and the owner of the checkout is
+# still the right person to ask.
+RUNTIME_ENV="$(dirname "$0")/../env"
+OWNER_HOME=""
+if [ -r "$RUNTIME_ENV" ]; then
+  OWNER_HOME="$(sed -n 's/^UNOQ_OWNER_HOME=//p' "$RUNTIME_ENV" | tail -1)"
+fi
+if [ -z "$OWNER_HOME" ]; then
+  OWNER_HOME="$(getent passwd "$(stat -c %U "$0")" 2>/dev/null | cut -d: -f6)"
+fi
 IMG="${UNOQ_SHARE_IMG:-${OWNER_HOME:-/home/arduino}/unoq-share.img}"
 BUILD_ONLY=0
 [ "${1:-}" = "--build" ] && BUILD_ONLY=1

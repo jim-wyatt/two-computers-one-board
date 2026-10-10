@@ -65,7 +65,10 @@ without touching `/var/lib`.
 | [`usb-profile.bats`](usb-profile.bats) | The only thing here that takes an address on somebody else's subnet without being asked. Most of what is tested is refusal. |
 | [`wifi.bats`](wifi.bats) | Whether it is safe to turn off the radio you are probably connected over. It got that wrong once, by asking only IPv4. |
 | [`leds.bats`](leds.bats) | The board's only output when everything else is down. A wrong colour is worse than a dark board. |
-| [`install-unit.bats`](install-unit.bats) | Every unit is rewritten on its way into `/etc/systemd/system`. Get it wrong and a unit installs happily, then fails at boot with a status that does not name the path. |
+| [`install-unit.bats`](install-unit.bats) | Every unit is rewritten on its way into `/etc/systemd/system`. Get it wrong and a unit installs happily, then fails at boot with a status that does not name the path. It also decides *where* a unit runs from: a unit that runs as root must name root's copies, never the checkout. |
+| [`install-runtime.bats`](install-runtime.bats) | The root-owned copies of the scripts that the root services run. A stale or writable file there is something root executes at the next boot; a missing one is a service that does not start. |
+| [`gadget-up.bats`](gadget-up.bats) | Which file the host is handed as the drive. Run as root's copy, a script that asks who owns it gets the answer `root`, and the drive comes up empty. |
+| [`usb-status.bats`](usb-status.bats) | The comparison between the checkout and root's copies. If it says "same" when they are not, an edit that never reached the board looks like a fix that does nothing. |
 | [`zephyr-sdk.bats`](zephyr-sdk.bats) | The first step of `bootstrap.sh` a stranger's board ever stopped at. It passed on every board it was developed on, and failed on a fresh one. |
 | [`build-flash.bats`](build-flash.bats) | `zbuild` and `zflash` with nothing after them: the right app, and never the unsigned image. Also that CI can run the same script the board does. |
 | [`uplink-fallback.bats`](uplink-fallback.bats) | The last automatic way back onto a network when wifi is off. Wrong one way it strands the board; wrong the other way the radio comes back on every boot. |

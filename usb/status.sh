@@ -168,6 +168,51 @@ hdr "bind guard"
 "$HERE/bind-guard.sh" status 2>/dev/null | sed 's/^/  /' ||
   val "guard" "<bind-guard.sh not found>"
 
+hdr "what root runs"
+# The services do not run the scripts in the checkout. They run root-owned
+# copies, which a provisioning step makes (install_runtime, provision/lib.sh),
+# so that writing to a home directory is not the same as changing what root
+# does at the next boot. The price is that there are two copies, and this is
+# where they are compared - because the one you just edited and the one the
+# board is running look identical from everywhere else, and a fix that "does
+# nothing" is a miserable thing to debug over a cable that is also the power.
+RUNTIME="${UNOQ_RUNTIME_DIR:-/usr/local/lib/unoq}"
+SRC="$(cd "$HERE/.." && pwd)"
+FROM="$(sed -n 's/^UNOQ_CHECKOUT=//p' "$RUNTIME/env" 2>/dev/null | tail -1)"
+# Run as root's copy itself, there is no checkout beside this file: compare
+# with the one the copies say they came from.
+[ "$SRC" -ef "$RUNTIME" ] && SRC="$FROM"
+if [ ! -d "$RUNTIME" ]; then
+  val "root's copies" "<none at $RUNTIME>"
+  echo "  NOTE: nothing has installed them. Either no step that needs them has run,"
+  echo "        or this board was provisioned before they existed and its services"
+  echo "        still run from the checkout. Re-run the steps, or bootstrap.sh."
+elif [ -z "$SRC" ] || [ ! -d "$SRC/usb" ]; then
+  val "root's copies" "$RUNTIME"
+  val "copied from" "${FROM:-<not recorded>} (not there to compare with)"
+else
+  val "root's copies" "$RUNTIME"
+  val "copied from" "${FROM:-<not recorded>}"
+  differ=""
+  while IFS= read -r rel; do
+    [ "$rel" = env ] && continue
+    cmp -s "$RUNTIME/$rel" "$SRC/$rel" || differ="$differ $rel"
+  done < <(cd "$RUNTIME" && find . -type f 2>/dev/null | sed 's|^\./||' | sort)
+  for f in "$SRC"/usb/*.sh; do
+    [ -e "$f" ] || continue
+    [ -e "$RUNTIME/usb/$(basename "$f")" ] || differ="$differ usb/$(basename "$f")"
+  done
+  if [ -z "$differ" ]; then
+    val "same as $SRC" "yes"
+  else
+    val "DIFFERENT from $SRC" "${differ# }"
+    echo "  NOTE: root is running the older copy of those. Editing the checkout does"
+    echo "        not change what the services run; a provisioning step does, and any"
+    echo "        of them refreshes every copy:"
+    echo "          sudo bash $SRC/provision/35-status-leds.sh"
+  fi
+fi
+
 hdr "recent gadget log"
 # -b covers this boot; the interesting one after an unexplained reset is
 # usually `journalctl -b -1`, which the footer points at.

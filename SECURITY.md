@@ -21,15 +21,33 @@ a couple of weeks rather than a couple of days.
 
 ## What you are trusting when you run it
 
-**The checkout is trusted as root.** Several of the services `bootstrap.sh`
-installs run as root and execute scripts *from the repository checkout in your
-home directory* — the status LEDs, the MCU link, and the USB gadget units.
-Anything that can write to that checkout can therefore run code as root at the
-next boot or cable plug, without a password prompt. That includes a
-`git pull`: updating the checkout changes what root runs. On a single-user
-development board that is a reasonable trade for being able to edit a script
-and have the board run it. It is not a design to copy onto a shared or
-deployed device.
+**Provisioning is trusted as root; the checkout, by itself, is not.** Six of
+the services `bootstrap.sh` installs run as root: the status LEDs, the MCU
+link, and the four USB gadget units. They do not execute the repository
+checkout in your home directory. Each provisioning step that installs one
+first copies the scripts root runs into `/usr/local/lib/unoq/`, owned by root
+and writable by nobody else, and the units name those copies. Editing a file
+in the checkout, a `git pull` or a branch switch therefore changes nothing
+that root runs.
+
+What does change it is running a provisioning step or `bootstrap.sh` again,
+which you do with `sudo`. That is the gate: at that moment whatever is in the
+checkout is copied and becomes what root runs at the next boot or cable plug,
+and the step prints a `changed  updated …` line for each script it replaced.
+So the checkout is still trusted *when you provision from it*. Look at what
+you pulled before you re-run a step, as you would before running any script
+with `sudo`.
+
+Three things this does not cover, so that you know:
+
+- The two services that run from the Python environment (`unoq-cpu-bars` and
+  `unoq-learn`) still run from the checkout. They run as you, not as root.
+- Commands you run yourself with `sudo` from the checkout
+  (`sudo usb/wifi.sh off`, `sudo bash share/build-image.sh`) run that copy as
+  root. That is your decision each time, with your password.
+- A board set up before this arrangement keeps its old units until each step
+  that installed them is run again. Every step ends by naming any that are
+  left. See [Provisioning](docs/reference/provisioning.md#what-root-runs).
 
 **The setup downloads and runs other people's software.** The `uv` installer,
 the Zephyr SDK, Zephyr itself, Python packages and, for the quality gates, a

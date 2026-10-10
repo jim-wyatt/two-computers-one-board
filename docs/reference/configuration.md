@@ -188,6 +188,7 @@ and setting one will mostly make a script look in the wrong place.
 | `UNOQ_GADGET_DIR` | `/sys/kernel/config/usb_gadget/unoq` | The gadget's configfs directory. |
 | `UNOQ_LED_DIR` | `/sys/class/leds` | The kernel's LED directory. |
 | `UNOQ_BIND_GUARD` | `usb/bind-guard.sh` | The guard `leds.sh` asks whether it has given up. |
+| `UNOQ_RUNTIME_DIR` | `/usr/local/lib/unoq` | Where provisioning puts [root's copies of the scripts](provisioning.md#what-root-runs), and where `usb/status.sh` looks for them. Everything in that directory that is not one of them is deleted, so it is never pointed at a directory with anything else in it. |
 | `UNOQ_AUTOIPD` | `/usr/sbin/avahi-autoipd` | The link-local address daemon. |
 | `UNOQ_NSLOOKUP` | `nslookup` | The resolver probe. |
 | `UNOQ_WATCHDOG_CONF_DIR` | `/etc/systemd/system.conf.d` | Where `80-watchdog.sh` writes its `systemd` drop-in. |
@@ -212,6 +213,15 @@ Read by the scripts under `tools/`, on whatever machine runs the quality gates.
 `UNOQ_PROJECT` is exported by [`env.sh`](../../env.sh): the path of the
 checkout, worked out from where `env.sh` itself is. The `zbuild`, `zflash`,
 `mcucon` and `hpy` shortcuts are built from it. Read it; do not set it.
+
+`UNOQ_OWNER_HOME` and `UNOQ_CHECKOUT` are not environment variables at all.
+They are two lines in `/usr/local/lib/unoq/env`, which provisioning writes
+beside [root's copies of the scripts](provisioning.md#what-root-runs): the
+home directory of the account the board belongs to, and the checkout the
+copies were made from. `usb/gadget-up.sh` reads the first to find the drive
+image, and `usb/status.sh` reads the second. The file is rewritten by every
+step that installs a root unit, so an edit to it does not last. To move the
+drive image, set `UNOQ_SHARE_IMG`.
 
 ## What is not a variable
 

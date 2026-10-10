@@ -25,6 +25,9 @@
 #
 # REVERT: systemctl disable --now unoq-leds.service &&
 #         rm /etc/systemd/system/unoq-leds.service && systemctl daemon-reload
+#         then, once no other unoq-* unit that runs as root is left installed
+#         (unoq-link, the unoq-usb-* units, unoq-uplink-fallback):
+#         rm -r /usr/local/lib/unoq
 set -uo pipefail
 # shellcheck source=provision/lib.sh
 . "$(cd "$(dirname "$0")" && pwd)/lib.sh"
@@ -47,12 +50,25 @@ else
   warn "  the service is still installed; it degrades to doing nothing"
 fi
 
+step "the scripts root runs"
+# The service runs as root, so it runs root's own copy of status/leds.sh and
+# not the one in this checkout - see "what root runs" in lib.sh. Copied before
+# the unit is installed, because install_unit checks that what the unit names
+# is there. This is also the cheapest step to run when all you want is for an
+# edited script to reach the board: it refreshes every copy, not only the LEDs'.
+scripts_changed=0
+install_root_scripts && scripts_changed=1
+
 step "systemd unit"
 # Capture the unit as it is now, so a CHANGED unit can be restarted. Without
 # this, a run that rewrites ExecStart reports "already enabled and running" and
 # leaves the old process in place - which is exactly what happened when the
 # script moved out of usb/: correct file on disk, stale process still running
 # from a path that no longer exists.
+#
+# The same goes for a changed SCRIPT, now that the unit runs a copy: the unit
+# file is byte for byte what it was, and the process is still the old leds.sh,
+# which bash read from a file that has since been replaced underneath it.
 before="$(cat /etc/systemd/system/unoq-leds.service 2>/dev/null)"
 install_unit "$PROJECT/status/unoq-leds.service"
 after="$(cat /etc/systemd/system/unoq-leds.service 2>/dev/null)"
@@ -61,6 +77,10 @@ if [ "$before" != "$after" ] && systemctl is-active --quiet unoq-leds.service; t
   systemctl restart unoq-leds.service >/dev/null 2>&1 ||
     warn "could not restart unoq-leds.service - check: journalctl -u unoq-leds"
   did "unit changed, service restarted"
+elif [ "$scripts_changed" = 1 ] && systemctl is-active --quiet unoq-leds.service; then
+  systemctl restart unoq-leds.service >/dev/null 2>&1 ||
+    warn "could not restart unoq-leds.service - check: journalctl -u unoq-leds"
+  did "scripts changed, service restarted"
 elif systemctl is-enabled --quiet unoq-leds.service 2>/dev/null &&
   systemctl is-active --quiet unoq-leds.service; then
   skip "already enabled and running"
@@ -76,5 +96,8 @@ summary
 cat <<EOF
 
 What the colours mean:  $PROJECT/status/leds.sh explain
-Learn them by watching: sudo $PROJECT/status/leds.sh test
+Learn them by watching: sudo $RUNTIME_DIR/status/leds.sh test
+
+The service runs the copy in $RUNTIME_DIR, not the one in the checkout.
+After editing a script, run this step again for the board to use it.
 EOF

@@ -739,9 +739,11 @@ sudo rm -f /var/lib/unoq/usb-bind-attempts
 sudo systemctl enable --now adbd
 ```
 
-Two things are left behind on purpose. `/etc/default/unoq-usb` holds your
+Three things are left behind on purpose. `/etc/default/unoq-usb` holds your
 settings, and `unoq-leds` reads its LED settings from the same file; delete it
-if you want none of them. The `avahi-daemon` and `avahi-autoipd` packages are
+if you want none of them. `/usr/local/lib/unoq/` holds root's copies of the
+scripts, and `unoq-link` and `unoq-leds` still run from it: see
+[What root runs](provisioning.md#what-root-runs). The `avahi-daemon` and `avahi-autoipd` packages are
 harmless without the gadget; `sudo apt-get purge avahi-autoipd` removes the
 second, and the first is what publishes `<hostname>.local` on every network,
 so you probably want to keep it.

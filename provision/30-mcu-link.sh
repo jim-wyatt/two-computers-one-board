@@ -25,8 +25,20 @@ apt_install tio
 # gpiochip1 line 70 = UART link enable (low/floating -> /dev/ttyHS1 is silent)
 #
 # These were previously held by arduino-router, which 20-dev-tools.sh disables.
+#
+# The unit runs as root, so it runs root's own copy of mcu/link-up.sh and not
+# the one in this checkout - see "what root runs" in lib.sh. The copy is made
+# first because install_unit checks that what the unit names is there. A change
+# to link-up.sh reaches the board by running this step again, and the service
+# applies it at the next boot: the lines are already driven, and re-driving
+# them mid-session is not something a provisioning run should do unasked.
 # REVERT: systemctl disable --now unoq-link.service &&
 #         rm /etc/systemd/system/unoq-link.service && systemctl daemon-reload
+#         then, once no other unoq-* unit that runs as root is left installed
+#         (unoq-leds, the unoq-usb-* units, unoq-uplink-fallback):
+#         rm -r /usr/local/lib/unoq
+step "the scripts root runs"
+install_root_scripts
 step "unoq-link.service"
 install_unit "$PROJECT/mcu/unoq-link.service"
 enable_unit unoq-link.service

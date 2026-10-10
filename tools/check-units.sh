@@ -15,8 +15,17 @@
 # systemd-analyze verify loads each unit the way the manager would, and checks
 # that what it starts exists and is executable. The units name the checkout as
 # /home/arduino/two-computers-one-board, which provision/lib.sh rewrites at
-# install time; this does the same rewrite into a temporary directory, so the
-# check is of the unit as it would be installed from THIS checkout.
+# install time - to the checkout for the units that run as the user, and to
+# root's own copies of the scripts for the units that run as root.
+#
+# So this does what a provisioning step does, into a temporary directory: it
+# calls the same install_root_scripts to make the copies, and the same
+# render_unit to rewrite each unit, and verifies the result. The scripts being
+# checked are still the ones in THIS checkout - the copies are made from it a
+# moment earlier - but a root unit is verified against the set that would
+# really be installed. A unit naming a script that exists in the repository and
+# is not in that set passes a check against the checkout and fails on the
+# board; here it fails here.
 #
 # No root, no board, and nothing is installed or started.
 set -uo pipefail
@@ -44,12 +53,25 @@ mapfile -t RULES < <(git ls-files '*.rules')
 
 # The account the units run as exists on the board and not on a laptop or a CI
 # runner. Whoever is running this stands in for it.
+#
+# In a subshell: lib.sh is written to be sourced by a provisioning step, and
+# its fail() exits. Nothing it does here needs root - the copies go under
+# $WORK, owned by whoever is running this.
 ME="$(id -un)"
-for u in "${UNITS[@]}"; do
-  sed -e "s|/home/arduino/two-computers-one-board|$PROJECT|g" \
-    -e "s|^User=.*|User=$ME|" -e "s|^Group=.*|Group=$(id -gn)|" \
-    "$u" >"$WORK/$(basename "$u")"
-done
+if ! (
+  export UNOQ_RUNTIME_DIR="$WORK/runtime" UNOQ_USER="$ME"
+  # shellcheck source=provision/lib.sh
+  . "$PROJECT/provision/lib.sh"
+  install_root_scripts >/dev/null || true # 1 only means "nothing changed"
+  for u in "${UNITS[@]}"; do
+    render_unit "$u" |
+      sed -e "s|^User=.*|User=$ME|" -e "s|^Group=.*|Group=$(id -gn)|" \
+        >"$WORK/$(basename "$u")"
+  done
+); then
+  echo "could not render the units the way provisioning would" >&2
+  exit 1
+fi
 
 rc=0
 
