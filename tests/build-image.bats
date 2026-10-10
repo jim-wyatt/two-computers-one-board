@@ -54,7 +54,7 @@ SH
   stub dpkg-query 0 "install ok installed"
   stub_body blkid <<'SH'
 case "$*" in
-  *PTTYPE*) echo dos ;;
+  *PTTYPE*) [ -e "$FLAGS/no-partition-table" ] || echo dos ;;
   *TYPE*) echo vfat ;;
 esac
 exit 0
@@ -70,8 +70,10 @@ case "$*" in
 esac
 exit 0
 SH
+  # Busy means the share's own mountpoint. The scratch mounts a migration makes
+  # for itself are nobody else's to hold.
   stub_body umount <<'SH'
-if [ -e "$FLAGS/mount-busy" ]; then
+if [ -e "$FLAGS/mount-busy" ] && [ "${*: -1}" = "$UNOQ_SHARE_MOUNT" ]; then
   echo "umount: ${*: -1}: target is busy." >&2
   exit 32
 fi
@@ -219,7 +221,7 @@ learn_active() { : >"$FLAGS/learn-active"; }
   # Exactly the one plain attempt, and no flag on it of any kind.
   [ "$(grep -c '^umount' "$STUB_LOG")" -eq 1 ]
   ran "umount $UNOQ_SHARE_MOUNT"
-  ! ran_like '^umount .*(-l|-f|--lazy|--force)'
+  ! ran_like '^umount( .*)? (-[a-zA-Z]*[lf][a-zA-Z]*|--lazy|--force)( |$)'
   # And nothing written to an image that could not be remounted.
   ! ran_like '^mount -o loop,rw'
   never_ran rsync
@@ -241,4 +243,114 @@ learn_active() { : >"$FLAGS/learn-active"; }
   [ "$status" -ne 0 ]
   [[ "$output" == *"byobu-shell"* ]]
   ! ran_like '^systemctl (stop|start) '
+}
+
+# --- the two branches that replace what is under the mount -------------------
+#
+# Remounting was the only unmount that stopped the web server and the only one
+# whose failure was looked at. An image with no partition table is replaced
+# (when it has content) or formatted (when it is new), and both of those called
+# umount themselves and carried on whatever it said - so with unoq-learn running
+# the unmount failed as busy, every time, and the image was swapped or formatted
+# underneath a mount that was still being served.
+
+# What format_and_mount shells out to. It also insists that "${loop}p1" is a
+# block device, with a test no fake on PATH can answer - so losetup hands back
+# the name of a real one with its "p1" taken off (/dev/loop1 -> /dev/loo), and
+# a machine that has no such node skips the tests that get that far. Nothing
+# is ever done to the device: every command that would touch it is a stub.
+formatting_tools() {
+  local dev
+  LOOP_STEM=""
+  for dev in /dev/*p1; do
+    [ -b "$dev" ] && LOOP_STEM="${dev%p1}" && break
+  done
+  export LOOP_STEM
+  stub sfdisk
+  stub mkfs.vfat
+  stub_body losetup <<'SH'
+case "$*" in *--show*) echo "$LOOP_STEM" ;; esac
+exit 0
+SH
+  # The script's own default is 2600 MB of sparse file; nothing here needs it.
+  export UNOQ_SHARE_SIZE_MB=1
+}
+
+needs_a_partition_node() {
+  [ -n "$LOOP_STEM" ] || skip "no block device named *p1 in /dev to stand in for the loop partition"
+}
+
+@test "a new image is not formatted under a mount that will not let go" {
+  formatting_tools
+  rm "$UNOQ_SHARE_IMG"
+  : >"$FLAGS/no-partition-table"
+  : >"$FLAGS/mount-busy"
+  learn_active
+  run bash "$BUILD"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAILED  could not unmount $UNOQ_SHARE_MOUNT before formatting"* ]]
+  [[ "$output" == *"byobu-shell"* ]]
+  # The web server was moved out of the way first, and put back.
+  stop="$(line_of '^systemctl stop unoq-learn\.service$')"
+  unmount="$(line_of "^umount $UNOQ_SHARE_MOUNT\$")"
+  [ -n "$stop" ] && [ -n "$unmount" ] && [ "$stop" -lt "$unmount" ]
+  [ "$(grep -cx 'systemctl start unoq-learn.service' "$STUB_LOG")" -eq 1 ]
+  # And nothing was written to the image.
+  never_ran sfdisk
+  never_ran losetup
+  never_ran mkfs.vfat
+  ! ran_like '^umount( .*)? (-[a-zA-Z]*[lf][a-zA-Z]*|--lazy|--force)( |$)'
+}
+
+@test "formatting a new image stops unoq-learn before the unmount, like the remount does" {
+  formatting_tools
+  needs_a_partition_node
+  rm "$UNOQ_SHARE_IMG"
+  : >"$FLAGS/no-partition-table"
+  learn_active
+  run bash "$BUILD"
+  [ "$status" -eq 0 ]
+  stop="$(line_of '^systemctl stop unoq-learn\.service$')"
+  unmount="$(line_of "^umount $UNOQ_SHARE_MOUNT\$")"
+  table="$(line_of '^sfdisk ')"
+  [ -n "$stop" ] && [ -n "$unmount" ] && [ -n "$table" ]
+  [ "$stop" -lt "$unmount" ]
+  [ "$unmount" -lt "$table" ]
+  [ "$(grep -cx 'systemctl start unoq-learn.service' "$STUB_LOG")" -eq 1 ]
+}
+
+@test "an image is not replaced under a mount that will not let go" {
+  formatting_tools
+  needs_a_partition_node
+  echo "the image the board is serving" >"$UNOQ_SHARE_IMG"
+  : >"$FLAGS/no-partition-table"
+  : >"$FLAGS/mount-busy"
+  learn_active
+  run bash "$BUILD"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAILED  could not unmount $UNOQ_SHARE_MOUNT before replacing"* ]]
+  [[ "$output" == *"byobu-shell"* ]]
+  # The whole point: the file under the live mount is the one that was there.
+  [ "$(cat "$UNOQ_SHARE_IMG")" = "the image the board is serving" ]
+  [ -f "$UNOQ_SHARE_IMG.new" ]
+  [ "$(grep -cx "umount $UNOQ_SHARE_MOUNT" "$STUB_LOG")" -eq 1 ]
+  ! ran_like '^umount( .*)? (-[a-zA-Z]*[lf][a-zA-Z]*|--lazy|--force)( |$)'
+  [ "$(grep -cx 'systemctl start unoq-learn.service' "$STUB_LOG")" -eq 1 ]
+}
+
+@test "replacing an image stops unoq-learn first, and only then swaps the file" {
+  formatting_tools
+  needs_a_partition_node
+  echo "the image the board is serving" >"$UNOQ_SHARE_IMG"
+  : >"$FLAGS/no-partition-table"
+  learn_active
+  run bash "$BUILD"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"repartitioned in place, contents preserved"* ]]
+  stop="$(line_of '^systemctl stop unoq-learn\.service$')"
+  unmount="$(line_of "^umount $UNOQ_SHARE_MOUNT\$")"
+  [ -n "$stop" ] && [ -n "$unmount" ] && [ "$stop" -lt "$unmount" ]
+  [ "$(cat "$UNOQ_SHARE_IMG")" != "the image the board is serving" ]
+  [ ! -e "$UNOQ_SHARE_IMG.new" ]
+  [ "$(grep -cx 'systemctl start unoq-learn.service' "$STUB_LOG")" -eq 1 ]
 }

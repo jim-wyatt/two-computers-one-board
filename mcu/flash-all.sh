@@ -46,13 +46,24 @@ SDK="${ZEPHYR_SDK:-$HOME/zephyr-sdk-1.0.1}"
 # it was built from are written beside it, and it is rebuilt when either has
 # moved - or when they cannot be read at all, because not knowing is not the
 # same as unchanged.
+#
+# And for a BOARD. The stamp used to name the two revisions only, so a
+# bootloader built once with BOARD=something_else was found again by a run with
+# the default: both revisions still matched, nothing was rebuilt, and another
+# board's bootloader was flashed to this one's boot partition. The board is part
+# of what it was built from, so it is part of the stamp. A stamp written before
+# this has no board in it, matches nothing, and costs one rebuild.
 rev() { git -C "$1" rev-parse HEAD 2>/dev/null || echo unknown; }
-BUILT_FROM="zephyr $(rev "$WS/zephyr") mcuboot $(rev "$WS/bootloader/mcuboot")"
+BOARD="${BOARD:-arduino_uno_q}"
+REVS="zephyr $(rev "$WS/zephyr") mcuboot $(rev "$WS/bootloader/mcuboot")"
+BUILT_FROM="board $BOARD $REVS"
 STAMP="$MCUBOOT_BUILD/built-from"
 
+# "unknown" is looked for in the revisions alone: a board is whatever the
+# caller named, and may spell anything.
 if [ ! -f "$MCUBOOT_BUILD/zephyr/zephyr.hex" ] ||
   [ "$(cat "$STAMP" 2>/dev/null)" != "$BUILT_FROM" ] ||
-  [[ "$BUILT_FROM" == *unknown* ]]; then
+  [[ "$REVS" == *unknown* ]]; then
   echo "Building MCUboot..."
   [ -n "$WEST" ] || {
     echo "no west: not in $WS/.venv/bin and not on PATH" >&2
@@ -72,7 +83,7 @@ if [ ! -f "$MCUBOOT_BUILD/zephyr/zephyr.hex" ] ||
   (
     cd "$WS" || exit 1
     ZEPHYR_TOOLCHAIN_VARIANT=zephyr \
-      "$WEST" build -b "${BOARD:-arduino_uno_q}" \
+      "$WEST" build -b "$BOARD" \
       "$WS/bootloader/mcuboot/boot/zephyr" -p always -d "$MCUBOOT_BUILD"
   )
   echo "$BUILT_FROM" >"$STAMP"

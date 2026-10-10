@@ -7,9 +7,13 @@
 #
 # Idempotent: a second run reports "already correct" and changes nothing.
 #
-# NOT YET VALIDATED ON HARDWARE. Everything below was written from what the
-# board reports and what systemd documents, and checked against faked commands
-# only (tests/watchdog.bats).
+# RUN ON ONE BOARD, WHICH IS NOT THE SAME AS VALIDATED. On one UNO Q (kernel
+# 7.0.0, 2026-10-10) the watchdog went from inactive to active at 30s, was armed
+# again after each reboot, and did not fire during the load it is most feared
+# under - see the warning below for the numbers. It has NOT been made to fire
+# on purpose: that it resets the board when PID 1 stops is what qcom_wdt and
+# systemd promise, not something anyone here has watched. Everything else is
+# checked against faked commands (tests/watchdog.bats).
 #
 # WHY
 # ---
@@ -27,9 +31,16 @@
 # A watchdog that fires during a long Zephyr build because the board swapped
 # hard is WORSE than no watchdog: it turns a slow build into a reset, half-way
 # through writing a workspace. PID 1 is what pets the device, and PID 1 on a
-# 3.6 GB board deep in swap can be late. Nobody has yet run this under that
-# load. Until someone has, treat it as an experiment: bootstrap.sh runs it only
-# with --with-watchdog, and --everything deliberately does not include it.
+# 3.6 GB board deep in swap can be late.
+#
+# It has been run under that load once. With the watchdog armed at 30s and a
+# process holding 3.35 GB, so that swap reached 1467 of 1833 MB and the load
+# passed 6, a clean firmware build and the firmware tests ran to the end with
+# no reset: 184 s, against 181 s on the same board unloaded. That is one
+# measurement on one board, and a different workload, a slower card or a longer
+# stall could still be late where that one was not. So it stays an experiment:
+# bootstrap.sh runs it only with --with-watchdog, and --everything deliberately
+# does not include it.
 #
 # HOW
 # ---
@@ -60,8 +71,8 @@
 # configuration the same way boot does, so it cannot miss the file. It is the
 # heavier of the two - state is serialised and the process replaced - and it is
 # also what every upgrade of the systemd package does, so it is well trodden.
-# It runs only when the file changed or the manager is visibly not armed, and
-# the result is then read back rather than assumed.
+# It runs only when the file changed or the manager is not running the timeout
+# the file asks for, and the result is then read back rather than assumed.
 #
 # REVERT: rm /etc/systemd/system.conf.d/50-unoq-watchdog.conf &&
 #         systemctl daemon-reexec
@@ -123,11 +134,58 @@ warn "  a guarantee, so it stays opt-in. REVERT is at the top of this script."
 manager_timeout() {
   systemctl show -p RuntimeWatchdogUSec --value 2>/dev/null
 }
+
+# span_usec <time span> - a time span as systemd prints one, in microseconds.
+# Prints nothing, and fails, for anything it does not understand.
+#
+# systemctl does not print this property the way it was written. 30s comes back
+# as "30s", but 90s comes back as "1min 30s", 60s as "1min", and a manager with
+# no watchdog says "0" - words and units, largest first, separated by spaces.
+# A bare number is the property's raw form, microseconds. "infinity" and
+# anything else unrecognised are not guessed at: not being able to read the
+# answer is not the same as the answer being right.
+span_usec() {
+  local total=0 tok n mult
+  local -a toks=()
+  read -ra toks <<<"$1"
+  [ ${#toks[@]} -gt 0 ] || return 1
+  for tok in "${toks[@]}"; do
+    [[ "$tok" =~ ^([0-9]+)([a-z]*)$ ]] || return 1
+    n="${BASH_REMATCH[1]}"
+    case "${BASH_REMATCH[2]}" in
+      "" | us) mult=1 ;;
+      ms) mult=1000 ;;
+      s) mult=1000000 ;;
+      min) mult=60000000 ;;
+      h) mult=3600000000 ;;
+      d) mult=86400000000 ;;
+      w) mult=604800000000 ;;
+      *) return 1 ;;
+    esac
+    # 10# - a leading zero is not octal here.
+    total=$((total + 10#$n * mult))
+  done
+  echo "$total"
+}
+
+# armed - PID 1 is petting the watchdog at all, at whatever interval.
+# as_requested - and at the interval THIS run was asked for.
+#
+# There used to be only the first, and it decided everything: any timeout that
+# was not zero counted as done. So a drop-in that already matched, with a
+# manager still running an older value - the file replaced by hand, or by a
+# run that died before its re-exec - skipped the re-exec and reported success,
+# on a board that would reset after a different interval from the one named in
+# the last line this script prints. The comparison is of the two numbers.
+WANT_USEC=$((10#$TIMEOUT * 1000000))
 armed() {
   case "$(manager_timeout)" in
     '' | 0) return 1 ;;
   esac
   return 0
+}
+as_requested() {
+  [ "$(span_usec "$(manager_timeout)")" = "$WANT_USEC" ]
 }
 
 # REVERT: rm /etc/systemd/system.conf.d/50-unoq-watchdog.conf && systemctl daemon-reexec
@@ -142,9 +200,10 @@ RuntimeWatchdogSec=${TIMEOUT}s
 RebootWatchdogSec=${TIMEOUT}s
 EOF
   REEXEC=1
-elif ! armed; then
-  # The file is right and the manager is not using it: an earlier run was
-  # interrupted between the two. Re-running is the recovery path, so finish it.
+elif ! as_requested; then
+  # The file is right and the manager is not using it - not armed at all, or
+  # armed with some other timeout: an earlier run was interrupted between the
+  # two. Re-running is the recovery path, so finish it.
   REEXEC=1
 fi
 
@@ -156,10 +215,19 @@ if [ "$REEXEC" = 1 ]; then
 fi
 
 step "verify"
-if armed; then
+if as_requested; then
   skip "systemd is petting the watchdog: RuntimeWatchdogUSec=$(manager_timeout)"
   STATE="$(cat "$DEV/state" 2>/dev/null || true)"
   [ -z "$STATE" ] || echo "           $(basename "$DEV") state: $STATE"
+elif armed; then
+  # Armed, and not as asked. The board will reset - after an interval nobody
+  # chose in this run - so this is a failure and not a nearly-right success.
+  fail "systemd is running a watchdog, but not the ${TIMEOUT}s one this run asked for:
+  RuntimeWatchdogUSec=$(manager_timeout)
+  $CONF asks for ${TIMEOUT}s and has been read. Something else is setting it:
+    systemd-analyze cat-config systemd/system.conf | grep -n -i watchdog
+  The board resets after the interval systemd reports, not the one in that file.
+  To back out:  rm $CONF && systemctl daemon-reexec"
 else
   fail "systemd does not report a runtime watchdog (RuntimeWatchdogUSec=$(manager_timeout)).
   $CONF is in place, so the watchdog will be armed at the next boot whether

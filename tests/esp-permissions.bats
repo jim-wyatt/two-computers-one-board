@@ -13,13 +13,21 @@
 # mount can refuse ends with fstab back as the run found it.
 #
 # The fake `mount` below ignores mask changes on a remount unless told
-# otherwise, because that is what the FAT driver is expected to do. A fake
-# that applied them would make the unmount path - the one most likely to be
-# taken on the board - untested.
+# otherwise, because that is what the FAT driver does: on the one board this
+# step has run on, a plain remount kept the old masks and the step went on to
+# unmount and mount again. A fake that applied them would leave that path - the
+# one a board actually takes - with nothing exercising it here.
 #
-# What this cannot show: that the kernel on the board behaves that way, that
-# /boot/efi can be unmounted while the board runs, or that nothing non-root
-# reads from it. That is the board's job.
+# The fake also reports the masks the way the driver arrives at them: options
+# read left to right, umask= setting both, and what is printed being what is in
+# effect. A fake that looked only for the text "fmask=0177" in fstab would call
+# a line working that mounts world-readable.
+#
+# What this cannot show: that a kernel behaves the way the fakes do. One board
+# (kernel 7.0.0) has been watched doing the remount-then-unmount part, come up
+# with the seed file at 600, and rebooted with it. Nobody has put a umask= line
+# through a board, and nothing here or there shows that no non-root program
+# reads /boot/efi. One board is an observation, not a guarantee.
 
 # The entry exactly as the board has it today: tabs, and a trailing slash on
 # the mount point.
@@ -66,14 +74,27 @@ esac
 exit 0
 SH
 
-  # What a fresh mount of the ESP would report, given fstab as it is now.
+  # What a fresh mount of the ESP would report, given fstab as it is now. The
+  # options are applied in the order written, as the FAT driver applies them:
+  # umask= sets both masks, so whichever of the three comes last wins. Then
+  # both masks are printed, whether or not fstab named them, and umask never is.
   cat >"$STUB_DIR/esp-from-fstab" <<'SH'
 #!/bin/bash
 opts="$(awk '$1 !~ /^#/ && $2 ~ /^\/boot\/efi\/?$/ { print $4 }' "$UNOQ_FSTAB")"
-case ",$opts," in
-  *,fmask=0177,*) echo "rw,relatime,fmask=0177,dmask=0077,codepage=437" ;;
-  *) echo "rw,relatime,fmask=0022,dmask=0022,codepage=437" ;;
-esac
+f=0022
+d=0022
+IFS=, read -ra list <<<"$opts"
+for o in "${list[@]}"; do
+  case "$o" in
+    fmask=*) f="${o#fmask=}" ;;
+    dmask=*) d="${o#dmask=}" ;;
+    umask=*)
+      f="${o#umask=}"
+      d="$f"
+      ;;
+  esac
+done
+echo "rw,relatime,fmask=$f,dmask=$d,codepage=437"
 SH
   chmod +x "$STUB_DIR/esp-from-fstab"
 
@@ -187,24 +208,74 @@ no_strays() { [ -z "$(find "$BATS_TEST_TMPDIR/etc" -name 'fstab.unoq-esp-*')" ];
   expect_only_line_changed "$line" 'UUID=68CE-99C4  /boot/efi/   vfat  rw,noatime,utf8,fmask=0177,dmask=0077   0 2'
 }
 
-@test "existing fmask and dmask are replaced where they stand, not duplicated" {
+@test "existing fmask and dmask are taken out and the pair goes last, not duplicated" {
+  # They used to be replaced where they stood. Where they stand is not ours to
+  # trust: see the umask tests below. Everything else keeps its order.
   line=$'UUID=68CE-99C4\t/boot/efi/\tvfat\tumask=0077,fmask=0022,dmask=0022,utf8\t0\t2'
   fstab_with "$line"
   mounted_stock
   run bash "$ESP"
   [ "$status" -eq 0 ]
-  expect_only_line_changed "$line" $'UUID=68CE-99C4\t/boot/efi/\tvfat\tumask=0077,fmask=0177,dmask=0077,utf8\t0\t2'
+  expect_only_line_changed "$line" $'UUID=68CE-99C4\t/boot/efi/\tvfat\tumask=0077,utf8,fmask=0177,dmask=0077\t0\t2'
   [ "$(grep -o 'fmask=' <<<"$(grep 'boot/efi/' "$UNOQ_FSTAB" | grep -v '^#')" | wc -l)" -eq 1 ]
   [ "$(grep -o 'dmask=' <<<"$(grep 'boot/efi/' "$UNOQ_FSTAB" | grep -v '^#')" | wc -l)" -eq 1 ]
 }
 
-@test "a line with only one of the two masks gets the other, and the first corrected" {
+@test "a line with only one of the two masks ends with both, and the old one is gone" {
   line=$'UUID=68CE-99C4\t/boot/efi/\tvfat\tdmask=0022,defaults\t0\t2'
   fstab_with "$line"
   mounted_stock
   run bash "$ESP"
   [ "$status" -eq 0 ]
-  expect_only_line_changed "$line" $'UUID=68CE-99C4\t/boot/efi/\tvfat\tdmask=0077,defaults,fmask=0177\t0\t2'
+  expect_only_line_changed "$line" $'UUID=68CE-99C4\t/boot/efi/\tvfat\tdefaults,fmask=0177,dmask=0077\t0\t2'
+}
+
+@test "masks given twice are all taken out: one pair is left, at the end" {
+  line=$'UUID=68CE-99C4\t/boot/efi/\tvfat\tfmask=0022,rw,fmask=0133,dmask=0022,dmask=0022\t0\t2'
+  fstab_with "$line"
+  mounted_stock
+  run bash "$ESP"
+  [ "$status" -eq 0 ]
+  expect_only_line_changed "$line" $'UUID=68CE-99C4\t/boot/efi/\tvfat\trw,fmask=0177,dmask=0077\t0\t2'
+}
+
+# --- a umask= that comes after the masks -----------------------------------
+#
+# FAT reads its options in order and umask= sets both masks, so in
+# fmask=0177,dmask=0077,umask=0022 the partition mounts 0022 whatever the first
+# two say. Replacing the masks where they stood produced exactly that line.
+
+@test "a umask after the masks cannot override them: the pair is written after it" {
+  line=$'UUID=68CE-99C4\t/boot/efi/\tvfat\tfmask=0022,dmask=0022,umask=0022\t0\t2'
+  fstab_with "$line"
+  mounted_stock
+  run bash "$ESP"
+  [ "$status" -eq 0 ]
+  expect_only_line_changed "$line" $'UUID=68CE-99C4\t/boot/efi/\tvfat\tumask=0022,fmask=0177,dmask=0077\t0\t2'
+  # And it mounts that way, by the fake's reading of the same rule.
+  [[ "$(cat "$FLAGS/live")" == *"fmask=0177,dmask=0077"* ]]
+}
+
+@test "the same line with the ESP not mounted is still written right, with nothing to check it against" {
+  # The case the live check cannot save: no mount to read back, so the run ends
+  # in a warning and exit 0 whatever was written.
+  line=$'UUID=68CE-99C4\t/boot/efi/\tvfat\tfmask=0022,dmask=0022,umask=0022\t0\t2'
+  fstab_with "$line"
+  run bash "$ESP"
+  [ "$status" -eq 0 ]
+  expect_only_line_changed "$line" $'UUID=68CE-99C4\t/boot/efi/\tvfat\tumask=0022,fmask=0177,dmask=0077\t0\t2'
+  [ "$("$STUB_DIR/esp-from-fstab")" = "rw,relatime,fmask=0177,dmask=0077,codepage=437" ]
+}
+
+@test "our own values followed by a umask are not mistaken for already correct" {
+  # What the earlier version of this step left behind on such a line.
+  line=$'UUID=68CE-99C4\t/boot/efi/\tvfat\tdefaults,fmask=0177,dmask=0077,umask=0022\t0\t2'
+  fstab_with "$line"
+  mounted_stock
+  run bash "$ESP"
+  [ "$status" -eq 0 ]
+  expect_only_line_changed "$line" $'UUID=68CE-99C4\t/boot/efi/\tvfat\tdefaults,umask=0022,fmask=0177,dmask=0077\t0\t2'
+  [[ "$(cat "$FLAGS/live")" == *"fmask=0177,dmask=0077"* ]]
 }
 
 @test "a line with no dump and pass fields, and a file with no final newline, both survive" {
@@ -218,6 +289,21 @@ no_strays() { [ -z "$(find "$BATS_TEST_TMPDIR/etc" -name 'fstab.unoq-esp-*')" ];
 }
 
 # --- idempotence ------------------------------------------------------------
+
+@test "the line this step wrote on the board is already correct: a re-run there is a no-op" {
+  # Byte for byte what /etc/fstab holds on the board that has run this. Moving
+  # the masks to the end must not make that a line to rewrite.
+  fstab_with $'UUID=68CE-99C4\t/boot/efi/\tvfat\tdefaults,fmask=0177,dmask=0077\t0\t2'
+  echo "rw,relatime,fmask=0177,dmask=0077,codepage=437" >"$FLAGS/live"
+  run bash "$ESP"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"0 changed"* ]]
+  unchanged
+  [ ! -e "$BACKUP" ]
+  never_ran mount
+  never_ran umount
+  never_ran systemctl
+}
 
 @test "already correct: nothing changes, no backup, no remount, no reload" {
   fstab_with "$REAL_FIXED"
@@ -405,7 +491,7 @@ no_strays() { [ -z "$(find "$BATS_TEST_TMPDIR/etc" -name 'fstab.unoq-esp-*')" ];
   [ "$status" -ne 0 ]
   unchanged
   ran "umount /boot/efi"
-  refute ran_like '^umount .*-[a-zA-Z]*[lf]'
+  refute ran_like '^umount( .*)? (-[a-zA-Z]*[lf][a-zA-Z]*|--lazy|--force)( |$)'
   [[ "$output" == *"fuser -vm /boot/efi"* ]]
   # Still mounted, with what it had.
   [[ "$(cat "$FLAGS/live")" == *"fmask=0022"* ]]

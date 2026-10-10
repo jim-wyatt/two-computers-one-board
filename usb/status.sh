@@ -193,18 +193,80 @@ elif [ -z "$SRC" ] || [ ! -d "$SRC/usb" ]; then
 else
   val "root's copies" "$RUNTIME"
   val "copied from" "${FROM:-<not recorded>}"
+  # WHAT IS COMPARED, AND WHAT COUNTS AS A COPY
+  #
+  # The set is worked out from the checkout - the same three places
+  # runtime_files (provision/lib.sh) names - and each of root's entries then
+  # has to be a regular file of its own before its bytes are even looked at.
+  #
+  # It used to be worked out from root's directory, with `find -type f`, and
+  # that is the wrong way round: a script that has been replaced by a symbolic
+  # link is not a regular file, so find never listed it, nothing compared it,
+  # and the check further down only asked whether the path existed - which a
+  # link does. Link usb/usb-dhcp.sh back to the checkout and this section said
+  # "same ... yes" about a board where root was once again executing a file in
+  # somebody's home directory, the exact thing the copies exist to end. cmp
+  # would not have helped either: it follows links, and a file equals itself.
+  #
+  # So: "same" now means every expected script is there, is a file and not a
+  # link, is reached through no link on the way down, has the checkout's
+  # bytes - and that nothing else is in the directory.
   differ=""
-  while IFS= read -r rel; do
-    [ "$rel" = env ] && continue
-    cmp -s "$RUNTIME/$rel" "$SRC/$rel" || differ="$differ $rel"
-  done < <(cd "$RUNTIME" && find . -type f 2>/dev/null | sed 's|^\./||' | sort)
+  notfile=""
+  expected="mcu/link-up.sh status/leds.sh"
   for f in "$SRC"/usb/*.sh; do
     [ -e "$f" ] || continue
-    [ -e "$RUNTIME/usb/$(basename "$f")" ] || differ="$differ usb/$(basename "$f")"
+    expected="$expected usb/$(basename "$f")"
   done
-  if [ -z "$differ" ]; then
+
+  # linked_above <relative path> - true if the directory holding root's copy of
+  # it, or root's directory itself, is a symbolic link. usb -> ~/checkout/usb
+  # makes every file under it look like a perfectly ordinary copy.
+  linked_above() {
+    local d
+    [ -L "$RUNTIME" ] && return 0
+    d="$(dirname "$1")"
+    while [ "$d" != . ]; do
+      [ -L "$RUNTIME/$d" ] && return 0
+      d="$(dirname "$d")"
+    done
+    return 1
+  }
+
+  for rel in $expected; do
+    if linked_above "$rel"; then
+      notfile="$notfile $rel(reached-through-a-link)"
+    elif [ -L "$RUNTIME/$rel" ]; then
+      notfile="$notfile $rel(a-link)"
+    elif [ ! -e "$RUNTIME/$rel" ]; then
+      differ="$differ $rel"
+    elif [ ! -f "$RUNTIME/$rel" ]; then
+      notfile="$notfile $rel(not-a-file)"
+    else
+      cmp -s "$RUNTIME/$rel" "$SRC/$rel" || differ="$differ $rel"
+    fi
+  done
+  # And the other direction: whatever root's directory holds that the checkout
+  # no longer has. Everything that is not a directory, so a stray link counts.
+  while IFS= read -r rel; do
+    [ "$rel" = env ] && continue
+    case " $expected " in *" $rel "*) continue ;; esac
+    differ="$differ $rel"
+  done < <(cd "$RUNTIME" && find . -mindepth 1 ! -type d 2>/dev/null | sed 's|^\./||' | sort)
+
+  if [ -z "$differ" ] && [ -z "$notfile" ]; then
     val "same as $SRC" "yes"
-  else
+  fi
+  if [ -n "$notfile" ]; then
+    val "NOT ROOT'S OWN FILES" "${notfile# }"
+    echo "  NOTE: those are not copies. Root runs whatever each one leads to, which"
+    echo "        may be a file anyone can edit - look before trusting this board:"
+    echo "          ls -l $RUNTIME $RUNTIME/usb"
+    echo "        A provisioning step replaces a linked script with a real copy,"
+    echo "        and refuses a linked directory until it has been removed:"
+    echo "          sudo bash $SRC/provision/35-status-leds.sh"
+  fi
+  if [ -n "$differ" ]; then
     val "DIFFERENT from $SRC" "${differ# }"
     echo "  NOTE: root is running the older copy of those. Editing the checkout does"
     echo "        not change what the services run; a provisioning step does, and any"

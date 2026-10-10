@@ -23,8 +23,9 @@
 #   - switch the USB port to peripheral mode (--with-usb-gadget; it drops the
 #     USB host port and every device on it, including a network dongle)
 #   - arm the hardware watchdog (--with-watchdog) or tighten the EFI
-#     partition's permissions (--with-esp-lockdown); neither has been validated
-#     on hardware yet, and --everything does not include them
+#     partition's permissions (--with-esp-lockdown). Each has been run on one
+#     board, through reboots, and that is all: one can reset the board and the
+#     other edits the fstab entry it boots from, so --everything leaves both out
 #
 # TIME AND SPACE: ~40-60 minutes on a cold board, almost all of it the Zephyr
 # workspace (~3.3 GB) and SDK (~1 GB). Make sure you have ~6 GB free.
@@ -44,7 +45,7 @@ WITH_ESP_LOCKDOWN=0
 SKIP_MCU=0
 
 usage() {
-  sed -n '2,33p' "$0"
+  sed -n '2,31p' "$0"
   cat <<'EOF'
 
 Options:
@@ -55,11 +56,13 @@ Options:
   --with-learning     also serve the learning content over HTTP (70)
   --everything        all of the above
 
-Each run on one board only, and NOT part of --everything:
+Each has been run on one board only, and is NOT part of --everything:
   --with-watchdog     also arm the hardware watchdog (80): the board resets if
-                      systemd stops for 30s.
+                      systemd stops for 30s. It came through one firmware build
+                      under heavy swap without firing; it has never been made
+                      to fire on purpose.
   --with-esp-lockdown also make the EFI partition root-only (85). Edits the
-                      /etc/fstab entry the board boots from.
+                      /etc/fstab entry the board boots from, backed up first.
 
   --skip-mcu          do not build or flash the MCU firmware at the end
   -h, --help          this
@@ -75,10 +78,12 @@ for arg in "$@"; do
     --with-watchdog) WITH_WATCHDOG=1 ;;
     --with-esp-lockdown) WITH_ESP_LOCKDOWN=1 ;;
     # --everything does NOT set the two above, on purpose. It means "every
-    # extra this project stands behind", and those two have only ever run
-    # against faked commands: one can reset the board mid-build, the other
-    # edits the fstab entry it boots from. Each has to be asked for by name
-    # until someone has watched it work on a board.
+    # extra this project stands behind", and for those two the evidence is one
+    # board: each ran there and came back from reboots, the watchdog through a
+    # firmware build with swap nearly full. That is a board it works on, not a
+    # reason to switch it on for everybody - one can reset the board mid-build,
+    # the other edits the fstab entry it boots from. Each has to be asked for
+    # by name until it has been seen on more than one.
     --everything)
       WITH_PURGE=1
       WITH_CPU_BARS=1
@@ -130,7 +135,7 @@ echo "  - install the Zephyr SDK and workspace into $HOME (~4.5 GB)"
 [ "$WITH_USB_GADGET" = 1 ] &&
   echo "  - give up the USB host port and everything plugged into it (--with-usb-gadget)"
 [ "$WITH_WATCHDOG" = 1 ] &&
-  echo "  - arm the hardware watchdog: the board RESETS ITSELF if systemd stalls (--with-watchdog; untested under load)"
+  echo "  - arm the hardware watchdog: the board RESETS ITSELF if systemd stalls (--with-watchdog; held through one loaded build, on one board)"
 [ "$WITH_ESP_LOCKDOWN" = 1 ] &&
   echo "  - edit the /boot/efi line of /etc/fstab, the partition this board boots from (--with-esp-lockdown; backed up first)"
 echo
@@ -232,17 +237,33 @@ run_step "35  status LEDs (root)" sudo "$PROJECT/provision/35-status-leds.sh"
 # a build that had been failing for two months. So it is remembered, the
 # reason is shown where it happened, and the run ends by saying so and
 # exiting non-zero.
+#
+# WHAT IS ON THE CHIP is remembered separately, because the two failures leave
+# it in different states and the closing message used to give one answer for
+# both: "the microcontroller is running whatever it ran before". True of a
+# build that failed - nothing was written. Not something anyone can promise of
+# a flash that failed: flash-all.sh writes the bootloader and then the
+# application, as two operations, and stopping in or between them can leave a
+# new bootloader in front of an old application, or half of either.
 FIRMWARE_PROBLEM=""
+FIRMWARE_STATE=""
+# /tmp unless TMPDIR says otherwise, which is what lets tests/bootstrap.bats
+# run this without writing over a real run's logs.
+BUILD_LOG="${TMPDIR:-/tmp}/zbuild-bootstrap.log"
+FLASH_LOG="${TMPDIR:-/tmp}/zflash-bootstrap.log"
 
 if [ "$SKIP_MCU" = 0 ]; then
   printf '\n%s########## MCU firmware ##########%s\n' "$P_BOLD" "$P_OFF"
   step "build"
-  if bash "$PROJECT/mcu/zbuild.sh" "$PROJECT/mcu/app" >/tmp/zbuild-bootstrap.log 2>&1; then
-    did "firmware built (log: /tmp/zbuild-bootstrap.log)"
+  if bash "$PROJECT/mcu/zbuild.sh" "$PROJECT/mcu/app" >"$BUILD_LOG" 2>&1; then
+    did "firmware built (log: $BUILD_LOG)"
   else
-    warn "build failed - skipping the flash. The end of /tmp/zbuild-bootstrap.log:"
-    tail -n 6 /tmp/zbuild-bootstrap.log | sed 's/^/          /' >&2
+    warn "build failed - skipping the flash. The end of $BUILD_LOG:"
+    tail -n 6 "$BUILD_LOG" | sed 's/^/          /' >&2
     FIRMWARE_PROBLEM="the firmware did not build"
+    FIRMWARE_STATE="Nothing was written to the microcontroller: it is running whatever it
+        ran before. Fix the cause shown under 'MCU firmware' above and run
+        this again."
     SKIP_MCU=1
   fi
 fi
@@ -270,13 +291,19 @@ if [ "$SKIP_MCU" = 0 ]; then
   # An MCUboot build must be flashed as the full chain the first time: the
   # signed app alone lands in slot0 with no bootloader in front of it.
   # flash-all.sh derives the workspace itself.
-  if bash "$PROJECT/mcu/flash-all.sh" >/tmp/zflash-bootstrap.log 2>&1; then
+  if bash "$PROJECT/mcu/flash-all.sh" >"$FLASH_LOG" 2>&1; then
     did "MCUboot + application flashed"
   else
-    warn "flash failed. The end of /tmp/zflash-bootstrap.log:"
-    tail -n 6 /tmp/zflash-bootstrap.log | sed 's/^/          /' >&2
+    warn "flash failed. The end of $FLASH_LOG:"
+    tail -n 6 "$FLASH_LOG" | sed 's/^/          /' >&2
     FIRMWARE_PROBLEM="the firmware was built but could not be flashed"
-    warn "recover with: $PROJECT/mcu/flash-all.sh"
+    FIRMWARE_STATE="DO NOT ASSUME THE MICROCONTROLLER IS AS IT WAS. The bootloader and the
+        application are written one after the other, and a flash that stops
+        part-way can leave it with one and not the other, or not booting.
+        $FLASH_LOG shows how far it got. Once the cause is
+        fixed, write both again:
+          $PROJECT/mcu/flash-all.sh"
+    warn "the microcontroller may be partly written. Recover with: $PROJECT/mcu/flash-all.sh"
   fi
 fi
 
@@ -335,6 +362,5 @@ warn_stale_root_units
 
 if [ -n "$FIRMWARE_PROBLEM" ]; then
   fail "everything above is in place, but $FIRMWARE_PROBLEM.
-        The microcontroller is running whatever it ran before. Fix the cause
-        shown under 'MCU firmware' above and run this again."
+        $FIRMWARE_STATE"
 fi

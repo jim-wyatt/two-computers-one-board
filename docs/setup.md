@@ -158,9 +158,26 @@ try. Then:
     ./bootstrap.sh
     ```
 
-    On a correctly set up board every line is `ok` and every stage ends
-    `0 changed`. It is quick, because there is nothing to do. (The firmware is
-    built and flashed again each time; `--skip-mcu` leaves that out.)
+    On a correctly set up board every line of every provisioning stage — the
+    ones with a number in the banner — is `ok`, and each of them ends
+    `0 changed`. Those are idempotent: there is nothing to do, so they are
+    quick.
+
+    Two parts of the run are not, and report `changed` every time:
+
+    - **The firmware.** The `MCU firmware` section builds it and flashes it
+      again on every run, and says `changed` for each. That is deliberate: it
+      is how a board ends up running the firmware in the checkout.
+    - **The drive image**, if you asked for `--with-learning` or
+      `--with-usb-gadget`. Stage `65` renders the documentation onto it again
+      each time.
+
+    For a run that is nothing but `ok`, leave the firmware out and do not ask
+    for the drive:
+
+    ```bash
+    ./bootstrap.sh --skip-mcu
+    ```
 
 2. **Look at the board**, if you set it up with `--with-cpu-bars`. Four bars of
    light on the LED grid, moving. That is Linux measuring its four processor

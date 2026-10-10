@@ -120,9 +120,15 @@ echo "  build dir: $BUILD"
 # and says so. Only when the caller has not already asked for a pristine build,
 # and only by the path recorded in the cache - a missing or unreadable cache is
 # west's business, not this script's.
+#
+# -r as well as -f, and the read is allowed to fail. The test used to be -f
+# alone, which a cache this user may not read passes: sed then failed, and under
+# `set -e` with pipefail a failed assignment ends the script on the spot - so
+# the one case the paragraph above hands to west never reached west, and died
+# here with sed's message instead of west's.
 STALE=()
-if [ -f "$BUILD/CMakeCache.txt" ]; then
-  was="$(sed -n 's/^APPLICATION_SOURCE_DIR:PATH=//p' "$BUILD/CMakeCache.txt" | head -1)"
+if [ -f "$BUILD/CMakeCache.txt" ] && [ -r "$BUILD/CMakeCache.txt" ]; then
+  was="$(sed -n 's/^APPLICATION_SOURCE_DIR:PATH=//p' "$BUILD/CMakeCache.txt" 2>/dev/null | head -1)" || was=""
   case " $* " in
     *" -p "* | *" --pristine"*) ;;
     *)

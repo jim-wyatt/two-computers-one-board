@@ -147,8 +147,14 @@ One practical consequence today: **do not use `/dev/spidev0.0` as if it were a
 free bus for your own peripherals.** Whatever you clock out of it goes to the
 STM32.
 
-`flash.sh` calls this automatically, and `unoq.MCU` calls it on construction.
-`unoq-link.service` applies it at boot.
+### `link-up.sh` is run for you
+
+Back to the two GPIO lines, BOOT0 and the link enable, and the script that sets
+them. You rarely need to run
+[`mcu/link-up.sh`](https://github.com/jim-wyatt/two-computers-one-board/blob/main/mcu/link-up.sh)
+yourself: `mcu/flash.sh` runs it before every flash, `unoq.MCU` runs it on
+construction, and `unoq-link.service` runs it at boot. All it does is drive
+those two lines. None of that configures or uses the SPI link described above.
 
 Pin state **persists after the `gpioset` process exits** — the SoC pinctrl keeps
 driving the last value — which is why a one-shot is enough and no daemon is

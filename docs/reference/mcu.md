@@ -200,7 +200,8 @@ The serial tasks (FOTA, confirm, console, status) need the port: stop
 Use `native_sim/native/64`; plain `native_sim` is 32-bit and fails on aarch64
 with a `CONFIG_64BIT` error.
 
-Two suites run, 29 cases in total:
+Three suites run. `ztest.sh` ends by saying how many cases passed; the number
+is not repeated here, where it would be wrong the next time one was added.
 
 - **`bars`** compiles [`mcu/app/src/bars.c`](../../mcu/app/src/bars.c) — the
   firmware's own rasteriser, not a copy — and checks the drawing rules on the
@@ -211,6 +212,12 @@ Two suites run, 29 cases in total:
 - **`link_protocol`** tests
   [`mcu/app/include/app_proto.h`](../../mcu/app/include/app_proto.h), the contract
   that `main.c`, these tests and `unoq/mcu.py` all depend on agreeing.
+- **`status_leds`** tests the three functions in
+  [`mcu/app/include/status_leds.h`](../../mcu/app/include/status_leds.h) that
+  decide what LED 3 and LED 4 show: which colour and which rhythm each state
+  gets, and that no two states of one LED share a rhythm. They touch no
+  hardware, which is why they can run on the host. One of them holds the fast
+  blink under three flashes a second.
 
 ### The MCU suite tests the firmware, not a copy of it
 

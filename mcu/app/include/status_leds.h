@@ -55,8 +55,8 @@
  * status/leds.sh uses for LED 1 and LED 2, and the rhythm alone identifies it:
  *
  *   steady       fine
- *   slow blink   in progress or on probation - once a second
- *   fast blink   a fault - four times a second
+ *   slow blink   in progress or on probation - once every two seconds
+ *   fast blink   a fault - twice a second
  *
  * Which state gets which is decided by the three small functions at the bottom
  * of this file. They touch no hardware, so mcu/tests/status_leds/ runs them on

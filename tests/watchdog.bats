@@ -15,7 +15,11 @@
 # What this cannot show: that qcom_wdt accepts the timeout, that the board
 # actually resets when PID 1 stops, or - the question the issue leaves open -
 # that it does NOT reset during a long build in deep swap. That is the board's
-# job, and nobody has done it yet.
+# job. The first and the last have been seen once, on one board: armed at 30s,
+# a clean firmware build and the firmware tests finished with swap at 1467 of
+# 1833 MB and the load above 6, in 184 s against 181 s unloaded. One
+# measurement, which no fake here stands in for. The middle one has not been
+# tried at all: nobody has made the watchdog fire on purpose.
 
 setup() {
   load helpers/stub
@@ -43,21 +47,35 @@ exec /usr/bin/id "$@"
 SH
 
   # A manager with a memory: it reports 0 until it has been re-executed, as
-  # the board does today, and the re-exec is what arms it. A test changes
-  # that by touching a flag, not by rewriting the fake.
+  # a stock board does, and the re-exec is what makes it read the drop-in. What
+  # it is running is the content of $FLAGS/armed, so a test changes that by
+  # writing a file, not by rewriting the fake.
+  #
+  # It answers the way systemctl does, which is not the way the value was
+  # written: 30s is "30s", but 60s is "1min" and 90s is "1min 30s".
   stub_body systemctl <<'SH'
 case "$1" in
   show)
-    [ -e "$FLAGS/armed" ] && echo 30s || echo 0
+    [ -e "$FLAGS/armed" ] && cat "$FLAGS/armed" || echo 0
     ;;
   daemon-reexec)
     [ -e "$FLAGS/reexec-fails" ] && exit 1
-    [ -e "$FLAGS/reexec-has-no-effect" ] || : >"$FLAGS/armed"
+    [ -e "$FLAGS/reexec-has-no-effect" ] && exit 0
+    n="$(sed -n 's/^RuntimeWatchdogSec=\([0-9]*\)s$/\1/p' "$UNOQ_WATCHDOG_CONF_DIR/50-unoq-watchdog.conf")"
+    m=$((n / 60))
+    s=$((n % 60))
+    span=""
+    [ "$m" -gt 0 ] && span="${m}min"
+    [ "$s" -gt 0 ] && span="${span:+$span }${s}s"
+    echo "$span" >"$FLAGS/armed"
     ;;
 esac
 exit 0
 SH
 }
+
+# manager_runs <span> - PID 1 is running this timeout, whatever the file says.
+manager_runs() { echo "$1" >"$FLAGS/armed"; }
 
 # The device as the board reports it today.
 have_device() {
@@ -243,4 +261,75 @@ SH
   UNOQ_WATCHDOG_SEC=32 run bash "$WATCHDOG"
   [ "$status" -eq 0 ]
   grep -qx 'RebootWatchdogSec=32s' "$CONF"
+}
+
+# --- armed is not the same as armed as asked ---------------------------------
+#
+# "Not zero" used to be the whole test. A manager running some other timeout
+# than the one in the file passed it, the re-exec was skipped, and the step
+# said the board resets after an interval it does not reset after.
+
+@test "file in place but the manager runs an older timeout: re-executed, and ends on the one asked for" {
+  have_device
+  run bash "$WATCHDOG"
+  [ "$status" -eq 0 ]
+  manager_runs 20s # the drop-in was replaced and PID 1 never told
+
+  run bash "$WATCHDOG"
+  [ "$status" -eq 0 ]
+  [ "$(reexecs)" -eq 2 ]
+  [[ "$output" == *"1 changed"* ]]
+  [[ "$output" == *"RuntimeWatchdogUSec=30s"* ]]
+}
+
+@test "a manager that keeps a different timeout after the re-exec is a failure naming both" {
+  have_device
+  manager_runs 20s
+  : >"$FLAGS/reexec-has-no-effect"
+  run bash "$WATCHDOG"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAILED"* ]]
+  [[ "$output" == *"not the 30s one"* ]]
+  [[ "$output" == *"RuntimeWatchdogUSec=20s"* ]]
+  [[ "$output" == *"rm $CONF"* ]]
+  [[ "$output" != *"The board now resets"* ]]
+}
+
+@test "a timeout systemd prints in minutes is recognised as the one asked for" {
+  # 90s is reported as "1min 30s". Read as text it never equals 90s, and every
+  # run would re-execute PID 1 and then fail.
+  have_device
+  UNOQ_WATCHDOG_SEC=90 run bash "$WATCHDOG"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FLAGS/armed")" = "1min 30s" ]
+  [[ "$output" == *"RuntimeWatchdogUSec=1min 30s"* ]]
+
+  UNOQ_WATCHDOG_SEC=90 run bash "$WATCHDOG"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"0 changed"* ]]
+  [ "$(reexecs)" -eq 1 ]
+}
+
+@test "the same interval in other spellings is the same interval" {
+  have_device
+  UNOQ_WATCHDOG_SEC=60 run bash "$WATCHDOG"
+  [ "$status" -eq 0 ]
+  for span in 1min 60s "59s 1000ms" 60000000; do
+    manager_runs "$span"
+    UNOQ_WATCHDOG_SEC=60 run bash "$WATCHDOG"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"0 changed"* ]]
+  done
+  [ "$(reexecs)" -eq 1 ]
+}
+
+@test "an answer that cannot be read is not taken for the one asked for" {
+  have_device
+  : >"$FLAGS/reexec-has-no-effect"
+  for span in infinity "30 seconds" 30.5s; do
+    manager_runs "$span"
+    run bash "$WATCHDOG"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"RuntimeWatchdogUSec=$span"* ]]
+  done
 }
