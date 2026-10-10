@@ -177,6 +177,7 @@ jobs:
           PR: ${{ github.event.number }}
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
+          FORCED: ${{ github.event.forced }}
         run: |
           # WHAT CHANGED, ON A PUSH AS WELL AS ON A PULL REQUEST
           #
@@ -217,6 +218,11 @@ jobs:
               files=$(grep -vx F <<<"$listing" || true)
               ;;
             push)
+              # A forced push is not a step forward from BEFORE, and the compare
+              # endpoint answers with merge-base semantics: rewind main past a
+              # firmware change and it lists nothing under mcu/, because from
+              # the common ancestor's side nothing there was added.
+              [ "$FORCED" != true ] || all "a forced push"
               case "$BEFORE" in
                 '' | 0000000000000000000000000000000000000000) all "no previous commit to compare with" ;;
               esac

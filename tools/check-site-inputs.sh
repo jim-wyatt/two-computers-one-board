@@ -31,10 +31,45 @@ PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT" || exit 1
 PAGES=.github/workflows/pages.yml
 
-# The targets of every snippet include, single or block form, whichever quote.
-# A leading ; is the documented way to write one that is NOT an include.
-includes="$(git ls-files 'docs/**/*.md' 'docs/*.md' | xargs grep -hoE -- '^[^;]*-{1,}8<-{1,}[[:space:]]+["'"'"'][^"'"'"']+["'"'"']' 2>/dev/null |
-  sed -E 's/.*["'"'"']([^"'"'"']+)["'"'"']$/\1/; s/:[0-9:]*$//' | sort -u)"
+# The targets of every snippet include, in both forms pymdownx.snippets has:
+#
+#     --8<-- "path/to/file"            one line, either kind of quote
+#
+#     --8<--                           a block: every line between two bare
+#     path/to/file                     markers is a target
+#     path/to/other:12:40
+#     --8<--
+#
+# A line beginning with ; is the documented way to write one that is NOT an
+# include. What follows the path after a colon selects part of the file - line
+# numbers, or a named region such as bars.c:draw - and is not part of its name.
+# shellcheck disable=SC2016  # awk's own $0, not the shell's
+includes="$(git ls-files 'docs/**/*.md' 'docs/*.md' | xargs awk '
+  FNR == 1 { in_block = 0 }
+  /^[ \t]*;/ { next }
+  /^[ \t]*-+8<-+[ \t]*$/ { in_block = !in_block; next }
+  in_block {
+    line = $0; gsub(/^[ \t]+|[ \t]+$/, "", line)
+    if (line != "") print line
+    next
+  }
+  match($0, /-+8<-+[ \t]+["\047][^"\047]+["\047]/) {
+    t = substr($0, RSTART, RLENGTH)
+    sub(/^-+8<-+[ \t]+["\047]/, "", t); sub(/["\047]$/, "", t)
+    print t
+  }
+' | sed -E 's/:.*$//' | sort -u)"
+
+# The second filter: the regex the `changes` job in ci.yml uses to decide whether
+# the diagrams are rendered again. Read out of the workflow rather than copied
+# here, so it is the one that actually runs.
+CI=.github/workflows/ci.yml
+diagrams_re="$(awk '/site inputs changed/ { print prev; exit } /grep -qE/ { prev = $0 }' "$CI" |
+  sed -E "s/^[^']*'([^']*)'.*$/\1/")"
+[ -n "$diagrams_re" ] || {
+  echo "could not find the diagrams filter in $CI - has the changes job been rewritten?" >&2
+  exit 1
+}
 
 rc=0
 while IFS= read -r target; do
@@ -42,16 +77,17 @@ while IFS= read -r target; do
   case "$target" in
     docs/* | http://* | https://*) continue ;;
   esac
-  if grep -qF -- "- '$target'" "$PAGES"; then
-    continue
-  fi
+  missing=""
+  grep -qF -- "- '$target'" "$PAGES" || missing="$PAGES"
+  grep -qE -- "$diagrams_re" <<<"$target" || missing="${missing:+$missing and }$CI"
+  [ -n "$missing" ] || continue
   [ "$rc" = 0 ] && echo "pages embed files the site workflows do not watch:"
-  echo "  $target    ($(git grep -lF -- "$target" -- 'docs/' | head -3 | tr '\n' ' '))"
+  echo "  $target    not covered by: $missing"
   rc=1
 done <<<"$includes"
 
 if [ "$rc" = 0 ]; then
-  echo "every file a page embeds is covered by the path filter in $PAGES"
+  echo "every file a page embeds is covered by the filters in $PAGES and $CI"
 else
   echo "add each one to \`paths:\` in $PAGES and to the diagrams filter in"
   echo ".github/workflows/ci.yml, or a change to it will not rebuild the site"
