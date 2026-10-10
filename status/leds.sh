@@ -6,8 +6,9 @@
 #   sudo ~/two-computers-one-board/status/leds.sh once     # sample, set, exit
 #   sudo ~/two-computers-one-board/status/leds.sh run      # loop forever - what the service runs
 #   sudo ~/two-computers-one-board/status/leds.sh off      # dark, kernel triggers handed back
-#   sudo ~/two-computers-one-board/status/leds.sh test     # cycle the colours, to learn them
-#   ~/two-computers-one-board/status/leds.sh explain       # what the colours mean, no root needed
+#   sudo ~/two-computers-one-board/status/leds.sh test     # cycle the states, to learn them
+#   sudo ~/two-computers-one-board/status/leds.sh show 1 blue slow   # one LED, by hand
+#   ~/two-computers-one-board/status/leds.sh explain       # what each light means, no root needed
 #
 # WHY
 # ---
@@ -72,6 +73,26 @@
 # stale LED is worse than a dark one, because it is confidently wrong. Sampling
 # is self-correcting: pull the cable and within one interval the colours tell
 # the truth again, whatever caused it.
+#
+# COLOUR ALONE WAS NOT ENOUGH
+# ---------------------------
+# The first scheme said everything in hue, and mostly in red against green -
+# the one pair that about one man in twelve cannot tell apart. To them LED 2
+# had a single state: "all is well" and "this needs a human" were the same
+# light. An indicator that cannot be read is not an indicator.
+#
+# So every state now has a RHYTHM as well, and the rhythm alone is enough:
+#
+#   steady       fine
+#   slow blink   degraded, or in progress - once every two seconds
+#   fast blink   a fault that needs a human - twice a second (never faster
+#                than three: that is the ceiling for anything that flashes)
+#   dark         nothing is driving the LED: the checker is not running
+#
+# Colour still means what it meant; it is now the second witness rather than
+# the only one. The blinking is done by the kernel's `timer` trigger, not by
+# this script's loop: a loop that wakes every five seconds cannot blink at four
+# hertz, and the kernel's timer keeps time between passes at no cost.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -81,6 +102,15 @@ INTERVAL="${UNOQ_LED_INTERVAL:-5}"
 # rude to whatever is upstream.
 NET_EVERY="${UNOQ_LED_NET_EVERY:-12}"
 PROBE_IP="${UNOQ_LED_PROBE_IP:-1.1.1.1}"
+# The two rhythms, as milliseconds lit and then the same again dark. The
+# firmware uses the same figures for LED 3 and LED 4 (status_leds.h), so that
+# "slow" and "fast" look alike on all four. Anything that is not a positive
+# whole number goes back to the default: the kernel would refuse it, and a
+# refused write here is silent.
+SLOW_MS="${UNOQ_LED_BLINK_SLOW_MS:-1000}"
+FAST_MS="${UNOQ_LED_BLINK_FAST_MS:-250}"
+case "$SLOW_MS" in '' | 0* | *[!0-9]*) SLOW_MS=1000 ;; esac
+case "$FAST_MS" in '' | 0* | *[!0-9]*) FAST_MS=250 ;; esac
 BRIDGE="${UNOQ_USB_BRIDGE:-br-usb}"
 G="${UNOQ_GADGET_DIR:-/sys/kernel/config/usb_gadget/unoq}"
 LEDS="${UNOQ_LED_DIR:-/sys/class/leds}"
@@ -91,7 +121,7 @@ LEDS="${UNOQ_LED_DIR:-/sys/class/leds}"
 GUARD="${UNOQ_BIND_GUARD:-$HERE/../usb/bind-guard.sh}"
 
 # LED 1, driven from here as one colour at a time. Order: red, green, blue.
-# Reached by name through a nameref in set_rgb, which shellcheck cannot follow.
+# Reached by name through a nameref in set_led, which shellcheck cannot follow.
 # shellcheck disable=SC2034
 LED1=(unoq:user-red1 unoq:user-green1 unoq:user-blue1)
 
@@ -111,50 +141,163 @@ declare -A STOCK_TRIGGER=(
 )
 
 usage() {
-  sed -n '4,10p' "$0"
+  sed -n '4,11p' "$0"
   exit 2
 }
 
 # --- driving one channel ----------------------------------------------------
 
+# The trigger a channel is bound to: the bracketed word in its trigger file.
+chan_trigger() {
+  tr ' ' '\n' <"$LEDS/$1/trigger" 2>/dev/null | grep -m1 '^\[' | tr -d '[]'
+}
+
 # A channel bound to a kernel trigger will accept a write and be overwritten a
 # moment later, which looks like broken code rather than a conflict. Refusing is
 # clearer, and it is why taking a channel over is a separate, deliberate step.
-set_chan() {
-  local led="$LEDS/$1" on="$2" trig
-  [ -w "$led/brightness" ] || return 0
-  if [ -r "$led/trigger" ]; then
-    trig="$(tr ' ' '\n' <"$led/trigger" 2>/dev/null | grep -m1 '^\[' | tr -d '[]')"
-    case "$trig" in
-      none | '') ;;
-      *) return 0 ;;
-    esac
-  fi
-  echo "$on" >"$led/brightness" 2>/dev/null
+# `timer` is the one trigger that counts as ours: it is how this script blinks.
+chan_ours() {
+  [ -w "$LEDS/$1/brightness" ] || return 1
+  [ -r "$LEDS/$1/trigger" ] || return 0
+  case "$(chan_trigger "$1")" in
+    none | timer | '') return 0 ;;
+  esac
+  return 1
 }
 
-# set_rgb <array-name> <colour> - one colour at a time, never a mix.
-set_rgb() {
+# Steadily on or off. The trigger goes first: a timer left behind keeps
+# blinking whatever is written to brightness afterwards. It is written without
+# looking at what is there - this only runs when something is changing, and
+# "none" over "none" costs nothing.
+chan_steady() {
+  local led="$LEDS/$1"
+  chan_ours "$1" || return 0
+  [ -w "$led/trigger" ] && echo none >"$led/trigger" 2>/dev/null
+  echo "$2" >"$led/brightness" 2>/dev/null
+}
+
+# chan_is <channel> 0|1|blink [ms] - is it already doing that? Read back from
+# the kernel, not remembered. Brightness is not consulted for a blinking
+# channel: the kernel moves it up and down itself, so it reads as either.
+chan_is() {
+  local led="$LEDS/$1" trig
+  chan_ours "$1" || return 0 # not ours, so nothing here to correct
+  trig="$(chan_trigger "$1")"
+  if [ "$2" = blink ]; then
+    [ "$trig" = timer ] &&
+      [ "$(cat "$led/delay_on" 2>/dev/null)" = "$3" ] &&
+      [ "$(cat "$led/delay_off" 2>/dev/null)" = "$3" ]
+  else
+    [ "$trig" != timer ] && [ "$(cat "$led/brightness" 2>/dev/null)" = "$2" ]
+  fi
+}
+
+# --- driving one LED --------------------------------------------------------
+
+declare -A NO_TIMER_SAID=()
+
+# Long enough for the kernel's blink timer to have fired - it runs on the next
+# jiffy, 10 ms at the very slowest - and far shorter than the half second it
+# then waits. See set_led.
+SETTLE=0.05
+
+# set_led <array-name> <colour> [steady|slow|fast]
+#
+# TWO THINGS THIS IS CAREFUL ABOUT
+#
+# It only writes when something is different. Every write to a timer's files
+# restarts that timer, so a pass that rewrote the same state every five seconds
+# would restart the blink every five seconds, and a rhythm with a hiccup in it
+# is a third rhythm nobody defined. What the LED is doing now is read back from
+# sysfs rather than kept in a variable, for the reason everything else here
+# samples: a variable is a memory, and it would go on believing in a blink that
+# something else had since switched off.
+#
+# Channels of one LED blink together. Yellow is the red and the green channel,
+# and to the kernel those are two unrelated LEDs with a timer each, so nothing
+# keeps them in step unless they are started in step. Worse, a restarted timer
+# does not start "on": it starts by inverting whatever the channel is showing
+# at that instant (drivers/leds/led-core.c, led_timer_function). Two channels
+# caught either side of a tick would then blink turn and turn about, and yellow
+# would read as red alternating with green. So the start is walked through
+# states that are known rather than raced:
+#
+#   1. every channel dark, no trigger          all off
+#   2. trigger=timer on each lit channel       each comes on, for the default
+#                                              500 ms; wait for that to happen
+#   3. delay_on on each                        each restarts, so goes off, for
+#                                              500 ms; wait again
+#   4. delay_off on each, back to back         each restarts, so comes ON, a
+#                                              few microseconds apart
+#
+# A single-channel colour has nobody to keep step with and skips the waiting.
+# Linux's own states are all single-channel today; the two-channel path is
+# there because set_led offers yellow and white, and offering a colour that
+# blinks wrongly would be a trap. It is reasoned from the kernel source and has
+# not yet been watched on the board - `show 1 yellow slow` is how to watch it.
+set_led() {
   local -n chans="$1"
-  local r=0 g=0 b=0
+  local rhythm="${3:-steady}" ms=0 same=1 i c
+  local on=(0 0 0) want=() lit=()
   case "$2" in
-    red) r=1 ;;
-    green) g=1 ;;
-    blue) b=1 ;;
-    yellow) r=1 g=1 ;;
-    white) r=1 g=1 b=1 ;;
+    red) on=(1 0 0) ;;
+    green) on=(0 1 0) ;;
+    blue) on=(0 0 1) ;;
+    yellow) on=(1 1 0) ;;
+    white) on=(1 1 1) ;;
     off) ;;
   esac
-  set_chan "${chans[0]}" "$r"
-  set_chan "${chans[1]}" "$g"
-  set_chan "${chans[2]}" "$b"
+  case "$rhythm" in
+    slow) ms="$SLOW_MS" ;;
+    fast) ms="$FAST_MS" ;;
+  esac
+
+  for i in 0 1 2; do
+    [ "${on[$i]}" = 1 ] && chan_ours "${chans[$i]}" && lit+=("${chans[$i]}")
+  done
+
+  # No timer trigger, no rhythm. The colour is still true, so show that, and
+  # say once what has been lost rather than once every pass.
+  if [ "$ms" != 0 ]; then
+    for c in "${lit[@]}"; do
+      grep -qw timer "$LEDS/$c/trigger" 2>/dev/null && continue
+      if [ -z "${NO_TIMER_SAID[$1]:-}" ]; then
+        echo "leds: $1 cannot blink - $c offers no 'timer' trigger." \
+          "Showing colour only, steady; fine and faulty now differ by hue alone." >&2
+        NO_TIMER_SAID[$1]=1
+      fi
+      ms=0
+      break
+    done
+  fi
+
+  for i in 0 1 2; do
+    want[i]="${on[$i]}"
+    [ "$ms" != 0 ] && [ "${on[$i]}" = 1 ] && want[i]=blink
+    chan_is "${chans[$i]}" "${want[$i]}" "$ms" || same=0
+  done
+  [ "$same" = 1 ] && return 0
+
+  if [ "$ms" = 0 ]; then
+    for i in 0 1 2; do chan_steady "${chans[$i]}" "${on[$i]}"; done
+    return 0
+  fi
+
+  for i in 0 1 2; do chan_steady "${chans[$i]}" 0; done
+  for c in "${lit[@]}"; do echo timer >"$LEDS/$c/trigger" 2>/dev/null; done
+  [ "${#lit[@]}" -gt 1 ] && sleep "$SETTLE"
+  for c in "${lit[@]}"; do echo "$ms" >"$LEDS/$c/delay_on" 2>/dev/null; done
+  [ "${#lit[@]}" -gt 1 ] && sleep "$SETTLE"
+  for c in "${lit[@]}"; do echo "$ms" >"$LEDS/$c/delay_off" 2>/dev/null; done
+  return 0
 }
 
 apply_triggers() {
   local name
   for name in "${!STOCK_TRIGGER[@]}"; do
     [ -w "$LEDS/$name/trigger" ] || continue
-    grep -q '\[none\]' "$LEDS/$name/trigger" 2>/dev/null && continue
+    # Ours already, steady or blinking. Rewriting it would restart a blink.
+    grep -qE '\[(none|timer)\]' "$LEDS/$name/trigger" 2>/dev/null && continue
     echo none >"$LEDS/$name/trigger" 2>/dev/null
   done
 }
@@ -168,9 +311,12 @@ restore_triggers() {
   done
 }
 
+# Unconditional, unlike set_led: this is the path that runs when the checker
+# stops, and a timer left behind would go on blinking with nothing behind it -
+# an LED that looks alive and reports on nothing.
 all_off() {
-  set_rgb LED1 off
-  set_rgb LED2 off
+  local c
+  for c in "${LED1[@]}" "${LED2[@]}"; do chan_steady "$c" 0; done
 }
 
 # --- reading the state ------------------------------------------------------
@@ -210,20 +356,21 @@ sample_and_set() {
 
   # LED 1 - can this board reach anything?
   if [ "$NET_OK" = 1 ]; then
-    set_rgb LED1 green
+    set_led LED1 green steady
   elif usb_link_up; then
-    set_rgb LED1 blue # a computer is there, nothing beyond it
+    set_led LED1 blue slow # a computer is there, nothing beyond it
   else
-    set_rgb LED1 red # no way out at all
+    set_led LED1 red fast # no way out at all
   fi
 
   # LED 2 - systemd's opinion of the board. Green is not decoration: it is the
   # difference between "nothing is wrong" and "this checker is not running",
-  # which a dark LED cannot tell you.
+  # which a dark LED cannot tell you. There is no slow blink here because there
+  # is no middle state: anything that would recover by itself is not reported.
   if guard_tripped || units_failed; then
-    set_rgb LED2 red
+    set_led LED2 red fast
   else
-    set_rgb LED2 green
+    set_led LED2 green steady
   fi
 }
 
@@ -235,7 +382,9 @@ case "${1:-}" in
   run)
     apply_triggers
     # SIGKILL never runs a trap, which is why the unit also has ExecStopPost.
-    trap 'restore_triggers; exit 0' TERM INT
+    # Dark first: the kernel blinks without us, so a blink left running would
+    # outlive the thing that decided on it.
+    trap 'all_off; restore_triggers; exit 0' TERM INT
     n=0
     while true; do
       probe=0
@@ -247,18 +396,30 @@ case "${1:-}" in
     ;;
   test)
     apply_triggers
-    for c in red green blue; do
-      echo "  LED 1 $c"
-      set_rgb LED1 "$c"
-      sleep 2
+    # Three seconds each: long enough to count a slow blink three times.
+    for look in "green steady" "blue slow" "red fast"; do
+      echo "  LED 1  ${look#* }, ${look% *}"
+      # shellcheck disable=SC2086 # two words on purpose: colour, rhythm
+      set_led LED1 $look
+      sleep 3
     done
-    set_rgb LED1 off
-    for c in red green; do
-      echo "  LED 2 $c"
-      set_rgb LED2 "$c"
-      sleep 2
+    set_led LED1 off
+    for look in "green steady" "red fast"; do
+      echo "  LED 2  ${look#* }, ${look% *}"
+      # shellcheck disable=SC2086
+      set_led LED2 $look
+      sleep 3
     done
     all_off
+    ;;
+  show)
+    # One LED, by hand - for checking a rhythm on the hardware. Stop the
+    # service first, or its next pass puts the truth back.
+    case "${2:-}" in 1 | 2) ;; *) usage ;; esac
+    case "${3:-}" in red | green | blue | yellow | white | off) ;; *) usage ;; esac
+    case "${4:-steady}" in steady | slow | fast) ;; *) usage ;; esac
+    apply_triggers
+    set_led "LED$2" "$3" "${4:-steady}"
     ;;
   off)
     all_off
@@ -269,25 +430,33 @@ case "${1:-}" in
 Two RGB LEDs, above the matrix, opposite the USB-C port. Linux drives these
 two; LED 3 and LED 4 belong to the STM32.
 
-LED 1 - can this board reach anything?  (one colour at a time)
+Each state has a rhythm as well as a colour, and the rhythm is enough by
+itself - you do not need to tell red from green to read these:
 
-  green    the internet is reachable
-  blue     a computer is on the USB cable, but nothing beyond it
-           (the host is not sharing its connection, or is not routing)
-  red      no uplink at all - go and look
+  steady       fine
+  slow blink   degraded, or in progress      (once every two seconds)
+  fast blink   a fault that needs a human    (twice a second)
+  dark         nothing is driving the LED - the checker is not running
+
+LED 1 - can this board reach anything?
+
+  steady      green   the internet is reachable
+  slow blink  blue    a computer is on the USB cable, but nothing beyond it
+                      (the host is not sharing its connection, or not routing)
+  fast blink  red     no uplink at all - go and look
 
 LED 2 - systemd's opinion of this board
 
-  green    every unit is healthy, and the bind guard has not tripped
-  red      SOMETHING NEEDS A HUMAN: a systemd unit has failed, or the bind
-           guard has refused to bind the gadget. Everything else on this
-           board recovers by itself; these do not.
+  steady      green   every unit is healthy, and the bind guard has not tripped
+  fast blink  red     SOMETHING NEEDS A HUMAN: a systemd unit has failed, or
+                      the bind guard has refused to bind the gadget. Everything
+                      else on this board recovers by itself; these do not.
 
-Green is not decoration. A dark LED cannot tell you the difference between
-"nothing is wrong" and "the thing that checks is not running", and those need
-very different responses.
+A lit, steady light is not decoration. A dark LED cannot tell you the
+difference between "nothing is wrong" and "the thing that checks is not
+running", and those need very different responses.
 
-Sampled every ${INTERVAL}s, so the colours correct themselves rather than
+Sampled every ${INTERVAL}s, so the lights correct themselves rather than
 remembering something that has stopped being true. Reachability is probed every
 $((INTERVAL * NET_EVERY))s.
 
@@ -297,13 +466,15 @@ of them fire - measured at 0 of 400 samples under sustained writes.
 
 LED 3 and LED 4 are the firmware's (mcu/app/include/status_leds.h):
 
-  LED 3    green   running a confirmed firmware image
-           yellow  running an unconfirmed image - the next reset reverts it
-           red     a subsystem failed to start
-  LED 4    green   the MCU heard an 'app' command from Linux in the last 4s
-           red     nothing for longer than that
+  LED 3    steady      green   running a confirmed firmware image
+           slow blink  yellow  running an unconfirmed image - the next reset
+                               reverts it
+           fast blink  red     a subsystem failed to start
+  LED 4    steady      green   the MCU heard an 'app' command from Linux in
+                               the last 4s
+           fast blink  red     nothing for longer than that
 
-Learn the colours with:  sudo $0 test
+Learn them with:  sudo $0 test
 EOF
     ;;
   *) usage ;;

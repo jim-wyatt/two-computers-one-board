@@ -100,6 +100,13 @@ Read by `status/leds.sh`, which runs as `unoq-leds.service`. Set these in
 | `UNOQ_LED_INTERVAL` | `5` | Seconds between passes. Every pass re-reads everything, so this is also how stale a light can be. |
 | `UNOQ_LED_NET_EVERY` | `12` | The reachability ping runs on every Nth pass: once a minute at the defaults. |
 | `UNOQ_LED_PROBE_IP` | `1.1.1.1` | The address that ping goes to. |
+| `UNOQ_LED_BLINK_SLOW_MS` | `1000` | The slow blink (degraded, or in progress): milliseconds lit, then the same again dark. Once every two seconds at the default. |
+| `UNOQ_LED_BLINK_FAST_MS` | `250` | The fast blink (needs a human), likewise. Twice a second at the default; do not go below about 170, which is three flashes a second and the ceiling for anything that flashes. Keep it well apart from the slow one: the two rhythms are how the states are told apart without colour. |
+
+These two set LED 1 and LED 2 only. LED 3 and LED 4 blink at the same rates
+from the firmware, where they are constants in
+`mcu/app/include/status_leds.h`; change one side and the other no longer
+matches it.
 
 ## The drive and the web server
 

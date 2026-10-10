@@ -63,11 +63,15 @@ part is what got rejected.
 
 ### LED 1 — can this board reach anything?
 
-| | |
-|---|---|
-| **green** | the internet is reachable |
-| **blue** | a computer is on the USB cable, but nothing beyond it |
-| **red** | no uplink at all |
+| | | |
+|---|---|---|
+| **steady** | green | the internet is reachable |
+| **slow blink** | blue | a computer is on the USB cable, but nothing beyond it |
+| **fast blink** | red | no uplink at all |
+
+Each state has a rhythm as well as a colour. Take the rhythm on trust for now;
+[why it is there](#colour-alone-was-not-enough) comes after the design it
+rescued.
 
 Blue is the one that earns its keep. "Cable plugged in but the host is not
 sharing its connection" and "nothing there at all" are completely different
@@ -76,10 +80,10 @@ identical.
 
 ### LED 2 — does anything need a human?
 
-| | |
-|---|---|
-| **green** | every systemd unit is healthy, and the bind guard has not tripped |
-| **red** | something has failed that will **not** recover on its own |
+| | | |
+|---|---|---|
+| **steady** | green | every systemd unit is healthy, and the bind guard has not tripped |
+| **fast blink** | red | something has failed that will **not** recover on its own |
 
 Note how narrow that is. Almost everything on this board retries: the USB link
 comes back, the gadget rebinds, wifi falls back. Those are not worth a light.
@@ -89,9 +93,10 @@ Red means the self-healing has been exhausted.
 
 A dark LED cannot distinguish "nothing is wrong" from "the thing that checks
 whether anything is wrong is not running". Those need very different responses,
-so healthy is a *colour*, not an absence. The service that drives these has
-`Restart=always` and an `ExecStopPost` that turns them off — so if the checker
-dies, the board goes dark rather than staying confidently green.
+so healthy is a *colour*, not an absence: a lit, steady light. The service that
+drives these has `Restart=always` and an `ExecStopPost` that turns them off —
+so if the checker dies, the board goes dark rather than staying confidently
+green.
 
 ## The two that got thrown away
 
@@ -123,11 +128,11 @@ change slowly enough that every transition means something.
 
 ### LED 3 — the firmware's own identity
 
-| | |
-|---|---|
-| **green** | running a **confirmed** image — this is what survives a reset |
-| **yellow** | running an **unconfirmed** image, on MCUboot probation |
-| **red** | a subsystem failed to start |
+| | | |
+|---|---|---|
+| **steady** | green | running a **confirmed** image — this is what survives a reset |
+| **slow blink** | yellow | running an **unconfirmed** image, on MCUboot probation |
+| **fast blink** | red | a subsystem failed to start |
 
 Yellow is the good one. After a firmware update, MCUboot runs the new image on
 trial; if nothing confirms it, the next reset reverts to the old one. That state
@@ -138,10 +143,10 @@ itself". See [Updating safely](updating-safely.md).
 
 ### LED 4 — is the other chip still there?
 
-| | |
-|---|---|
-| **green** | heard from Linux within the last four seconds |
-| **red** | silence for longer than that |
+| | | |
+|---|---|---|
+| **steady** | green | heard from Linux within the last four seconds |
+| **fast blink** | red | silence for longer than that |
 
 This is the inverse of the blink it replaced, and the inversion is the whole
 point. A tick tells you nothing. **The tick stopping is the news** — and it is
@@ -155,9 +160,75 @@ chip's health, and it is on the correct chip to say it.
 > "Heard from Linux" means one of the firmware's own `app` commands arrived:
 > `app status`, `app bars`, or an `app matrix` command. Nothing else counts.
 > On a board set up for this course the thing sending them is
-> `unoq-cpu-bars.service`, which draws twice a second. So LED 4 is green while
-> that service runs and red a few seconds after it stops, and it starts red at
-> every MCU reset until the first command arrives.
+> `unoq-cpu-bars.service`, which draws twice a second. So LED 4 is steady green
+> while that service runs and blinking red a few seconds after it stops, and it
+> starts out blinking red at every MCU reset until the first command arrives.
+
+## Colour alone was not enough
+
+Everything above was first built with colour as the only channel, and mostly
+with one pair of colours: red against green. That is the one pair that roughly
+one man in twelve cannot reliably tell apart. To them LED 2 and LED 4 each had
+a single state, and LED 3's green, yellow and red were three shades of much the
+same thing. The board said "everything is fine" and "this needs a human" with
+the same light.
+
+The mistake is worth looking at, because it came straight out of an argument
+that was right. Healthy has to be a colour rather than an unlit LED — so every
+state became a colour — so colour was carrying *all* of the information, and
+nobody had asked whether it could be read. A great deal of care went into what
+the lights say and none into whether they can be seen saying it.
+
+The fix is a second channel that does not pass through colour at all: time.
+
+| | means | looks like |
+|---|---|---|
+| **steady** | fine | lit, and not changing |
+| **slow blink** | degraded, or in progress | once every two seconds |
+| **fast blink** | a fault that needs a human | twice a second |
+| **dark** | nothing is driving this LED | the checker is not running |
+
+Colour still says what it said. But no LED uses one rhythm for two states, so
+the rhythm identifies the state by itself, and colour has become the second
+witness instead of the only one. It cost a timer, not a wire.
+
+Three things about it are deliberate.
+
+**Dark keeps its meaning.** A blink is half darkness, and darkness already
+means "the checker is not running". So steady states never go dark, even for a
+moment, and both blinks are quick enough that nobody waits long for the light
+to come back. When the service stops, its `ExecStopPost` cancels the blink as
+well as the light. That matters more than it did: the kernel does the blinking,
+with no process behind it, so a blink left running would look more alive than
+a steady light ever did.
+
+**Nothing in the loop blinks.** `leds.sh` wakes every five seconds; it cannot
+blink anything twice a second. It hands the channel to the kernel's
+`timer` trigger with an on-time and an off-time and leaves it alone — and it
+has to leave it alone, because every write to those files restarts the blink.
+A script that rewrote the same state on every pass would produce a light that
+hiccups every five seconds, which is a fourth rhythm that means nothing. So a
+pass first reads back what the LED is doing, and writes only if that is not
+what it should be doing. The firmware has it easier: it redraws both of its
+LEDs four times a second from one counter, on the work item that was already
+there for the once-a-second check.
+
+**The channels of one LED blink as one.** Yellow is the red and the green
+element lit together. Blink them separately and "yellow, slowly" becomes red
+and green taking turns, which is worse than no blink. In the firmware one
+decision — lit on this beat, or not — drives every channel of the LED.
+
+This is not the blink that got thrown away. Blinking on every message was
+rejected because its period belonged to somebody else's timer, so it told you
+only that the timer was running. Here the rhythm is a property of the *state*,
+exactly as the colour is, and it changes only when the state does. The rule at
+the top of the page is intact: the news is still the change.
+
+> [!NOTE]
+> If a kernel offers no `timer` trigger, `leds.sh` shows the colour steady
+> and says so, once, in its log. Half the information is better than a dark
+> LED. Check what yours offers with
+> `cat /sys/class/leds/unoq:user-red1/trigger`.
 
 ## A bug this design produced, and what it taught
 
@@ -168,12 +239,15 @@ had been true at boot and was no longer true.
 The fix is a one-second work item that re-reads `boot_is_img_confirmed()` while
 the image is unconfirmed. The lesson generalises: **an indicator that samples
 once is a memory, not an instrument.** Everything here re-samples — Linux every
-five seconds, reachability every sixty, the MCU every one — so the colours
+five seconds, reachability every sixty, the MCU every one — so the lights
 correct themselves instead of remembering something that stopped being true.
+
+It is also why `leds.sh` reads the blink back from the kernel on every pass
+rather than keeping a note of what it last set. A note is a memory too.
 
 ## Try it
 
-What the colours mean, from the board itself:
+What each light means, from the board itself:
 
 ```bash
 ~/two-computers-one-board/status/leds.sh explain
@@ -196,7 +270,8 @@ systemctl --failed                                  # unoq-demo-fail.service is 
 ```
 
 The LEDs are sampled every five seconds, so within about that long LED 2 should
-go red. Clear it, and it goes green again on the next sample:
+start blinking red, fast. Clear it, and it goes back to steady green on the
+next sample:
 
 ```bash
 sudo systemctl reset-failed unoq-demo-fail
@@ -209,12 +284,17 @@ thing that talks to the MCU, and watch:
 sudo systemctl stop unoq-cpu-bars     # Linux goes quiet
 ```
 
-LED 4 turns red about five seconds later: four seconds of silence, checked once
-a second. Then start talking again:
+LED 4 starts blinking red about five seconds later: four seconds of silence,
+checked once a second. Then start talking again:
 
 ```bash
-sudo systemctl start unoq-cpu-bars    # green again within a second or two
+sudo systemctl start unoq-cpu-bars    # steady green within a second or two
 ```
+
+Last, read the board the way one reader in twelve has to. Look at it through
+your phone's camera with a black-and-white filter on, or simply from far enough
+away that the colours wash out, and repeat the two experiments above. You
+should be able to say which state each LED is in from its rhythm alone.
 
 > [!TIP]
 > **Go deeper** — [hardware.md](../reference/hardware.md) has the full
@@ -232,6 +312,8 @@ sudo systemctl start unoq-cpu-bars    # green again within a second or two
    other way round?
 4. You want to add a fifth indicator for "the storage is nearly full". Argue
    both sides using the rule at the top of this page.
+5. Blinking LED 3 on every message was thrown away as "a clock". Three of the
+   four LEDs can now blink. Why is that not the same mistake?
 
 <details markdown="1">
 <summary>Answers — try each one first</summary>
@@ -243,9 +325,9 @@ sudo systemctl start unoq-cpu-bars    # green again within a second or two
    and `led4_*`.
 2. **Because a dark LED is ambiguous.** It cannot distinguish "nothing is
    wrong" from "the thing that checks whether anything is wrong is not
-   running". With green for healthy, and an `ExecStopPost` that turns the LEDs
-   off, a dead checker makes the board go dark rather than stay confidently
-   green.
+   running". With a lit, steady light for healthy, and an `ExecStopPost` that
+   turns the LEDs off and cancels any blink, a dead checker makes the board go
+   dark rather than stay confidently green.
 3. **Because the news is Linux going quiet, and Linux cannot report that.** A
    host that has stopped talking cannot report that it has stopped talking.
    Only the other chip can notice the silence, so the indicator has to be on
@@ -255,7 +337,14 @@ sudo systemctl start unoq-cpu-bars    # green again within a second or two
    something, and it may need a human. Against: you would have to say what
    "nearly" means, whether anything else already tells you, and whether it is
    worth a glance every time you look at the board. A good answer also makes
-   it re-sample, and makes "not full" a colour rather than an unlit LED.
+   it re-sample, makes "not full" a lit, steady light rather than an unlit
+   LED, and gives "nearly full" a rhythm as well as a colour.
+5. **Because the rhythm belongs to the state, not to the traffic.** The
+   rejected blink happened once per message, so its period was somebody else's
+   timer and it reported only that the timer was running. These blink at a
+   fixed rate chosen by what is wrong, and the rate changes only when the state
+   does — so a change in it still carries information. It is there so that the
+   states can be told apart without telling red from green.
 
 </details>
 
