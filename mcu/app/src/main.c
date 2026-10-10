@@ -20,6 +20,8 @@
  * one would fight the shell prompt.
  */
 #include <zephyr/kernel.h>
+#include <zephyr/device.h>
+#include <zephyr/drivers/sensor.h>
 #include <zephyr/shell/shell.h>
 #include <zephyr/settings/settings.h>
 #include <zephyr/dfu/mcuboot.h>
@@ -66,6 +68,48 @@ static int cmd_app_status(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+/* The chip's own temperature, which only this side of the board can read.
+ *
+ * Zephyr's board file already enables the sensor and the ADC it is read
+ * through (die_temp -> adc1 channel 19), so there is no overlay entry for it;
+ * prj.conf turns the drivers on. The driver converts with ST's two factory
+ * calibration points and hands back a sensor_value, which is taken to
+ * millidegrees with integer arithmetic - see APP_TEMP_FMT for why.
+ *
+ * Every way this can fail prints APP_TEMP_ERR_FMT and nothing else. A reading
+ * that is wrong but plausible is worse than no reading, so nothing here falls
+ * back to a default or to the previous sample.
+ */
+static const struct device *const die_temp = DEVICE_DT_GET(DT_ALIAS(die_temp0));
+
+static int cmd_app_temp(const struct shell *sh, size_t argc, char **argv)
+{
+	status_leds_link_seen();
+	struct sensor_value val;
+	int rc;
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	/* Not ready means its init failed at boot - the ADC did not come up, or
+	 * the calibration words could not be read. Calling into it anyway would
+	 * convert against calibration data that was never loaded. */
+	rc = device_is_ready(die_temp) ? 0 : -ENODEV;
+	if (rc == 0) {
+		rc = sensor_sample_fetch(die_temp);
+	}
+	if (rc == 0) {
+		rc = sensor_channel_get(die_temp, SENSOR_CHAN_DIE_TEMP, &val);
+	}
+	if (rc != 0) {
+		shell_error(sh, APP_TEMP_ERR_FMT, rc);
+		return rc;
+	}
+
+	shell_print(sh, APP_TEMP_FMT, (int)sensor_value_to_milli(&val));
+	return 0;
+}
+
 /* --- the LED panel -------------------------------------------------------- */
 
 /* Redraw whatever is currently meant to be on screen. Called after anything
@@ -85,7 +129,8 @@ static int cmd_app_bars(const struct shell *sh, size_t argc, char **argv)
 	int n = (int)argc - 1;
 
 	if (!app_bars_count_valid(n)) {
-		shell_error(sh, "usage: app bars <pct> [pct ...] (1..%d values)", APP_BARS_MAX);
+		shell_error(sh, APP_ERR "usage: app bars <pct> [pct ...] (1..%d values)",
+			    APP_BARS_MAX);
 		return -EINVAL;
 	}
 
@@ -95,7 +140,8 @@ static int cmd_app_bars(const struct shell *sh, size_t argc, char **argv)
 		int pct = atoi(argv[i + 1]);
 
 		if (!app_bars_pct_valid(pct)) {
-			shell_error(sh, "bar %d: %d outside 0..%d", i, pct, APP_BARS_PCT_MAX);
+			shell_error(sh, APP_ERR "bar %d: %d outside 0..%d", i, pct,
+				    APP_BARS_PCT_MAX);
 			return -EINVAL;
 		}
 		bar_pct[i] = (uint8_t)pct;
@@ -121,11 +167,12 @@ static int cmd_app_matrix_px(const struct shell *sh, size_t argc, char **argv)
 	ARG_UNUSED(argc);
 
 	if (!app_matrix_pixel_valid(row, col)) {
-		shell_error(sh, "row 0..%d, col 0..%d", APP_MATRIX_ROWS - 1, APP_MATRIX_COLS - 1);
+		shell_error(sh, APP_ERR "row 0..%d, col 0..%d", APP_MATRIX_ROWS - 1,
+			    APP_MATRIX_COLS - 1);
 		return -EINVAL;
 	}
 	if (!app_matrix_level_valid(level)) {
-		shell_error(sh, "level 0..%d", APP_MATRIX_MAX_LEVEL);
+		shell_error(sh, APP_ERR "level 0..%d", APP_MATRIX_MAX_LEVEL);
 		return -EINVAL;
 	}
 
@@ -182,6 +229,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
 SHELL_STATIC_SUBCMD_SET_CREATE(app_cmds,
 			       SHELL_CMD(status, NULL, "uptime, panel orientation, refresh sweeps",
 					 cmd_app_status),
+			       SHELL_CMD(temp, NULL, "die temp in millidegrees C", cmd_app_temp),
 			       SHELL_CMD_ARG(bars, NULL, "Draw CPU bars: app bars <pct> [pct ...]",
 					     cmd_app_bars, 2, APP_BARS_MAX - 1),
 			       SHELL_CMD(matrix, &matrix_cmds, "LED panel control", NULL),

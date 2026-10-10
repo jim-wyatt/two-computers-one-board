@@ -6,9 +6,9 @@
  *
  * Everything here is consumed by three parties that must agree:
  *
- *   - mcu/app/src/main.c        produces the status line, validates bars
+ *   - mcu/app/src/main.c        produces the status and temp lines, validates bars
  *   - mcu/tests/link_protocol/  tests these definitions directly
- *   - python/unoq/mcu.py        parses the status line, calls `app bars`
+ *   - python/unoq/mcu.py        parses those lines, calls `app bars`
  *
  * The definitions used to be duplicated: main.c had the range check and the
  * format string, and the test had its own copy of both. A copy cannot fail
@@ -29,6 +29,40 @@
  */
 #define APP_STATUS_FMT    "uptime_ms=%lld flip=%d sweeps=%u"
 #define APP_STATUS_FIELDS 3
+
+/*
+ * What a rejected command starts with. Shared with unoq.MCU.cmd(), which raises
+ * on any line that begins with it.
+ *
+ * shell_error() does not add this. It only colours the line red, and the colour
+ * is exactly what the Python side strips before it looks. So for as long as the
+ * handlers printed a bare message, a command the firmware refused came back to
+ * Python looking like a reply, and nothing was raised.
+ */
+#define APP_ERR "Error: "
+
+/* The `app temp` line, parsed by unoq.MCU.die_temp() into degrees Celsius.
+ *
+ * The STM32U585's internal die temperature sensor, which Linux cannot see at
+ * all: its thermal zones are the QRB2210's. It is a command of its own rather
+ * than a fourth field of `app status` because reading it is a real ADC
+ * conversion that can fail, and status must never fail - and because the status
+ * format is pinned by tests and quoted throughout the documentation.
+ *
+ * The unit is millidegrees Celsius as a signed integer, the same unit Linux
+ * uses in /sys/class/thermal, so both processors' temperatures compare without
+ * a conversion. An integer because this build has no floating-point printf
+ * (CONFIG_CBPRINTF_FP_SUPPORT is off, and costs flash to turn on) and because
+ * "%d" is unambiguous to parse where a locale-shaped decimal is not. Signed
+ * because the part is rated to -40 C.
+ *
+ * On failure the firmware prints APP_TEMP_ERR_FMT instead, with the negative
+ * errno it got: -19 (ENODEV) when the sensor or the ADC behind it never came
+ * up at boot, anything else from the conversion itself. The two lines share no
+ * key, so a failure can never be read as a temperature.
+ */
+#define APP_TEMP_FMT     "temp_mc=%d"
+#define APP_TEMP_ERR_FMT "temp_err=%d"
 
 /* --- LED matrix ----------------------------------------------------------
  *

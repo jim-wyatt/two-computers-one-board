@@ -131,6 +131,7 @@ Set on the command line, for one run of `bootstrap.sh` or of the script named.
 | `UNOQ_ALLOW_NO_STOCK_FW` | `0` | `bootstrap.sh`, `provision/40-purge-arduino.sh` | `1` lets the firmware be flashed, and the purge go ahead, with no copy of the stock firmware saved. Only for a board whose copy is already gone. |
 | `UNOQ_USER` | whoever ran `sudo` | `provision/lib.sh` | The account that owns the checkout and is written into the units. |
 | `UNOQ_VENV` | `<checkout>/.venv` | `provision/user/40-python-venv.sh`, `tools/` | The Python environment. |
+| `UNOQ_WATCHDOG_SEC` | `30` | `provision/80-watchdog.sh` | Whole seconds without a ping from `systemd` before the hardware watchdog resets the board. Refused below `10`: a timeout that short resets a board that is merely busy, and does it again after every reboot. Only read with `--with-watchdog`. |
 
 ## The MCU control lines
 
@@ -138,7 +139,6 @@ Read by `mcu/link-up.sh`. These are facts about the circuit board, not
 preferences; they are variables so the script can be tested without one. See
 [hardware.md](hardware.md).
 
-| `UNOQ_WATCHDOG_SEC` | `30` | `provision/80-watchdog.sh` | Whole seconds without a ping from `systemd` before the hardware watchdog resets the board. Refused below `10`: a timeout that short resets a board that is merely busy, and does it again after every reboot. Only read with `--with-watchdog`. |
 | Variable | Default | What it is |
 |---|---|---|
 | `UNOQ_GPIOCHIP` | `/dev/gpiochip1` | The GPIO controller both lines are on. |
@@ -190,6 +190,9 @@ and setting one will mostly make a script look in the wrong place.
 | `UNOQ_BIND_GUARD` | `usb/bind-guard.sh` | The guard `leds.sh` asks whether it has given up. |
 | `UNOQ_AUTOIPD` | `/usr/sbin/avahi-autoipd` | The link-local address daemon. |
 | `UNOQ_NSLOOKUP` | `nslookup` | The resolver probe. |
+| `UNOQ_WATCHDOG_CONF_DIR` | `/etc/systemd/system.conf.d` | Where `80-watchdog.sh` writes its `systemd` drop-in. |
+| `UNOQ_WATCHDOG_SYSFS` | `/sys/class/watchdog` | Where `80-watchdog.sh` looks for a watchdog device. |
+| `UNOQ_FSTAB` | `/etc/fstab` | The mount table `85-esp-permissions.sh` edits. Its backup is written beside it. |
 
 ## Development only
 
@@ -197,9 +200,6 @@ Read by the scripts under `tools/`, on whatever machine runs the quality gates.
 
 | Variable | Default | What it does |
 |---|---|---|
-| `UNOQ_WATCHDOG_CONF_DIR` | `/etc/systemd/system.conf.d` | Where `80-watchdog.sh` writes its `systemd` drop-in. |
-| `UNOQ_WATCHDOG_SYSFS` | `/sys/class/watchdog` | Where `80-watchdog.sh` looks for a watchdog device. |
-| `UNOQ_FSTAB` | `/etc/fstab` | The mount table `85-esp-permissions.sh` edits. Its backup is written beside it. |
 | `UNOQ_BIN` | `~/.local/bin` | Where `install-dev-tools.sh` puts `shellcheck`, `shfmt` and `bats`. |
 | `UNOQ_SITE` | `share/learn` | The built site the diagram checks inspect. |
 | `UNOQ_DIAGRAM_PORT` | `8099` | The port `check-diagrams.sh` serves the site on while it renders. |

@@ -40,3 +40,18 @@
 		status = "okay";
 	};
 };
+
+/*
+ * The die temperature sensor behind `app temp` needs nothing here: Zephyr's
+ * board file already sets die_temp and the ADC it is read through (adc1,
+ * internal channel 19) to "okay". What it also enables is adc4, for a Vbat
+ * sensor this firmware does not build (CONFIG_STM32_VBAT=n in prj.conf).
+ *
+ * Turning the ADC driver on brings up every enabled ADC at boot, and on this
+ * chip that bring-up waits for the converter's regulator in a loop with no
+ * timeout. One such wait is the price of the temperature; a second, for a
+ * converter nothing reads, is only another way for the board not to boot.
+ */
+&adc4 {
+	status = "disabled";
+};
