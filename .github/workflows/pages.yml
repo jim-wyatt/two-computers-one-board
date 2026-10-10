@@ -2,16 +2,24 @@
 # SPDX-License-Identifier: MIT
 name: docs site
 
-# Publishes the documentation to GitHub Pages on every push to main - which
-# is normally a merge, but a direct push counts too, and should.
-#
-# It publishes on every push rather than on a tag, deliberately: a site nobody
+# Publishes the documentation to GitHub Pages when a push to main changes
+# something the site is built from - normally a merge, but a direct push counts
+# too, and should. On a push rather than on a tag, deliberately: a site nobody
 # can see is not reviewable.
 #
-# NOT filtered by path. The obvious `paths: [docs/**, mkdocs.yml]` is wrong
-# here: the site embeds source files through pymdownx.snippets, so a change to
-# mcu/app/src/bars.c changes a rendered page without touching docs/ at all. A
-# build is a minute; working out months later why the site is stale is not.
+# FILTERED BY PATH, WHICH USED TO BE REFUSED HERE, AND WHY IT IS SAFE NOW
+# ----------------------------------------------------------------------
+# This workflow once ran on every push, on purpose. pymdownx.snippets lets a
+# page embed a source file, so a change to mcu/app/src/bars.c could change a
+# rendered page without touching docs/ at all, and a path filter would have
+# left the site stale with nothing to say why.
+#
+# No page embeds a file from outside docs/ today, so the filter below is
+# complete - and tools/check-site-inputs.sh, part of `tools/check.sh docs`, is
+# what keeps it complete: it fails the moment a page includes a file that this
+# list does not cover. Add the path here AND to the `diagrams` filter in
+# ci.yml, and it passes again. Without that gate this filter would be the
+# mistake the old comment warned about.
 #
 # ONE-TIME SETUP: Settings -> Pages -> Source -> "GitHub Actions". Without that
 # the deploy step fails with a 404 on the Pages API, which reads like a
@@ -19,6 +27,16 @@ name: docs site
 on:
   push:
     branches: [main]
+    # Without this, every merge rebuilt and redeployed a site that was byte for
+    # byte the one already published. README.md is not here because the site
+    # is not built from it.
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'tools/build-docs.sh'
+      - 'tools/mkdocs_hooks.py'
+      - 'python/pyproject.toml'
+      - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 # Least privilege: the build job gets none of these, the deploy job gets the
@@ -26,12 +44,17 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
   build:
+    # A newer commit makes an unfinished build pointless, so it is cancelled.
+    # The deploy below is the opposite: one that has started is left to finish,
+    # because half a deployment is worse than a slightly old site, and a newer
+    # one simply waits its turn. They used to share one rule, the careful one,
+    # which meant a superseded build ran to the end for nothing.
+    concurrency:
+      group: pages-build
+      cancel-in-progress: true
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -66,6 +89,9 @@ jobs:
           path: share/learn
 
   deploy:
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     needs: build
     runs-on: ubuntu-24.04
     permissions:

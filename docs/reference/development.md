@@ -125,6 +125,7 @@ that silently does nothing is worse than no gate.
 | `docs` | build | `mkdocs --strict` | every internal link and anchor resolves |
 | | offline | `tools/check-diagram-assets.sh` | the diagram library is on disk, not at a CDN |
 | | settings | `tools/check-config-docs.sh` | [What you can change](configuration.md) names every setting the code reads |
+| | site inputs | `tools/check-site-inputs.sh` | no page embeds a file the site's path filters do not watch |
 | `workflows` | lint | `actionlint` | `.github/workflows/`, including the shell inside every `run:` block |
 | `diagrams` | render | `tools/check-diagrams.sh` | every diagram actually draws: one headless browser, driven over every page that has one, a few seconds |
 | `mcu` | tests | `ztest` on `native_sim` | the protocol in `app_proto.h` and the rasteriser in `bars.c` |
@@ -190,7 +191,7 @@ to `main` and every pull request.
 | Job | What it does |
 |---|---|
 | `checks` | `tools/check.sh python shell c docs workflows`. Fast, so a missing comma fails in seconds rather than behind a toolchain download. |
-| `changes` | Decides whether a pull request touched anything the firmware is built from, and anything the site is. |
+| `changes` | Decides what a change touched, on a pull request and on the push that merges it, so the two jobs below run only when something they test has moved. When it cannot tell, it says everything. |
 | `diagrams` | `tools/check.sh diagrams`, in a `chrome-headless-shell` pinned by version and hash rather than whatever browser the runner image ships. Skipped when nothing the site is built from changed. |
 | `firmware` | Runs `mcu/zbuild.sh` — the script the board runs, not a copy — to cross-compile and sign the firmware for the real board, then `mcu/ztest.sh` for the firmware tests. |
 
@@ -217,6 +218,26 @@ What CI cannot do is touch a board. Flashing, the serial link, the USB gadget
 and the LEDs are verified by hand on real hardware, and
 [the findings log](clean-board-findings.md) is the record of what that turned
 up.
+
+### What it costs, and what keeps that down
+
+The repository is public, so the minutes are free. They are still somebody's
+machines, and a slow CI is one people stop waiting for.
+
+- **A newer commit cancels the run it replaces**, on the same branch or pull
+  request, in `ci.yml` and `provision.yml`. A superseded build of the site is
+  cancelled too; a deployment that has started is left to finish.
+- **The expensive jobs are filtered by what changed**: the firmware build and
+  the browser check in `ci.yml`, by the `changes` job; `provision.yml` by its
+  `paths:`; and `pages.yml` only rebuilds the site when the site's inputs
+  moved.
+- **The firmware job waits for `checks`**, so a missing comma does not buy a
+  toolchain download.
+- **Everything has a timeout.**
+
+Two things run on every pull request that are not in this repository and
+cannot be tuned from it: GitHub's code scanning, and Copilot's review if it is
+switched on for the account. Both are settings.
 
 ## Conventions worth knowing
 

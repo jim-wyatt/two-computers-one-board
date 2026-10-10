@@ -161,6 +161,13 @@ jobs:
   # keeps this dependency-free, and rather than `git diff` because a shallow
   # clone does not have the base commit to diff against.
   changes:
+    # Listing a pull request's files is a read of the pull request. On this
+    # public repository the default token can do that with contents alone, which
+    # is why the filter has been working; in a private fork it could not, and it
+    # would fall back to "everything" on every pull request without saying why.
+    permissions:
+      contents: read
+      pull-requests: read
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -170,23 +177,73 @@ jobs:
       - id: filter
         env:
           GH_TOKEN: ${{ github.token }}
+          # Through the environment, not written into the script: none of these
+          # is free text today, and that is not a property to depend on.
+          EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.number }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          FORCED: ${{ github.event.forced }}
         run: |
-          # Anything that is not a pull request - a push to main, a manual run -
-          # builds. The point is to skip work that cannot matter, not to find
-          # excuses; main should always have a proven firmware build.
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
+          # WHAT CHANGED, ON A PUSH AS WELL AS ON A PULL REQUEST
+          #
+          # This used to answer "yes, everything" for anything that was not a
+          # pull request, so every merge to main re-ran the firmware build and
+          # the browser for a change that had touched neither - having just
+          # run them, or correctly skipped them, on the pull request that was
+          # merged. A push is now asked the same question, against the commit
+          # main was at before it.
+          #
+          # Anything that cannot be answered - a manual run, a first push with
+          # no "before", an API that will not say, a change too large for the
+          # compare endpoint to list in full - is answered "everything". The
+          # filter exists to save minutes, never to skip a check on a guess.
+          #
+          # main still always has a proven firmware build, which the old rule
+          # ("anything that is not a pull request builds, no excuses") was
+          # there to guarantee. It holds by construction: the firmware can only
+          # change through a push that touches what it is built from, and such
+          # a push builds it. A push that touches none of it cannot have
+          # changed the binary the last such push proved.
+          all() {
             echo "firmware=true" >>"$GITHUB_OUTPUT"
             echo "diagrams=true" >>"$GITHUB_OUTPUT"
-            echo "not a pull request - building, and rendering the diagrams"
+            echo "$1 - building, and rendering the diagrams"
             exit 0
-          fi
-          files=$(gh api --paginate \
-            "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
-            --jq '.[].filename')
+          }
+          case "$EVENT" in
+            pull_request)
+              # Both names of a renamed file: one moved out of mcu/ or docs/ is a
+              # change to what is built there, and the listing gives its old
+              # path only as previous_filename. The count is of raw records,
+              # because this endpoint stops at 3000 files without saying so.
+              listing=$(gh api --paginate "repos/$REPO/pulls/$PR/files" \
+                --jq '.[] | "F", .filename, (.previous_filename // empty)') ||
+                all "could not list the pull request's files"
+              [ "$(grep -cx F <<<"$listing")" -lt 3000 ] || all "too large a change to list"
+              files=$(grep -vx F <<<"$listing" || true)
+              ;;
+            push)
+              # A forced push is not a step forward from BEFORE, and the compare
+              # endpoint answers with merge-base semantics: rewind main past a
+              # firmware change and it lists nothing under mcu/, because from
+              # the common ancestor's side nothing there was added.
+              [ "$FORCED" != true ] || all "a forced push"
+              case "$BEFORE" in
+                '' | 0000000000000000000000000000000000000000) all "no previous commit to compare with" ;;
+              esac
+              # The same two precautions. This endpoint stops at 300 files.
+              listing=$(gh api "repos/$REPO/compare/$BEFORE...$AFTER" \
+                --jq '.files[] | "F", .filename, (.previous_filename // empty)') ||
+                all "could not compare with the previous commit"
+              [ "$(grep -cx F <<<"$listing")" -lt 300 ] || all "too large a change to list"
+              files=$(grep -vx F <<<"$listing" || true)
+              ;;
+            *) all "a manual run" ;;
+          esac
 
-          # west.yml and this workflow are in the list because both change what
-          # gets built, without any C file moving.
-          if grep -qE '^(mcu/|west\.yml|\.github/workflows/ci\.yml)' <<<"$files"; then
+          if grep -qE '^(mcu/|west\.yml|west-project-filter|\.github/workflows/ci\.yml)' <<<"$files"; then
             echo "firmware=true" >>"$GITHUB_OUTPUT"
             echo "firmware inputs changed - building"
           else
