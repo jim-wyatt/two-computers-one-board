@@ -68,6 +68,25 @@ def test_cmd_raises_on_unknown_command(mcu_factory: Any) -> None:
         mcu.cmd("nope")
 
 
+def test_a_shell_refusal_for_argument_count_raises(mcu_factory: Any) -> None:
+    """Seen on the board, word for word: one argument short of what px takes.
+
+    The shell rejects the line before the handler runs, so there is no
+    `Error:` prefix on it - only its own complaint and the usage text. That
+    used to come back as an ordinary two-line reply.
+    """
+    mcu = mcu_factory(
+        {
+            "app matrix px 1 1": [
+                "px: wrong parameter count",
+                "px - Light one LED: app matrix px <row> <col> <level>",
+            ]
+        }
+    )
+    with pytest.raises(MCUError, match="wrong parameter count"):
+        mcu.cmd("app matrix px 1 1")
+
+
 def test_cmd_raises_on_error_lines(mcu_factory: Any) -> None:
     mcu = mcu_factory({"app bars 200": ["Error: bar 0: 200 outside 0..100"]})
     with pytest.raises(MCUError, match="outside"):
