@@ -43,7 +43,9 @@ UDC_DIR="${UNOQ_UDC_DIR:-/sys/class/udc}"
 
 log() {
   echo "unoq-usb-handover: $*"
-  logger -t unoq-usb-handover "$*" 2>/dev/null
+  # Best effort: a journal that is not taking messages is not a reason for a
+  # hand-over that worked to report that it did not.
+  logger -t unoq-usb-handover "$*" 2>/dev/null || true
 }
 
 [ "$(id -u)" = 0 ] || {
@@ -67,6 +69,11 @@ if systemctl cat adbd.service >/dev/null 2>&1; then
     systemctl disable --now adbd.service >/dev/null 2>&1
     if systemctl is-active --quiet adbd.service; then
       log "adbd is still running after being stopped - leaving the port with it"
+      exit 1
+    fi
+    if systemctl is-enabled --quiet adbd.service 2>/dev/null; then
+      # Stopped, and back at the next boot to race this gadget for the port.
+      log "adbd stopped but is still enabled - not building a gadget it would fight at boot"
       exit 1
     fi
     log "adbd stopped and disabled"

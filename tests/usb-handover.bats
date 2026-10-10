@@ -31,7 +31,17 @@ setup() {
 
   FLAGS="$BATS_TEST_TMPDIR/flags"
   mkdir -p "$FLAGS/active" "$FLAGS/enabled" "$FLAGS/sticky" "$FLAGS/missing" \
-    "$FLAGS/broken" "$FLAGS/dies"
+    "$FLAGS/broken" "$FLAGS/dies" "$FLAGS/clings"
+
+  # Root's copy of the hand-over, as 60-usb-gadget.sh would have installed it.
+  # A fake: what is being tested from this side is whether it gets called.
+  export UNOQ_RUNTIME_DIR="$BATS_TEST_TMPDIR/runtime"
+  mkdir -p "$UNOQ_RUNTIME_DIR/usb"
+  cat >"$UNOQ_RUNTIME_DIR/usb/handover.sh" <<SH
+#!/bin/bash
+echo "installed-handover" >>"$STUB_LOG"
+SH
+  chmod +x "$UNOQ_RUNTIME_DIR/usb/handover.sh"
   export FLAGS
 
   export UNOQ_GADGET_DIR="$BATS_TEST_TMPDIR/configfs/unoq"
@@ -56,6 +66,7 @@ SH
   # touching files. Two more directories describe the awkward cases:
   #   missing/<unit>  the unit does not exist on this board
   #   sticky/<unit>   stopping it does not work - something starts it again
+  #   clings/<unit>   disabling it does not work - it stays enabled
   #   broken/<unit>   starting it fails, and systemctl says so
   #   dies/<unit>     starting it "works", and it is not running afterwards
   stub_body systemctl <<'SH'
@@ -75,7 +86,7 @@ case "$verb" in
     echo "${args[0]} static" ;;
   disable)
     for u in "${args[@]}"; do
-      rm -f "$FLAGS/enabled/$u"
+      [ -e "$FLAGS/clings/$u" ] || rm -f "$FLAGS/enabled/$u"
       [ -e "$FLAGS/sticky/$u" ] || rm -f "$FLAGS/active/$u"
     done ;;
   enable | start | restart)
@@ -133,6 +144,17 @@ load_lib() {
   run disable_unit arduino-router.service arduino-app-cli.service
   [ "$status" -ne 0 ]
   [[ "$output" == *"arduino-app-cli.service stopped and disabled"* ]]
+}
+
+@test "a unit that stops but stays enabled is not reported as dealt with" {
+  # It is quiet now and back at the next boot, which is the worse half to miss.
+  running arduino-app-cli.service
+  touch "$FLAGS/clings/arduino-app-cli.service"
+  load_lib
+  run disable_unit arduino-app-cli.service
+  [ "$status" -ne 0 ]
+  [[ "$output" != *"stopped and disabled"* ]]
+  [[ "$output" == *"still enabled"* ]]
 }
 
 @test "the router's trigger is disabled before the router is" {
@@ -244,6 +266,25 @@ load_lib() {
   never_ran "systemctl restart unoq-usb-gadget.service"
 }
 
+@test "the gadget is not built over an adbd that is still enabled" {
+  # Stopped is not enough: at the next boot it is back, racing for the port.
+  running ssh.service
+  running adbd.service
+  touch "$FLAGS/clings/adbd.service"
+  run "$HANDOVER"
+  [ "$status" -ne 0 ]
+  never_ran "systemctl restart unoq-usb-gadget.service"
+}
+
+@test "a journal that takes no messages does not turn success into failure" {
+  stub logger 1
+  running ssh.service
+  running adbd.service
+  touch "$UNOQ_UDC_DIR/4e00000.usb"
+  run "$HANDOVER"
+  [ "$status" -eq 0 ]
+}
+
 @test "with a cable already in, the bind is started by hand" {
   # The udev rule fires when a controller appears. This one appeared at boot.
   running ssh.service
@@ -289,6 +330,47 @@ SH
   never_ran "systemctl restart unoq-usb-gadget.service"
 }
 
+# --- usb_handover: called, or scheduled ------------------------------------------
+
+@test "from an SSH session the hand-over is simply run" {
+  load_lib
+  usb_handover
+  [ "$HANDOVER_DEFERRED" = 0 ]
+  ran "installed-handover"
+  never_ran systemd-run
+}
+
+@test "from adb shell it is scheduled, with the delay, and not run" {
+  echo "0::/system.slice/adbd.service" >"$UNOQ_CGROUP_FILE"
+  export UNOQ_HANDOVER_DELAY=7
+  load_lib
+  usb_handover
+  [ "$HANDOVER_DEFERRED" = 1 ]
+  never_ran "installed-handover"
+  ran_like "^systemd-run .*--unit=unoq-usb-handover .*--on-active=7 .*$UNOQ_RUNTIME_DIR/usb/handover.sh\$"
+  # A timer's default accuracy is a minute. Measured: 30 seconds late.
+  ran_like "^systemd-run .*AccuracySec=1s"
+}
+
+@test "from adb shell, a hand-over that cannot be scheduled is a failure and adb is left alone" {
+  echo "0::/system.slice/adbd.service" >"$UNOQ_CGROUP_FILE"
+  running adbd.service
+  stub systemd-run 1
+  load_lib
+  run usb_handover
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"adb is untouched"* ]]
+  never_ran "installed-handover"
+  [ -e "$FLAGS/active/adbd.service" ]
+}
+
+@test "a hand-over that fails when run directly is a warning, not silence" {
+  printf '#!/bin/bash\nexit 1\n' >"$UNOQ_RUNTIME_DIR/usb/handover.sh"
+  load_lib
+  run usb_handover
+  [[ "$output" == *"hand-over failed"* ]]
+}
+
 # --- the step that calls it ------------------------------------------------------
 
 @test "the step opens SSH before it does anything that closes adb" {
@@ -296,14 +378,14 @@ SH
   # nothing in the step may stop adbd by itself - that is handover.sh's job,
   # because only handover.sh can be run from outside adbd.
   ssh_line="$(grep -n '^ensure_ssh' "$GADGET_STEP" | cut -d: -f1)"
-  handover_line="$(grep -n '^step "hand the USB port over"' "$GADGET_STEP" | cut -d: -f1)"
+  handover_line="$(grep -n '^usb_handover$' "$GADGET_STEP" | cut -d: -f1)"
   [ -n "$ssh_line" ] && [ -n "$handover_line" ]
   [ "$ssh_line" -lt "$handover_line" ]
   ! grep -nE '^[^#]*(disable_unit|systemctl (stop|disable)[^#]*) adbd' "$GADGET_STEP"
 }
 
 @test "the hand-over is the last thing the step does to the board" {
-  handover_line="$(grep -n '^step "hand the USB port over"' "$GADGET_STEP" | cut -d: -f1)"
+  handover_line="$(grep -n '^usb_handover$' "$GADGET_STEP" | cut -d: -f1)"
   last_install="$(grep -nE '^[^#]*(install_unit|install_root_scripts|apt_install|write_file|enable_unit|systemctl enable)' "$GADGET_STEP" | tail -1 | cut -d: -f1)"
   [ "$last_install" -lt "$handover_line" ]
 }

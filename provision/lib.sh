@@ -146,6 +146,12 @@ disable_unit() {
       warn "$u is still running after being stopped - something starts it again."
       warn "  what does:  systemctl show $u -p TriggeredBy -p WantedBy -p RequiredBy"
       rc=1
+    elif [ "$(systemctl is-enabled "$u" 2>/dev/null)" = "enabled" ]; then
+      # Stopped now, and back at the next boot: the half that is easy to miss,
+      # because everything looks right until then.
+      warn "$u stopped, but is still enabled - it will start again at boot."
+      warn "  why:  systemctl disable $u"
+      rc=1
     else
       did "$u stopped and disabled"
     fi
@@ -185,6 +191,43 @@ ensure_ssh() {
 # stopping itself, part way through whatever it was doing.
 in_unit_cgroup() {
   grep -qE "/$1(/|\$)" "${UNOQ_CGROUP_FILE:-/proc/self/cgroup}" 2>/dev/null
+}
+
+# usb_handover - run usb/handover.sh, or arrange for it to be run.
+#
+# Sets HANDOVER_DEFERRED=1 when it was scheduled and has not happened yet, so
+# the caller knows there is nothing to verify and something to tell the user.
+#
+# From `adb shell` this process is adbd's child, and the hand-over stops adbd.
+# So it is given to systemd to run from outside, a little later - long enough
+# for the rest of the run to finish printing. Anywhere else it is just called.
+usb_handover() {
+  local handover="$RUNTIME_DIR/usb/handover.sh"
+  local delay="${UNOQ_HANDOVER_DELAY:-20}"
+  # Read by the caller, which shellcheck cannot see from here.
+  # shellcheck disable=SC2034
+  HANDOVER_DEFERRED=0
+  if ! in_unit_cgroup adbd.service; then
+    if "$handover"; then
+      did "hand-over ran"
+    else
+      warn "hand-over failed - check: journalctl -t unoq-usb-handover -n 40"
+    fi
+    return 0
+  fi
+  # A hand-over still pending from an earlier run would make the unit name
+  # taken. Whatever it was going to do, this one does.
+  systemctl stop unoq-usb-handover.timer unoq-usb-handover.service >/dev/null 2>&1
+  # AccuracySec, because a timer's default accuracy is a minute: "20 seconds"
+  # was measured firing 30 seconds late, with nothing to say why the board was
+  # still sitting there on adb.
+  systemd-run --quiet --collect --unit=unoq-usb-handover \
+    --on-active="$delay" --timer-property=AccuracySec=1s \
+    "$handover" >/dev/null 2>&1 ||
+    fail "could not schedule the hand-over - adb is untouched, nothing is bound"
+  did "hand-over scheduled in ${delay}s (this is an adb shell, and it will close)"
+  # shellcheck disable=SC2034
+  HANDOVER_DEFERRED=1
 }
 
 # mask_unit <unit> - for services that restart themselves on demand.

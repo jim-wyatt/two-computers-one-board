@@ -224,24 +224,11 @@ step "hand the USB port over"
 # this file, which on a board reached over `adb shell` killed this script
 # before it had installed a single unit: no adb, no gadget, no way in.
 # REVERT: systemctl enable --now adbd
-HANDOVER="$RUNTIME_DIR/usb/handover.sh"
+# usb_handover is in lib.sh: it calls the script, or - from `adb shell`, where
+# calling it would kill this run - schedules it. HANDOVER_DEFERRED says which.
+usb_handover
+DEFERRED="$HANDOVER_DEFERRED"
 HANDOVER_DELAY="${UNOQ_HANDOVER_DELAY:-20}"
-DEFERRED=0
-if in_unit_cgroup adbd.service; then
-  # This shell IS adbd's child. Stopping adbd from here stops this, so the
-  # hand-over is given to systemd to run from outside, a little later - long
-  # enough for the rest of this run to finish printing.
-  systemctl stop unoq-usb-handover.timer unoq-usb-handover.service >/dev/null 2>&1
-  systemd-run --quiet --collect --unit=unoq-usb-handover \
-    --on-active="$HANDOVER_DELAY" "$HANDOVER" >/dev/null 2>&1 ||
-    fail "could not schedule the hand-over - adb is untouched, nothing is bound"
-  did "hand-over scheduled in ${HANDOVER_DELAY}s (this is an adb shell, and it will close)"
-  DEFERRED=1
-elif "$HANDOVER"; then
-  did "hand-over ran"
-else
-  warn "hand-over failed - check: journalctl -t unoq-usb-handover -n 40"
-fi
 
 step "verify"
 G=/sys/kernel/config/usb_gadget/unoq
