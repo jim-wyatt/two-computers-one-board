@@ -59,6 +59,8 @@ application flashed by itself has no bootloader in front of it.
 | `share/build-image.sh` | either of the next two | Renders this documentation and builds the FAT32 image both of them hand out. `bootstrap.sh` runs it for you; run by hand, it has to come first. |
 | `70-learning-web.sh` | `--with-learning` | Serves the course, and the installers if you fetched them, on port 8080. No authentication, on every interface. Adds a read-only mount to `/etc/fstab`. |
 | `60-usb-gadget.sh` | `--with-usb-gadget` | Network and the fileshare drive over USB. Always run last, because it takes the USB host port down with it: see [usb.md](usb.md). |
+| `80-watchdog.sh` | `--with-watchdog` | Arms the hardware watchdog through a `systemd` drop-in (`RuntimeWatchdogSec=30s`) and re-executes `systemd` to read it. Costs: the board resets itself if `systemd` stalls for 30 seconds, and nobody has yet checked that a long build in deep swap does not cause exactly that. Not validated on hardware; not part of `--everything`. |
+| `85-esp-permissions.sh` | `--with-esp-lockdown` | Adds `fmask=0177,dmask=0077` to the `/boot/efi` line of `/etc/fstab`, so the EFI partition is readable by root only, then remounts it and reads the result back. Costs: it edits the entry the board boots from (verified before it is installed, backed up to `/etc/fstab.unoq-esp.bak`), and anything that read `/boot/efi` without root no longer can. Not validated on hardware; not part of `--everything`. |
 
 Any of them can be added later, either by re-running `bootstrap.sh` with the
 flag or by running the step directly:

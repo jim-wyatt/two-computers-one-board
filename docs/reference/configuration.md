@@ -131,6 +131,7 @@ Read by `mcu/link-up.sh`. These are facts about the circuit board, not
 preferences; they are variables so the script can be tested without one. See
 [hardware.md](hardware.md).
 
+| `UNOQ_WATCHDOG_SEC` | `30` | `provision/80-watchdog.sh` | Whole seconds without a ping from `systemd` before the hardware watchdog resets the board. Refused below `10`: a timeout that short resets a board that is merely busy, and does it again after every reboot. Only read with `--with-watchdog`. |
 | Variable | Default | What it is |
 |---|---|---|
 | `UNOQ_GPIOCHIP` | `/dev/gpiochip1` | The GPIO controller both lines are on. |
@@ -189,6 +190,9 @@ Read by the scripts under `tools/`, on whatever machine runs the quality gates.
 
 | Variable | Default | What it does |
 |---|---|---|
+| `UNOQ_WATCHDOG_CONF_DIR` | `/etc/systemd/system.conf.d` | Where `80-watchdog.sh` writes its `systemd` drop-in. |
+| `UNOQ_WATCHDOG_SYSFS` | `/sys/class/watchdog` | Where `80-watchdog.sh` looks for a watchdog device. |
+| `UNOQ_FSTAB` | `/etc/fstab` | The mount table `85-esp-permissions.sh` edits. Its backup is written beside it. |
 | `UNOQ_BIN` | `~/.local/bin` | Where `install-dev-tools.sh` puts `shellcheck`, `shfmt` and `bats`. |
 | `UNOQ_SITE` | `share/learn` | The built site the diagram checks inspect. |
 | `UNOQ_DIAGRAM_PORT` | `8099` | The port `check-diagrams.sh` serves the site on while it renders. |
