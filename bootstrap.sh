@@ -163,7 +163,12 @@ case "$BOARD" in
   *) warn "unrecognised board '$BOARD' - written for arduino,imola. Continuing." ;;
 esac
 
-if sudo -n true 2>/dev/null; then
+# -k: ask as if nothing were cached. Without it this is true for an account
+# that DOES need a password but used sudo a minute ago, the run is called
+# passwordless, nothing keeps the timestamp alive, and it lapses mid-download
+# exactly as before. With a command, -k ignores the cache for this one question
+# and leaves it intact for the `sudo -v` below.
+if sudo -n -k true 2>/dev/null; then
   skip "sudo available without a password"
 else
   echo "  sudo will prompt for your password, once."
