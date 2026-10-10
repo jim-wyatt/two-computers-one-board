@@ -78,8 +78,10 @@ column:
 | `FAILED` | `fail` | I cannot continue, and here is what to do |
 
 Each script ends with a count, such as `0 changed, 9 already correct.` A second
-run of a healthy board is a wall of `ok`. That is the signal you are looking
-for, and it is only meaningful because the script genuinely checked.
+run of one on a healthy board is a wall of `ok`. That is the signal you are
+looking for, and it is only meaningful because the script genuinely checked.
+(`bootstrap.sh` as a whole has one part that is not like this: the firmware is
+built and flashed again on every run, and says `changed` each time.)
 
 ## The shape of the run
 
@@ -129,10 +131,13 @@ device, so nothing plugged into it works any more.
 
 > [!NOTE]
 > `--with-learning` serves the files on the drive image, so the image has to
-> exist first. On a board without one, step 70 stops with
-> `/srv/unoq-share has no content` and prints the two commands that build it:
-> `sudo bash share/fetch-vscode.sh`, then `sudo bash share/build-image.sh`. Run
-> those and re-run `bootstrap.sh`.
+> exist first — and `bootstrap.sh` builds it first. Asked for the web server
+> or the USB gadget, it runs `share/build-image.sh` as stage 65, ahead of both,
+> with this documentation rendered onto it. It used not to, and a fresh board
+> stopped at stage 70 with `/srv/unoq-share has no content`. You will only see
+> that message now if you run `provision/70-learning-web.sh` by hand on a
+> board that has no image. The VS Code installers are not part of stage 65:
+> they are a large, separate download, `sudo bash share/fetch-vscode.sh`.
 
 This is a general principle worth taking away: **a setup script should not
 quietly take something away from you.** If an option has a cost, the cost

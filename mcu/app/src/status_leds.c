@@ -91,12 +91,12 @@ static bool claim(const struct gpio_dt_spec *led, size_t n)
 	return any;
 }
 
-/* Runs eight times a second forever, and does two jobs on one work item.
+/* Runs four times a second forever, and does two jobs on one work item.
  *
  * Every beat it redraws both LEDs, which is all a blink is. No second timer
  * and no thread: the rhythm is a counter, and the counter was already here.
  *
- * Every eighth beat - once a second, as before there was any blinking - it
+ * Every fourth beat - once a second, as before there was any blinking - it
  * looks at the link. Deliberately a poll rather than a timeout armed on each
  * message: the interesting event here is the ABSENCE of traffic, and you
  * cannot receive an interrupt for something not happening.
