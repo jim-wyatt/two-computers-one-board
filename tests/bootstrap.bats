@@ -151,7 +151,7 @@ bootstrap() {
 
 needs_a_password() {
   stub_body sudo <<'SH'
-[ "$*" = "-n -k true" ] && exit 1
+[ "$*" = "-n -k -v" ] && exit 1
 exit 0
 SH
 }
@@ -183,7 +183,7 @@ SH
 
 @test "a refused password stops the run before anything is done" {
   stub_body sudo <<'SH'
-[ "$*" = "-n -k true" ] && exit 1
+[ "$*" = "-n -k -v" ] && exit 1
 [ "$*" = "-v" ] && exit 1
 exit 0
 SH
@@ -194,15 +194,16 @@ SH
 }
 
 @test "a password still cached from a minute ago does not pass for passwordless" {
-  # `sudo -n true` succeeds on the strength of the cache; only the probe that
-  # ignores it knows this account needs a password, and so needs keeping alive.
+  # A plain `sudo -n` probe succeeds on the strength of the cache; only the one
+  # that ignores it knows this account needs a password, and so needs keeping
+  # alive.
   stub_body sudo <<'SH'
-[ "$*" = "-n -k true" ] && exit 1
+[ "$*" = "-n -k -v" ] && exit 1
 exit 0
 SH
   bootstrap
   [ "$status" -eq 0 ]
-  ran "sudo -n -k true"
+  ran "sudo -n -k -v"
   ran "sudo -n -v"
   [[ "$output" != *"without a password"* ]]
 }

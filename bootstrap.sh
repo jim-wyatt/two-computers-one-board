@@ -166,9 +166,11 @@ esac
 # -k: ask as if nothing were cached. Without it this is true for an account
 # that DOES need a password but used sudo a minute ago, the run is called
 # passwordless, nothing keeps the timestamp alive, and it lapses mid-download
-# exactly as before. With a command, -k ignores the cache for this one question
-# and leaves it intact for the `sudo -v` below.
-if sudo -n -k true 2>/dev/null; then
+# exactly as before. -k ignores the cache for this one question and leaves it
+# intact for the `sudo -v` below. -v rather than a command such as `true`,
+# because a sudoers rule can allow one command without a password and still
+# want one for the rest.
+if sudo -n -k -v 2>/dev/null; then
   skip "sudo available without a password"
 else
   echo "  sudo will prompt for your password, once."
@@ -186,13 +188,15 @@ else
   # alive. -n, so that if it has lapsed anyway the refresher stops quietly
   # rather than putting a second prompt in the middle of somebody else's
   # output; the step that needs root will then ask, which is no worse than
-  # before. It ends with this script, by the trap and by the check on $$.
+  # before. It ends with this script, by the trap and by the check on $$. Its
+  # output is closed so that the sleep it leaves behind for up to a minute does
+  # not hold a pipe open (adb shell, | tee) after the script has finished.
   (
     while kill -0 "$$" 2>/dev/null; do
       sleep 60
       sudo -n -v 2>/dev/null || exit 0
     done
-  ) &
+  ) >/dev/null 2>&1 </dev/null &
   SUDO_KEEPALIVE=$!
   # shellcheck disable=SC2064  # the PID is known now, and must not change
   trap "kill $SUDO_KEEPALIVE 2>/dev/null" EXIT
