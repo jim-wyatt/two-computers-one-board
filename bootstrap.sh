@@ -199,13 +199,24 @@ run_step "35  status LEDs (root)" sudo "$PROJECT/provision/35-status-leds.sh"
 
 # --- MCU firmware ----------------------------------------------------------
 
+# A build or a flash that fails does not stop the run - the optional extras
+# below do not depend on it, and half a board is easier to fix than none. But
+# it used to end there: a line of yellow in the middle of a long log, then
+# "done" and exit status 0. On the board this project is developed on that hid
+# a build that had been failing for two months. So it is remembered, the
+# reason is shown where it happened, and the run ends by saying so and
+# exiting non-zero.
+FIRMWARE_PROBLEM=""
+
 if [ "$SKIP_MCU" = 0 ]; then
   printf '\n%s########## MCU firmware ##########%s\n' "$P_BOLD" "$P_OFF"
   step "build"
   if bash "$PROJECT/mcu/zbuild.sh" "$PROJECT/mcu/app" >/tmp/zbuild-bootstrap.log 2>&1; then
     did "firmware built (log: /tmp/zbuild-bootstrap.log)"
   else
-    warn "build failed - see /tmp/zbuild-bootstrap.log. Skipping flash."
+    warn "build failed - skipping the flash. The end of /tmp/zbuild-bootstrap.log:"
+    tail -n 6 /tmp/zbuild-bootstrap.log | sed 's/^/          /' >&2
+    FIRMWARE_PROBLEM="the firmware did not build"
     SKIP_MCU=1
   fi
 fi
@@ -236,7 +247,9 @@ if [ "$SKIP_MCU" = 0 ]; then
   if bash "$PROJECT/mcu/flash-all.sh" >/tmp/zflash-bootstrap.log 2>&1; then
     did "MCUboot + application flashed"
   else
-    warn "flash failed - see /tmp/zflash-bootstrap.log"
+    warn "flash failed. The end of /tmp/zflash-bootstrap.log:"
+    tail -n 6 /tmp/zflash-bootstrap.log | sed 's/^/          /' >&2
+    FIRMWARE_PROBLEM="the firmware was built but could not be flashed"
     warn "recover with: $PROJECT/mcu/flash-all.sh"
   fi
 fi
@@ -280,3 +293,9 @@ EOF
 [ "$WITH_USB_GADGET" = 0 ] &&
   echo "  IP over USB + fileshare:  sudo bash provision/60-usb-gadget.sh"
 echo
+
+if [ -n "$FIRMWARE_PROBLEM" ]; then
+  fail "everything above is in place, but $FIRMWARE_PROBLEM.
+        The microcontroller is running whatever it ran before. Fix the cause
+        shown under 'MCU firmware' above and run this again."
+fi

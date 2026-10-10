@@ -88,6 +88,47 @@ SH
   ran_like "^PATH=$HOME/\.local/bin:"
 }
 
+# --- a build directory from before the checkout moved ------------------------
+#
+# The board this project is developed on spent two months unable to build its
+# own firmware, and nobody knew: bootstrap.sh reports a failed build as a
+# warning and skips the flash.
+
+configured_for() {
+  mkdir -p "$ZEPHYR_WORKSPACE/build"
+  echo "APPLICATION_SOURCE_DIR:PATH=$1" >"$ZEPHYR_WORKSPACE/build/CMakeCache.txt"
+}
+
+@test "a build directory configured from another path is rebuilt from clean" {
+  configured_for /home/arduino/unoq-cpu-bars/mcu/app
+  run "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -eq 0 ]
+  ran "west build -b arduino_uno_q -d $ZEPHYR_WORKSPACE/build -p always $PROJECT/mcu/app"
+  [[ "$output" == *"/home/arduino/unoq-cpu-bars/mcu/app"* ]]
+  [[ "$output" == *"rebuilding from clean"* ]]
+}
+
+@test "a build directory configured from this checkout is reused, not rebuilt" {
+  configured_for "$PROJECT/mcu/app"
+  run "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -eq 0 ]
+  ran "west build -b arduino_uno_q -d $ZEPHYR_WORKSPACE/build $PROJECT/mcu/app"
+}
+
+@test "an explicit pristine choice is passed through once, not doubled" {
+  configured_for /somewhere/else/mcu/app
+  run "$PROJECT/mcu/zbuild.sh" -p always
+  [ "$status" -eq 0 ]
+  ran "west build -b arduino_uno_q -d $ZEPHYR_WORKSPACE/build $PROJECT/mcu/app -p always"
+}
+
+@test "a build directory with no cache is left for west to judge" {
+  mkdir -p "$ZEPHYR_WORKSPACE/build"
+  run "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -eq 0 ]
+  ran "west build -b arduino_uno_q -d $ZEPHYR_WORKSPACE/build $PROJECT/mcu/app"
+}
+
 # --- zbuild on a CI runner --------------------------------------------------
 #
 # A runner has west and imgtool on PATH and no venv inside the workspace, and

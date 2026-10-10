@@ -101,7 +101,41 @@ BUILD="${BUILD_DIR:-$BUILD}"
 cd "$WS"
 echo "building $APP for $BOARD"
 echo "  build dir: $BUILD"
-"$WEST" build -b "$BOARD" -d "$BUILD" "$APP" "$@"
+# A BUILD DIRECTORY LEFT BY A CHECKOUT THAT HAS SINCE MOVED
+# ----------------------------------------------------------
+# CMake records the source directory a build was configured from, and west
+# refuses to reuse one configured from somewhere else:
+#
+#   ERROR: Build directory ".../build" is for application "/home/x/old-name/mcu/app",
+#   but source directory "/home/x/new-name/mcu/app" was specified
+#
+# That is the right refusal for a stranger's build directory and the wrong one
+# here, where the "other" application is this same one before the checkout was
+# renamed or moved. bootstrap.sh hit it on the board this project is developed
+# on: every provisioning step reported nothing to change, the build died on
+# this, and the firmware was quietly not flashed - which is how that board came
+# to be running an image two months older than its source.
+#
+# So a build directory configured from a different path is rebuilt from clean,
+# and says so. Only when the caller has not already asked for a pristine build,
+# and only by the path recorded in the cache - a missing or unreadable cache is
+# west's business, not this script's.
+STALE=()
+if [ -f "$BUILD/CMakeCache.txt" ]; then
+  was="$(sed -n 's/^APPLICATION_SOURCE_DIR:PATH=//p' "$BUILD/CMakeCache.txt" | head -1)"
+  case " $* " in
+    *" -p "* | *" --pristine"*) ;;
+    *)
+      if [ -n "$was" ] && [ "$was" != "$APP" ]; then
+        echo "  build dir was configured for $was"
+        echo "  which is not $APP - rebuilding from clean"
+        STALE=(-p always)
+      fi
+      ;;
+  esac
+fi
+
+"$WEST" build -b "$BOARD" -d "$BUILD" "${STALE[@]}" "$APP" "$@"
 
 # clangd reads compile_commands.json from the workspace root. west writes it
 # into build/, so link it into both folders you might have open: the Zephyr
