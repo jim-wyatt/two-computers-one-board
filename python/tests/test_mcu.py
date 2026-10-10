@@ -100,6 +100,81 @@ def test_status_raises_when_no_key_value_pairs_are_present(mcu_factory: Any) -> 
         mcu.status()
 
 
+# -- die temperature --------------------------------------------------------
+
+# What a firmware built before `app temp` existed answers with. The Zephyr
+# shell does not say "command not found" for an unknown *sub*command of a group
+# that has no handler of its own: exec_cmd() in subsys/shell/shell.c prints the
+# group's help and stops. This is that help, for the `app` group as it was.
+OLD_FIRMWARE_HELP = [
+    "app - UNO Q application commands",
+    "Subcommands:",
+    "status  : uptime, panel orientation, refresh sweeps",
+    "bars    : Draw CPU bars: app bars <pct> [pct ...]",
+    "matrix  : LED panel control",
+]
+
+
+def test_die_temp_converts_millidegrees_to_degrees(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app temp": ["temp_mc=31250"]})
+    assert mcu.die_temp() == 31.25
+    assert mcu._s.written == ["app temp"]
+
+
+def test_die_temp_keeps_the_sign_below_freezing(mcu_factory: Any) -> None:
+    # The part is rated to -40 C. A parser that dropped the minus would turn a
+    # cold board into a warm one, and nothing downstream could tell.
+    mcu = mcu_factory({"app temp": ["temp_mc=-1500"]})
+    assert mcu.die_temp() == -1.5
+
+
+def test_die_temp_survives_colour_and_a_dribbling_uart(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app temp": ["temp_mc=40000"]}, ansi=True, chunk_size=3)
+    assert mcu.die_temp() == 40.0
+
+
+def test_die_temp_reports_a_sensor_the_firmware_could_not_read(mcu_factory: Any) -> None:
+    # shell_error() prints in red and adds no "Error:" prefix, so cmd() lets
+    # this line through; die_temp() has to recognise it for itself.
+    mcu = mcu_factory({"app temp": ["temp_err=-19"]}, ansi=True)
+    with pytest.raises(MCUError, match=r"could not read its die temperature.*temp_err=-19"):
+        mcu.die_temp()
+
+
+def test_die_temp_never_returns_the_error_number_as_a_reading(mcu_factory: Any) -> None:
+    # -19 millidegrees is a temperature. The error line must not parse as one
+    # even if a reading somehow follows it.
+    mcu = mcu_factory({"app temp": ["temp_err=-5", "temp_mc=25000"]})
+    with pytest.raises(MCUError, match="temp_err=-5"):
+        mcu.die_temp()
+
+
+def test_die_temp_says_so_when_the_firmware_predates_the_command(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app temp": OLD_FIRMWARE_HELP})
+    with pytest.raises(MCUError, match="no `app temp` command"):
+        mcu.die_temp()
+
+
+def test_die_temp_raises_on_an_unparseable_reply(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app temp": ["temp_mc=warm"]})
+    with pytest.raises(MCUError, match="could not parse app temp"):
+        mcu.die_temp()
+
+
+def test_die_temp_rejects_a_reading_buried_in_other_text(mcu_factory: Any) -> None:
+    # Anchored on purpose: a line that merely contains the key is some other
+    # line, and guessing at it is how a wrong number gets reported as a right one.
+    mcu = mcu_factory({"app temp": ["last temp_mc=25000 stale"]})
+    with pytest.raises(MCUError, match="could not parse app temp"):
+        mcu.die_temp()
+
+
+def test_die_temp_raises_on_no_reply(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app temp": []})
+    with pytest.raises(MCUError, match="could not parse app temp"):
+        mcu.die_temp()
+
+
 # -- LED matrix -------------------------------------------------------------
 
 

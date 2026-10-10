@@ -129,3 +129,79 @@ def test_the_parser_recognises_the_real_prompt() -> None:
     cmd() uses it to decide a response has finished arriving."""
     assert mcu._PROMPT.match(firmware_prompt().strip())
     assert re.search(r":~\$\s*$", firmware_prompt())
+
+
+# -- the temp line ----------------------------------------------------------
+#
+# `app temp` answers with one of two printf formats from the header, and mcu.py
+# matches them with two regexes. Neither side can import the other's, so the
+# regex each format *implies* is rebuilt here and compared with the one in use.
+
+
+def firmware_format(name: str) -> str:
+    """A string #define from app_proto.h, unquoted."""
+    if not HEADER.exists():  # pragma: no cover - only if the tree is cut up
+        pytest.skip(f"firmware header not found at {HEADER}")
+    m = re.search(rf'^#define\s+{name}\s+"(.*)"\s*$', HEADER.read_text(), re.MULTILINE)
+    assert m, f"{name} is gone from app_proto.h"
+    return m.group(1)
+
+
+def implied_regex(fmt: str) -> str:
+    """The anchored regex a printf format made only of literals and %d implies."""
+    return "^" + re.escape(fmt).replace("%d", r"(-?\d+)") + "$"
+
+
+@pytest.mark.parametrize(
+    ("python_name", "c_name"),
+    [("_TEMP", "APP_TEMP_FMT"), ("_TEMP_ERR", "APP_TEMP_ERR_FMT")],
+)
+def test_temp_regexes_are_the_ones_the_firmware_formats_imply(
+    python_name: str, c_name: str
+) -> None:
+    fmt = firmware_format(c_name)
+    assert getattr(mcu, python_name).pattern == implied_regex(fmt), (
+        f"unoq.mcu.{python_name} no longer matches {c_name} ({fmt!r}) - "
+        f"a change to app_proto.h is a protocol change; update python/unoq/mcu.py"
+    )
+
+
+@pytest.mark.parametrize("millidegrees", [31250, 0, -1, -40000, 125000])
+def test_a_line_the_firmware_would_print_parses_back(millidegrees: int) -> None:
+    """The same samples mcu/tests/link_protocol round-trips in C. %d means the
+    same thing to Python's % operator, so this renders the real format."""
+    line = firmware_format("APP_TEMP_FMT") % millidegrees
+    m = mcu._TEMP.match(line)
+    assert m, f"{line!r} is what the firmware prints and mcu.py cannot read it"
+    assert int(m.group(1)) == millidegrees
+
+
+def test_the_failure_line_is_not_a_reading() -> None:
+    line = firmware_format("APP_TEMP_ERR_FMT") % -19
+    assert mcu._TEMP_ERR.match(line)
+    assert not mcu._TEMP.match(line)
+
+
+def test_the_firmware_marks_a_refusal_the_way_python_looks_for_it() -> None:
+    """A refused command has to look like one from both ends.
+
+    Zephyr's shell_error() only colours a line, and the colour is stripped
+    before MCU.cmd() reads it. The handlers used to print a bare message, so a
+    refused command came back as an ordinary reply and nothing was raised. The
+    prefix is now a macro the handlers share, and this pins it to the one
+    Python tests for.
+    """
+    match = re.search(r'^#define\s+APP_ERR\s+"([^"]*)"', HEADER.read_text(), re.MULTILINE)
+    assert match, "APP_ERR is not defined in app_proto.h"
+    assert match.group(1).rstrip() == mcu.ERROR_PREFIX
+    assert match.group(1).endswith(" "), "the message would run straight on from the prefix"
+
+
+def test_every_refusal_in_the_firmware_uses_the_prefix() -> None:
+    """One handler printing a bare shell_error() is all it takes to bring it back."""
+    source = (MCU_APP / "src" / "main.c").read_text()
+    calls = re.findall(r"shell_error\(sh,\s*([A-Z_]+|\")", source)
+    assert calls, "no shell_error calls found - has main.c moved?"
+    # APP_TEMP_ERR_FMT is the one exception: a keyed line of its own, which
+    # MCU.die_temp() reads for the errno inside it.
+    assert set(calls) <= {"APP_ERR", "APP_TEMP_ERR_FMT"}, calls
