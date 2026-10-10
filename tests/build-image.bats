@@ -221,7 +221,7 @@ learn_active() { : >"$FLAGS/learn-active"; }
   # Exactly the one plain attempt, and no flag on it of any kind.
   [ "$(grep -c '^umount' "$STUB_LOG")" -eq 1 ]
   ran "umount $UNOQ_SHARE_MOUNT"
-  ! ran_like '^umount .*(-l|-f|--lazy|--force)'
+  ! ran_like '^umount( .*)? (-[a-zA-Z]*[lf][a-zA-Z]*|--lazy|--force)( |$)'
   # And nothing written to an image that could not be remounted.
   ! ran_like '^mount -o loop,rw'
   never_ran rsync
@@ -299,7 +299,7 @@ needs_a_partition_node() {
   never_ran sfdisk
   never_ran losetup
   never_ran mkfs.vfat
-  ! ran_like '^umount .*(-l|-f|--lazy|--force)'
+  ! ran_like '^umount( .*)? (-[a-zA-Z]*[lf][a-zA-Z]*|--lazy|--force)( |$)'
 }
 
 @test "formatting a new image stops unoq-learn before the unmount, like the remount does" {
@@ -334,7 +334,7 @@ needs_a_partition_node() {
   [ "$(cat "$UNOQ_SHARE_IMG")" = "the image the board is serving" ]
   [ -f "$UNOQ_SHARE_IMG.new" ]
   [ "$(grep -cx "umount $UNOQ_SHARE_MOUNT" "$STUB_LOG")" -eq 1 ]
-  ! ran_like '^umount .*(-l|-f|--lazy|--force)'
+  ! ran_like '^umount( .*)? (-[a-zA-Z]*[lf][a-zA-Z]*|--lazy|--force)( |$)'
   [ "$(grep -cx 'systemctl start unoq-learn.service' "$STUB_LOG")" -eq 1 ]
 }
 

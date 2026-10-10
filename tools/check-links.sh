@@ -249,9 +249,13 @@ while IFS= read -r url; do
   code="$(status_of "$url")"
   asked[$host]=$SECONDS
   asked_network=$((asked_network + 1))
+  # Any HTTP status is a server answering, a 404 as much as a 200. Only 000 -
+  # curl got nothing back at all - is silence. Counting just the good answers
+  # here meant a run where every link was a real 404 was reported as "no
+  # network" and its dead links never listed.
+  [ "$code" = 000 ] || answered=$((answered + 1))
   if alive "$code"; then
     ok=$((ok + 1))
-    answered=$((answered + 1))
   elif [ "$code" = 403 ] && blocks_automation "$url"; then
     report "$url" "$code" >>"$TMP/unverifiable"
   elif [ "$code" = 429 ]; then

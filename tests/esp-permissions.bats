@@ -491,7 +491,7 @@ no_strays() { [ -z "$(find "$BATS_TEST_TMPDIR/etc" -name 'fstab.unoq-esp-*')" ];
   [ "$status" -ne 0 ]
   unchanged
   ran "umount /boot/efi"
-  refute ran_like '^umount .*-[a-zA-Z]*[lf]'
+  refute ran_like '^umount( .*)? (-[a-zA-Z]*[lf][a-zA-Z]*|--lazy|--force)( |$)'
   [[ "$output" == *"fuser -vm /boot/efi"* ]]
   # Still mounted, with what it had.
   [[ "$(cat "$FLAGS/live")" == *"fmask=0022"* ]]

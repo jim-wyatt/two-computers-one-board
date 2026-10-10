@@ -111,3 +111,27 @@ EOF
   [ "$status" -eq 0 ]
   never_ran curl
 }
+
+@test "every link answering 404 is every link dead, not 'no network'" {
+  # A server that says "not here" has answered. Only good answers used to be
+  # counted, so a run where all of them were real 404s exited 2 and listed
+  # nothing.
+  cat >"$TREE/docs/page.md" <<EOF2
+[one](https://zephyrproject.org/gone) and [two](https://docs.kernel.org/gone).
+EOF2
+  answers 404 /gone
+  run "$LINKS"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"DEAD (2)"* ]]
+  [[ "$output" != *"no network"* ]]
+}
+
+@test "every link answering a server error is unverifiable, not 'no network'" {
+  cat >"$TREE/docs/page.md" <<EOF2
+[one](https://zephyrproject.org/busy) and [two](https://docs.kernel.org/busy).
+EOF2
+  answers 503 /busy
+  run "$LINKS"
+  [[ "$output" != *"no network"* ]]
+  [[ "$output" == *"UNVERIFIABLE (2)"* ]]
+}
