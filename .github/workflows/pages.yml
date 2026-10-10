@@ -19,6 +19,17 @@ name: docs site
 on:
   push:
     branches: [main]
+    # Only when something the site is built from has changed. Without this,
+    # every merge rebuilt and redeployed a site that was byte for byte the one
+    # already published - a fix to a shell script cost a Pages deployment.
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'README.md'
+      - 'tools/build-docs.sh'
+      - 'tools/mkdocs_hooks.py'
+      - 'python/pyproject.toml'
+      - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 # Least privilege: the build job gets none of these, the deploy job gets the
@@ -26,12 +37,17 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
   build:
+    # A newer commit makes an unfinished build pointless, so it is cancelled.
+    # The deploy below is the opposite: one that has started is left to finish,
+    # because half a deployment is worse than a slightly old site, and a newer
+    # one simply waits its turn. They used to share one rule, the careful one,
+    # which meant a superseded build ran to the end for nothing.
+    concurrency:
+      group: pages-build
+      cancel-in-progress: true
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -66,6 +82,9 @@ jobs:
           path: share/learn
 
   deploy:
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     needs: build
     runs-on: ubuntu-24.04
     permissions:
