@@ -87,16 +87,12 @@ built and flashed again on every run, and says `changed` each time.)
 
 ```mermaid
 flowchart TD
-  P["preflight<br/><small>refuse early, not halfway</small>"] --> R1["10 board optimisation"]
-  R1 --> R2["20 dev tools"]
-  R2 --> U["as YOU, not root:<br/>uv, Zephyr SDK, workspace,<br/>venv, shell env"]
-  U --> R3["30 MCU link GPIOs"]
-  R3 --> R4["35 status LEDs"]
-  R4 --> E4["40 purge Arduino packages<br/><small>only with --with-purge</small>"]
+  P["preflight<br/><small>refuse early, not halfway</small>"] --> R1["10 board optimisation<br/>20 dev tools"]
+  R1 --> U["as YOU, not root:<br/>uv, Zephyr SDK, workspace,<br/>venv, shell env"]
+  U --> R3["30 MCU link GPIOs<br/>35 status LEDs"]
+  R3 --> E4["40 purge Arduino packages<br/><small>only with --with-purge</small>"]
   E4 --> B["build + sign + flash<br/>the firmware"]
-  B --> O{"opt-in extras"}
-  O --> E1["50 CPU bars at boot"]
-  O --> E3["70 learning web server"]
+  B --> O["opt-in extras, in this order:<br/>50 CPU bars at boot<br/>65 the drive image<br/>70 learning web server<br/>80 watchdog · 85 EFI permissions"]
   O --> E2["60 USB gadget<br/><small>always last</small>"]
 ```
 

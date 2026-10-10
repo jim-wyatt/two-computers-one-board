@@ -201,6 +201,14 @@ fixture _selftest-ok.html "$GOOD" yes
 fixture _selftest-syntax.html 'graph LR
   A[in] --&gt;' yes
 fixture _selftest-undrawn.html "$GOOD" no
+# And the third way, which is not a failure to draw at all: a diagram too wide
+# for the page. Left to itself mermaid shrinks one to fit, lettering included,
+# and five diagrams here were once being read at under 10px. Fourteen boxes in
+# a row do not fit any window this gate uses, so this must be refused - either
+# for being wider than its column or for having been scaled down to fit it.
+WIDE='graph LR
+  A[one box] --&gt; B[two boxes] --&gt; C[three boxes] --&gt; D[four boxes] --&gt; E[five boxes] --&gt; F[six boxes] --&gt; G[seven boxes] --&gt; H[eight boxes] --&gt; I[nine boxes] --&gt; J[ten boxes] --&gt; K[eleven boxes] --&gt; L[twelve boxes] --&gt; M[thirteen boxes] --&gt; N[fourteen boxes]'
+fixture _selftest-wide.html "$WIDE" yes
 
 # A ceiling on the whole run, as well as the helper's own clocks. The helper
 # bounds every wait it makes; this is for the wait nobody thought of. It is
@@ -219,7 +227,8 @@ timeout -k 10 "$CEILING" python3 "$PROJECT/tools/check_diagrams.py" \
   --page-timeout "$PAGE_TIMEOUT" \
   --selftest-ok _selftest-ok.html \
   --selftest-bad _selftest-syntax.html \
-  --selftest-bad _selftest-undrawn.html
+  --selftest-bad _selftest-undrawn.html \
+  --selftest-bad _selftest-wide.html
 rc=$?
 
 case "$rc" in
@@ -227,7 +236,15 @@ case "$rc" in
   1)
     cat >&2 <<EOF
 
-Diagrams did not render. Things worth checking, in the order they have bitten:
+A diagram did not draw, or drew and cannot be read. The FAIL lines above say
+which, for each page.
+
+"drew, but:" is a layout problem, and nothing below applies to it. The diagram
+is wider than the 688px text column, or was scaled down to fit it. Lay it out
+top to bottom (flowchart TB), shorten a row, or split it in two.
+
+Anything else is a diagram that did not draw. Things worth checking, in the
+order they have bitten:
 
   1. extra_javascript in mkdocs.yml still lists assets/javascripts/mermaid-init.js.
      Without it the library loads and nothing ever calls mermaid.run().

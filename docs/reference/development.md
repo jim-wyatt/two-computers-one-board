@@ -127,7 +127,7 @@ that silently does nothing is worse than no gate.
 | | settings | `tools/check-config-docs.sh` | [What you can change](configuration.md) names every setting the code reads |
 | | site inputs | `tools/check-site-inputs.sh` | no page embeds a file the site's path filters do not watch |
 | `workflows` | lint | `actionlint` | `.github/workflows/`, including the shell inside every `run:` block |
-| `diagrams` | render | `tools/check-diagrams.sh` | every diagram actually draws: one headless browser, driven over every page that has one, a few seconds |
+| `diagrams` | render | `tools/check-diagrams.sh` | every diagram actually draws, and can be read: lettering displayed at 12px or more and no diagram wider than the text column, in a 1440px window. One headless browser, driven over every page that has one, a few seconds |
 | `mcu` | tests | `ztest` on `native_sim` | the protocol in `app_proto.h` and the rasteriser in `bars.c` |
 
 Install the tools, and the pre-commit hook that runs `--fast`:

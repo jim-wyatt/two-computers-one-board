@@ -29,14 +29,12 @@ flowchart TB
     L34["LED 3 · LED 4"]
     H["Arduino headers<br/><small>GPIO, I²C, SPI</small>"]
   end
-  MPU ---|"lpuart1 → /dev/ttyHS1<br/><small>115200</small>"| MCU
-  MPU ---|"gpio 37 BOOT0 · gpio 38 NRST"| MCU
-  MPU ---|"gpio 70 serial link enable"| MCU
-  MPU ---|"gpio 25/26 SWD"| MCU
+  X["the wires between them<br/><small>lpuart1 → /dev/ttyHS1 · 115200</small><br/><small>gpio 37 BOOT0 · gpio 38 NRST</small><br/><small>gpio 70 serial link enable</small><br/><small>gpio 25/26 SWD</small>"]
+  MPU --- X --- MCU
 ```
 
-Every line between the two boxes is one this project drives, and getting any of
-them wrong makes a working board look broken. They are the subject of the next
+Every wire listed in the middle box is one this project drives, and getting any
+of them wrong makes a working board look broken. They are the subject of the next
 section.
 
 ---

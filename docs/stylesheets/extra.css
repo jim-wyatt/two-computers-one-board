@@ -200,3 +200,27 @@
   box-shadow: none;
   background: var(--md-code-bg-color);
 }
+
+/* --------------------------------------------------------------------------
+ * diagrams
+ *
+ * Drawn at their natural size, never scaled to fit (see mermaid-init.js for
+ * the measurement that settled it). On a desktop column every diagram fits,
+ * and a gate keeps it that way; on a phone a wide one scrolls sideways, which
+ * is worse than fitting and far better than lettering nobody can read.
+ * ----------------------------------------------------------------------- */
+
+.md-typeset pre.unoq-mermaid {
+  overflow-x: auto;
+}
+
+/* Centred with auto margins on a block, not with text-align on the parent.
+ * Auto margins collapse to zero when the drawing is wider than the block, so
+ * a wide diagram starts at the left edge and all of it can be scrolled to.
+ * Centring an overflowing inline box can put its left end where no scrollbar
+ * reaches. */
+.md-typeset pre.unoq-mermaid > svg {
+  display: block;
+  max-width: none;
+  margin: 0 auto;
+}

@@ -84,7 +84,15 @@
           : "default",
       fontFamily: "inherit",
       securityLevel: "strict",
-      flowchart: { htmlLabels: true, curve: "basis" },
+      // useMaxWidth is off for every kind of diagram used here. Left on, a
+      // diagram wider than the text column is SCALED to fit it, lettering
+      // included: measured in a 688px column, the boot diagram's 16px labels
+      // came out at 5.9px. A diagram is its labels. So each one is drawn at
+      // its natural size, extra.css lets a wide one scroll, and
+      // tools/check-diagrams.sh refuses one that does not fit a desktop column.
+      flowchart: { htmlLabels: true, curve: "basis", useMaxWidth: false },
+      sequence: { useMaxWidth: false },
+      state: { useMaxWidth: false },
     });
 
     // UNWRAP BEFORE RENDERING. superfences emits each fence as
