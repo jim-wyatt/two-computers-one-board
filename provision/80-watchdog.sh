@@ -39,8 +39,16 @@
 # alive and scheduling" is the thing being checked. systemd pings at half the
 # interval, so 30s means a ping every 15s and a reset 30s after the last one.
 #
-# RebootWatchdogSec is left at systemd's default (10min): a shutdown that hangs
-# in its last phase is reset after ten minutes instead of never.
+# RebootWatchdogSec is set to the same value. systemd's default for it is ten
+# minutes, and this board's watchdog cannot count that far: qcom_wdt reports a
+# max_timeout of 32 seconds. Left at the default, every shutdown logged
+#
+#   Failed to set watchdog hardware timeout to 10min: Invalid argument
+#
+# and carried on with whatever it had. Naming a value the hardware accepts
+# means a shutdown that hangs in its last phase is reset, and says nothing.
+# For the same reason a timeout beyond what the device supports is refused
+# here rather than discovered at the next boot.
 #
 # DAEMON-REEXEC, NOT DAEMON-RELOAD
 # --------------------------------
@@ -95,9 +103,20 @@ esac
   fail "UNOQ_WATCHDOG_SEC=$TIMEOUT is under ${MIN_TIMEOUT}s. A timeout that short resets a
   board that is merely busy, and it would do so again after every reboot."
 
+MAX_TIMEOUT="$(cat "$DEV/max_timeout" 2>/dev/null || true)"
+case "$MAX_TIMEOUT" in
+  '' | 0 | *[!0-9]*) ;; # not reported: the manager's read-back below is the check
+  *)
+    [ "$TIMEOUT" -le "$MAX_TIMEOUT" ] ||
+      fail "UNOQ_WATCHDOG_SEC=$TIMEOUT is more than this watchdog can count: its
+  max_timeout is ${MAX_TIMEOUT}s."
+    ;;
+esac
+
 warn "a watchdog that fires mid-build because the board swapped hard is worse than none."
-warn "  This has not been tested under that load. Until it has: opt-in only, and"
-warn "  remove it (REVERT, at the top of this script) before trusting a long build to it."
+warn "  It survived that once on one board: a clean firmware build and the firmware"
+warn "  tests with swap 80% full and the load above 6. That is one measurement, not"
+warn "  a guarantee, so it stays opt-in. REVERT is at the top of this script."
 
 # manager_timeout - what PID 1 says it is doing, which is the only evidence
 # that counts. Prints nothing if it cannot be asked.
@@ -120,6 +139,7 @@ if write_file 0644 "$CONF" <<EOF; then
 # the board. Remove this file and run \`systemctl daemon-reexec\` to disarm.
 [Manager]
 RuntimeWatchdogSec=${TIMEOUT}s
+RebootWatchdogSec=${TIMEOUT}s
 EOF
   REEXEC=1
 elif ! armed; then

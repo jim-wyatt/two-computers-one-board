@@ -55,9 +55,9 @@ Options:
   --with-learning     also serve the learning content over HTTP (70)
   --everything        all of the above
 
-Not yet validated on hardware, and NOT part of --everything:
+Each run on one board only, and NOT part of --everything:
   --with-watchdog     also arm the hardware watchdog (80): the board resets if
-                      systemd stops for 30s. Untested under a long build.
+                      systemd stops for 30s.
   --with-esp-lockdown also make the EFI partition root-only (85). Edits the
                       /etc/fstab entry the board boots from.
 

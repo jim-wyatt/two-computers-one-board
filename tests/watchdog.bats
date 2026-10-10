@@ -78,14 +78,17 @@ reexecs() { grep -cx 'systemctl daemon-reexec' "$STUB_LOG" || true; }
 
 # --- the drop-in ------------------------------------------------------------
 
-@test "the drop-in sets RuntimeWatchdogSec=30s under [Manager], and nothing else" {
+@test "the drop-in sets both watchdog timeouts to 30s under [Manager], and nothing else" {
   have_device
   run bash "$WATCHDOG"
   [ "$status" -eq 0 ]
   [ -f "$CONF" ]
-  # Comments aside, the file is exactly these two lines.
+  # Comments aside, the file is exactly these three lines. The reboot timeout
+  # is named because systemd's default for it, ten minutes, is more than this
+  # board's watchdog can count, and every shutdown logged an error over it.
   [ "$(grep -v '^#' "$CONF")" = "[Manager]
-RuntimeWatchdogSec=30s" ]
+RuntimeWatchdogSec=30s
+RebootWatchdogSec=30s" ]
   [ "$(stat -c %a "$CONF")" = 644 ]
 }
 
@@ -116,7 +119,7 @@ RuntimeWatchdogSec=30s" ]
   have_device
   run bash "$WATCHDOG"
   [[ "$output" == *"swapped hard is worse than none"* ]]
-  [[ "$output" == *"not been tested under that load"* ]]
+  [[ "$output" == *"one measurement, not"* ]]
   run bash "$WATCHDOG"
   [[ "$output" == *"swapped hard is worse than none"* ]]
 }
@@ -221,4 +224,23 @@ SH
   [ "$status" -ne 0 ]
   [[ "$output" == *"daemon-reexec failed"* ]]
   [[ "$output" == *"next boot"* ]]
+}
+
+@test "a timeout the device cannot count to is refused, and nothing is written" {
+  # qcom_wdt on this board: max_timeout=32. Asking for more is accepted by
+  # systemd's parser and refused by the hardware, at the next boot.
+  have_device
+  echo 32 >"$UNOQ_WATCHDOG_SYSFS/watchdog0/max_timeout"
+  UNOQ_WATCHDOG_SEC=60 run bash "$WATCHDOG"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"max_timeout is 32s"* ]]
+  [ ! -e "$CONF" ]
+}
+
+@test "a timeout at the device's limit is accepted" {
+  have_device
+  echo 32 >"$UNOQ_WATCHDOG_SYSFS/watchdog0/max_timeout"
+  UNOQ_WATCHDOG_SEC=32 run bash "$WATCHDOG"
+  [ "$status" -eq 0 ]
+  grep -qx 'RebootWatchdogSec=32s' "$CONF"
 }
