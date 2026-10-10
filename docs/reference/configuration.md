@@ -129,6 +129,7 @@ Set on the command line, for one run of `bootstrap.sh` or of the script named.
 | `UNOQ_KEEP_DOCKER_IMAGES` | `0` | `provision/10-optimize-board.sh` | `1` keeps the ~2 GB of Arduino container images. |
 | `UNOQ_BACKUP` | `~/uno-q-backup` | `provision/10`, `provision/40` | Where the stock MCU firmware and the list of removed container images are saved. |
 | `UNOQ_ALLOW_NO_STOCK_FW` | `0` | `bootstrap.sh`, `provision/40-purge-arduino.sh` | `1` lets the firmware be flashed, and the purge go ahead, with no copy of the stock firmware saved. Only for a board whose copy is already gone. |
+| `UNOQ_ALLOW_UNVERIFIED_SDK` | `0` | `provision/user/20-zephyr-sdk.sh` | `1` lets an SDK release chosen with `ZEPHYR_SDK_VERSION` be unpacked, and its `setup.sh` run, when the release publishes no checksum for it. It says so when it does. It has no effect on the pinned release, which is never unpacked unverified, and it never excuses a checksum that is published and does not match. |
 | `UNOQ_USER` | whoever ran `sudo` | `provision/lib.sh` | The account that owns the checkout and is written into the units. |
 | `UNOQ_VENV` | `<checkout>/.venv` | `provision/user/40-python-venv.sh`, `tools/` | The Python environment. |
 | `UNOQ_WATCHDOG_SEC` | `30` | `provision/80-watchdog.sh` | Whole seconds without a ping from `systemd` before the hardware watchdog resets the board. Refused below `10`: a timeout that short resets a board that is merely busy, and does it again after every reboot. Only read with `--with-watchdog`. |

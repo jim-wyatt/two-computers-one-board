@@ -385,6 +385,56 @@ stamps() { find "$RT" -exec stat -c '%n %i %y' {} + | sort; }
   [ -z "$output" ]
 }
 
+@test "a directory inside it that is a symlink is refused, and nothing is written through it" {
+  # -d follows links. usb -> somewhere passed for a directory, the scripts were
+  # written into somewhere, and somewhere was chowned and chmodded on the way.
+  load_lib
+  run install_runtime "${ALL[@]}"
+  [ "$status" -eq 0 ]
+  elsewhere="$BATS_TEST_TMPDIR/somewhere-in-home"
+  mkdir -m 0700 "$elsewhere"
+  rm -r "$RT/usb"
+  ln -s "$elsewhere" "$RT/usb"
+  # Something for the run to do elsewhere, to show it did none of it.
+  printf '#!/bin/bash\necho leds v2\n' >"$SRC/status/leds.sh"
+
+  run install_runtime "${ALL[@]}"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"$RT/usb is a symbolic link"* ]]
+  [[ "$output" == *"Nothing was changed"* ]]
+  run ls -A "$elsewhere"
+  [ -z "$output" ]
+  [ "$(stat -c %a "$elsewhere")" = 700 ]
+  [ -L "$RT/usb" ]
+  refute grep -q 'leds v2' "$RT/status/leds.sh"
+}
+
+@test "once the link is gone the same run installs normally" {
+  load_lib
+  run install_runtime "${ALL[@]}"
+  rm -r "$RT/usb"
+  ln -s "$BATS_TEST_TMPDIR" "$RT/usb"
+  run install_runtime "${ALL[@]}"
+  [ "$status" -ne 0 ]
+  rm "$RT/usb"
+  run install_runtime "${ALL[@]}"
+  [ "$status" -eq 0 ]
+  [ -d "$RT/usb" ] && [ ! -L "$RT/usb" ]
+  cmp "$SRC/usb/usb-dhcp.sh" "$RT/usb/usb-dhcp.sh"
+}
+
+@test "a file where a directory should be is refused before anything is written" {
+  load_lib
+  run install_runtime "${ALL[@]}"
+  rm -r "$RT/usb"
+  : >"$RT/usb"
+  printf '#!/bin/bash\necho leds v2\n' >"$SRC/status/leds.sh"
+  run install_runtime "${ALL[@]}"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not a directory"* ]]
+  refute grep -q 'leds v2' "$RT/status/leds.sh"
+}
+
 @test "a destination that is not a directory of its own is refused" {
   for bad in / /usr relative/path ""; do
     # shellcheck disable=SC2030,SC2031

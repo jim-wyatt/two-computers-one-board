@@ -150,3 +150,89 @@ section() {
   [[ "$s" == *"not there to compare with"* ]]
   [[ "$s" != *"same as"* ]]
 }
+
+# --- a copy has to be a copy -------------------------------------------------
+#
+# The comparison used to list root's directory with `find -type f`. A script
+# swapped for a symbolic link is not a regular file, so it was never listed,
+# never compared, and the section said "same" about a board where root was
+# running a file out of the checkout again.
+
+@test "a script replaced by a link back to the checkout is not reported as the same" {
+  provision
+  rm "$RT/usb/usb-dhcp.sh"
+  ln -s "$SRC/usb/usb-dhcp.sh" "$RT/usb/usb-dhcp.sh"
+  run "$SRC/usb/status.sh"
+  [ "$status" -eq 0 ]
+  s="$(section)"
+  [[ "$s" != *"same as"* ]]
+  [[ "$s" == *"NOT ROOT'S OWN FILES"*"usb/usb-dhcp.sh(a-link)"* ]]
+  # Only that one, and it is not passed off as merely out of date.
+  [[ "$s" != *"usb/usb-route.sh"* ]]
+  [[ "$s" != *"DIFFERENT"* ]]
+}
+
+@test "every script root runs is checked that way, not only the usb ones" {
+  # The set here is spelled out in status.sh, which cannot source lib.sh when
+  # it runs as root's copy. This is what goes red if the two lists part.
+  provision
+  mapfile -t set < <(
+    # shellcheck disable=SC1091
+    source "$SRC/provision/lib.sh"
+    runtime_files
+  )
+  [ "${#set[@]}" -gt 3 ]
+  for rel in "${set[@]}"; do
+    rm "$RT/$rel"
+    ln -s "$SRC/$rel" "$RT/$rel"
+    run "$SRC/usb/status.sh"
+    s="$(section)"
+    [[ "$s" != *"same as"* ]]
+    [[ "$s" == *"NOT ROOT'S OWN FILES"*"$rel(a-link)"* ]]
+    provision
+    run "$SRC/usb/status.sh"
+    [[ "$(section)" == *"same as $SRC"*"yes"* ]]
+  done
+}
+
+@test "a whole directory linked back to the checkout is not reported as the same" {
+  # Every file under it is then a regular file with the right bytes.
+  provision
+  rm -r "$RT/usb"
+  ln -s "$SRC/usb" "$RT/usb"
+  run "$SRC/usb/status.sh"
+  s="$(section)"
+  [[ "$s" != *"same as"* ]]
+  [[ "$s" == *"NOT ROOT'S OWN FILES"*"usb/usb-dhcp.sh(reached-through-a-link)"* ]]
+  # The ones that are still real copies are not accused.
+  [[ "$s" != *"status/leds.sh"* ]]
+}
+
+@test "a link to a file that is not there is not reported as the same either" {
+  provision
+  rm "$RT/status/leds.sh"
+  ln -s "$BATS_TEST_TMPDIR/nowhere" "$RT/status/leds.sh"
+  run "$SRC/usb/status.sh"
+  s="$(section)"
+  [[ "$s" != *"same as"* ]]
+  [[ "$s" == *"status/leds.sh(a-link)"* ]]
+}
+
+@test "a directory where a script should be is not reported as the same" {
+  provision
+  rm "$RT/mcu/link-up.sh"
+  mkdir "$RT/mcu/link-up.sh"
+  run "$SRC/usb/status.sh"
+  s="$(section)"
+  [[ "$s" != *"same as"* ]]
+  [[ "$s" == *"mcu/link-up.sh(not-a-file)"* ]]
+}
+
+@test "a stray link in root's directory that the checkout has no script for is named" {
+  provision
+  ln -s /bin/true "$RT/usb/left-behind.sh"
+  run "$SRC/usb/status.sh"
+  s="$(section)"
+  [[ "$s" != *"same as"* ]]
+  [[ "$s" == *"DIFFERENT"*"usb/left-behind.sh"* ]]
+}

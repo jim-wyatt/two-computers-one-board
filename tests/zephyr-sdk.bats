@@ -38,7 +38,11 @@ setup() {
   done
   FRESH_PATH="$STUB_DIR:$BASE"
 
-  stub curl
+  # By default the release serves an archive and a checksum that vouches for
+  # it. It used to be a curl that wrote nothing at all, which every test above
+  # the checksum section passed through - because a missing checksum was waved
+  # on. It no longer is, so the ordinary case has to be an honest one.
+  curl_serves 'the real archive'
   stub wget
   # Stands in for the extract: it leaves an SDK directory holding whatever
   # setup.sh the test wrote to $FAKE_SETUP.
@@ -130,7 +134,9 @@ SH
 # publishes a sha256 for it, and nothing used to look.
 
 # A curl that writes what it was asked for: a payload for the archive, and a
-# sum file that vouches for $PUBLISHED_FOR.
+# sum file that vouches for $PUBLISHED_FOR. Two ways of there being no sum:
+# `none` is a sha256.sum that cannot be fetched, `absent` is one that arrives
+# and has no line for this archive.
 curl_serves() {
   export PUBLISHED_FOR="$1"
   stub_body curl <<'SH'
@@ -149,12 +155,20 @@ done
 case "$url" in
   */sha256.sum)
     [ "$PUBLISHED_FOR" = none ] && exit 22
-    printf '%s  %s\n' "$(printf '%s' "$PUBLISHED_FOR" | sha256sum | cut -d" " -f1)" \
-      "zephyr-sdk-1.0.1_linux-$(uname -m)_minimal.tar.xz" >"$out"
+    name="zephyr-sdk-${SERVED_VERSION:-1.0.1}_linux-$(uname -m)_minimal.tar.xz"
+    [ "$PUBLISHED_FOR" = absent ] && name="some-other-file.tar.xz"
+    printf '%s  %s\n' "$(printf '%s' "$PUBLISHED_FOR" | sha256sum | cut -d" " -f1)" "$name" >"$out"
     ;;
   *) printf 'the real archive' >"$out" ;;
 esac
 SH
+}
+
+# A release other than the pinned one, chosen the way the script lets you.
+overridden_to() {
+  export ZEPHYR_SDK_VERSION="$1" SERVED_VERSION="$1"
+  SDK_DIR="$HOME/zephyr-sdk-$1"
+  export SDK_DIR
 }
 
 @test "an archive that matches its published checksum is unpacked" {
@@ -177,11 +191,81 @@ SH
   [ ! -e "$SDK_DIR" ]
 }
 
-@test "a release with no published checksum is unpacked, and says it was not verified" {
+# --- and when there is no checksum to compare with ---------------------------
+#
+# This used to be one test, and it asserted the bug: "a release with no
+# published checksum is unpacked, and says it was not verified". A sum file
+# that failed to download took the same path, so the check could be switched
+# off by one dropped request.
+
+@test "the pinned release is never unpacked when its checksum cannot be fetched" {
   working_setup
   fake_cmake_in_local_bin
   curl_serves none
   sdk_step
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"could not fetch"*"sha256.sum"* ]]
+  [[ "$output" == *"not unpacking"* ]]
+  never_ran tar
+  [ ! -e "$SDK_DIR" ]
+}
+
+@test "nor when the checksum file arrives with no line for the archive" {
+  working_setup
+  fake_cmake_in_local_bin
+  curl_serves absent
+  sdk_step
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"has no line for"* ]]
+  never_ran tar
+  [ ! -e "$SDK_DIR" ]
+}
+
+@test "the opt-in does not apply to the pinned release" {
+  # Also what goes red if the pin is bumped in one of the two places the
+  # script states it and not the other.
+  working_setup
+  fake_cmake_in_local_bin
+  curl_serves none
+  export UNOQ_ALLOW_UNVERIFIED_SDK=1
+  sdk_step
+  [ "$status" -eq 1 ]
+  never_ran tar
+  [ ! -e "$SDK_DIR" ]
+}
+
+@test "an overridden release with no checksum is refused, and the opt-in is named" {
+  working_setup
+  fake_cmake_in_local_bin
+  overridden_to 9.9.9
+  curl_serves none
+  sdk_step
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"UNOQ_ALLOW_UNVERIFIED_SDK=1"* ]]
+  never_ran tar
+  [ ! -e "$SDK_DIR" ]
+}
+
+@test "an overridden release with no checksum is unpacked when asked for, and says it was not verified" {
+  working_setup
+  fake_cmake_in_local_bin
+  overridden_to 9.9.9
+  curl_serves none
+  export UNOQ_ALLOW_UNVERIFIED_SDK=1
+  sdk_step
   [ "$status" -eq 0 ]
   [[ "$output" == *"unverified"* ]]
+  [ -d "$SDK_DIR" ]
+}
+
+@test "the opt-in does not excuse a checksum that is published and does not match" {
+  working_setup
+  fake_cmake_in_local_bin
+  overridden_to 9.9.9
+  curl_serves 'something else entirely'
+  export UNOQ_ALLOW_UNVERIFIED_SDK=1
+  sdk_step
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"checksum mismatch"* ]]
+  never_ran tar
 }

@@ -322,6 +322,10 @@ runtime_dir_exposed() {
 # of their own.
 _runtime_dir() {
   local d="$1" have
+  # Said again here although install_runtime has already looked: this function
+  # is what would chown and chmod whatever a link leads to, and it should not
+  # depend on a caller having checked.
+  [ -L "$d" ] && fail "$d is a symbolic link - not creating root's scripts through it"
   if [ ! -d "$d" ]; then
     install -d -o "$EUID" -g "$(id -g)" -m 0755 "$d" || fail "could not create $d"
     did "created $d"
@@ -425,6 +429,37 @@ install_runtime() {
   Everything in it that is not one of this project's scripts would be deleted.
   Move it aside, or set UNOQ_RUNTIME_DIR to a directory of its own."
   fi
+
+  # THE DIRECTORIES INSIDE IT, TOO.
+  #
+  # The line above refuses a destination that is a link, and that was the only
+  # link looked for. Further down, each child directory was tested with -d,
+  # which follows links and so says "yes, a directory" about
+  #
+  #   /usr/local/lib/unoq/usb -> /home/someone/anything
+  #
+  # and the scripts were then written through it: root's copies landing outside
+  # the directory that exists to contain them, in a place its owner can swap
+  # them, after the link's target had been chowned to root and chmodded on the
+  # way past. A stale link from an older layout does it as well as a planted
+  # one. Checked here, with the rest, so nothing has been written when it stops.
+  # A path that exists and is not a directory is refused at the same time; it
+  # would only have failed half-way through otherwise.
+  for rel in "${set[@]}"; do
+    f="$(dirname "$rel")"
+    while [ "$f" != . ]; do
+      if [ -L "$dest/$f" ]; then
+        fail "install_runtime: $dest/$f is a symbolic link - root's scripts would be
+  written to wherever it leads, not into $dest. Nothing was changed.
+  Look at it (ls -l $dest), remove it, and run this again."
+      fi
+      if [ -e "$dest/$f" ] && [ ! -d "$dest/$f" ]; then
+        fail "install_runtime: $dest/$f is in the way and is not a directory.
+  Nothing was changed. Remove it and run this again."
+      fi
+      f="$(dirname "$f")"
+    done
+  done
 
   _runtime_dir "$dest" && changed=0
 

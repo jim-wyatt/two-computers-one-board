@@ -7,8 +7,14 @@
 #
 # Idempotent: a second run reports "already correct" and changes nothing.
 #
-# NOT YET VALIDATED ON HARDWARE. Written from what the board reports and
-# checked against faked commands only (tests/esp-permissions.bats).
+# RUN ON ONE BOARD, WHICH IS NOT THE SAME AS VALIDATED. On one UNO Q (kernel
+# 7.0.0, 2026-10-10) it did what it is written to do: FAT ignored the new masks
+# on a plain remount, so it took the unmount-and-mount path; the seed file then
+# read 600 and an ordinary user got "Permission denied"; fstab differed from
+# its backup in one field; and it survived reboots, with systemd-boot's warning
+# gone. One board, one image, one fstab line. Everything else here is checked
+# against faked commands (tests/esp-permissions.bats), and the placement of the
+# masks after any umask= (see with_masks) has not been through a board at all.
 #
 # WHY
 # ---
@@ -49,8 +55,10 @@
 # It tightens everything on the partition, not just the seed. Nothing on this
 # image is known to read /boot/efi as a non-root user - fwupd is the usual
 # candidate, it runs as root, and 10-optimize-board.sh masks it - but that is
-# reasoning, not a measurement, which is the other reason bootstrap.sh runs
-# this only with --with-esp-lockdown and --everything leaves it out.
+# reasoning, not a measurement: one board has run with it across reboots and
+# shown nothing missing, which is a short list of things tried. It is the other
+# reason bootstrap.sh runs this only with --with-esp-lockdown and --everything
+# leaves it out.
 #
 # REMOUNT, THEN UNMOUNT IF THAT IS NOT ENOUGH
 # -------------------------------------------
@@ -83,38 +91,55 @@ cleanup() { rm -f "$CANDIDATE" "$ORIGINAL"; }
 trap cleanup EXIT
 
 # has_masks <option list> - true if both masks are present with our values.
+#
+# Asked only of the LIVE mount's options, never of fstab's. The FAT driver
+# prints the masks it ended up with - fmask= and dmask= always, umask= never,
+# which is why a board whose fstab says `defaults` reports fmask=0022,dmask=0022
+# - so there, present means in effect. In fstab it does not: see with_masks.
 has_masks() {
   case ",$1," in *",fmask=$FMASK,"*) ;; *) return 1 ;; esac
   case ",$1," in *",dmask=$DMASK,"*) ;; *) return 1 ;; esac
   return 0
 }
 
-# with_masks <option list> - the same list with both masks set to our values:
-# replaced where they stand if present, appended if not. Nothing else moves.
+# with_masks <option list> - the same list with both masks set to our values
+# and placed LAST: every fmask= and dmask= already there is taken out, every
+# other option keeps its place and its order, and the pair goes on the end.
+#
+# WHY LAST, AND NOT WHERE THEY STOOD
+# ----------------------------------
+# The FAT driver reads its options left to right, and umask= sets both masks.
+# So position is meaning: in
+#
+#   fmask=0022,dmask=0022,umask=0022
+#
+# the umask is the last word on both. This used to replace each mask where it
+# stood, which turned that line into fmask=0177,dmask=0077,umask=0022 - our
+# values, written into fstab, and overridden three characters later. The file
+# said 0177 and the partition mounted 0022.
+#
+# With the partition mounted, the check of the live mount further down caught
+# it - the driver reports the masks in effect, so 0022 came back, the edit was
+# undone and the step failed. That is the safe outcome and still not the fix.
+# With it not mounted there is no live mount to ask, and the step ended in a
+# warning and exit 0 with a line in fstab that does not do what it says.
+#
+# Nothing can follow the end of the list, so that is where the pair goes. A
+# line this step wrote before the change (defaults,fmask=0177,dmask=0077)
+# already has it there and comes out unchanged.
 with_masks() {
-  local out="" opt opts seen_f=0 seen_d=0
+  local out="" opt opts
   # read -a, not an unquoted expansion: that would also expand globs.
   IFS=, read -ra opts <<<"$1"
   for opt in "${opts[@]}"; do
     case "$opt" in
-      fmask=*)
-        # A second fmask= would be a duplicate the kernel resolves by taking
-        # the last one. Keep the first position and drop the rest.
-        [ "$seen_f" = 1 ] && continue
-        seen_f=1
-        opt="fmask=$FMASK"
-        ;;
-      dmask=*)
-        [ "$seen_d" = 1 ] && continue
-        seen_d=1
-        opt="dmask=$DMASK"
-        ;;
+      # Every one of them, however many: a duplicate is resolved by the kernel
+      # taking the last, and the last is about to be ours.
+      fmask=* | dmask=*) continue ;;
     esac
     out="${out:+$out,}$opt"
   done
-  [ "$seen_f" = 1 ] || out="${out:+$out,}fmask=$FMASK"
-  [ "$seen_d" = 1 ] || out="${out:+$out,}dmask=$DMASK"
-  printf '%s' "$out"
+  printf '%s' "${out:+$out,}fmask=$FMASK,dmask=$DMASK"
 }
 
 live_options() { findmnt -no OPTIONS "$ESP" 2>/dev/null; }

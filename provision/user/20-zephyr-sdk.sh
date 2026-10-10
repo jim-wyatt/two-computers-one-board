@@ -26,6 +26,11 @@ set -uo pipefail
 export PATH="$HOME/.local/bin:$PATH"
 
 SDK_VERSION="${ZEPHYR_SDK_VERSION:-1.0.1}"
+# The release this project pins, said a second time on purpose: the line above
+# is the form tools/check-versions.sh reads the pin from, and what follows needs
+# to know whether $SDK_VERSION is that pin or somebody's override. Change both
+# together - tests/zephyr-sdk.bats fails if only one moves.
+SDK_PINNED="1.0.1"
 SDK_DIR="$HOME/zephyr-sdk-$SDK_VERSION"
 TOOLCHAIN="arm-zephyr-eabi"
 
@@ -88,12 +93,29 @@ else
   # truncated or corrupted download before it is unpacked into $HOME and its
   # setup.sh run - it used to be extracted and executed on trust. It is the
   # same server vouching for its own file, so it is a check on the transfer,
-  # not on the publisher. A version with no published sum (an override, a
-  # pre-release) is unpacked anyway, and says so.
+  # not on the publisher.
+  #
+  # NO CHECKSUM MEANS NO UNPACKING.
+  #
+  # The first version of this check failed open. "No published sum" and "the
+  # sum could not be fetched" arrived at the same branch, which warned and
+  # carried on - so one dropped request for a 2 KB file was all it took for the
+  # archive to be unpacked and its setup.sh run with nothing having looked at
+  # it, on a step whose header says it is verified. A check that a failed
+  # download switches off is not a check.
+  #
+  # So it stops. For the pinned release there is no way round: $SDK_PINNED
+  # publishes its sums, and not finding one means something is wrong with the
+  # transfer. A version somebody chose with ZEPHYR_SDK_VERSION may really have
+  # none (a pre-release), and for that alone UNOQ_ALLOW_UNVERIFIED_SDK=1 unpacks
+  # it anyway, says so, and is the caller's decision rather than a default.
   echo "  verifying..."
   want=""
-  curl -fsSL "$BASE/sha256.sum" -o "$TMP/sha256.sum" 2>/dev/null &&
-    want="$(awk -v f="$TARBALL" '$2 == f {print $1}' "$TMP/sha256.sum" 2>/dev/null)"
+  sum_fetched=0
+  if curl -fsSL "$BASE/sha256.sum" -o "$TMP/sha256.sum" 2>/dev/null; then
+    sum_fetched=1
+    want="$(awk -v f="$TARBALL" '$2 == f {print $1}' "$TMP/sha256.sum" 2>/dev/null | head -1)"
+  fi
   if [ -n "$want" ]; then
     got="$(sha256sum "$TMP/sdk.tar.xz" | cut -d' ' -f1)"
     [ "$got" = "$want" ] ||
@@ -103,7 +125,24 @@ else
         Run this again; if it repeats, the download is being altered on the way."
     echo "  checksum matches the one published with the release"
   else
-    warn "no published checksum found for $TARBALL - unpacking it unverified"
+    if [ "$sum_fetched" = 1 ]; then
+      why="$BASE/sha256.sum has no line for $TARBALL"
+    else
+      why="could not fetch $BASE/sha256.sum"
+    fi
+    if [ "$SDK_VERSION" = "$SDK_PINNED" ]; then
+      fail "$why - not unpacking $TARBALL unverified
+        SDK $SDK_PINNED publishes a checksum for every file, so this is the network
+        or the download, not the release. Run this again."
+    elif [ "${UNOQ_ALLOW_UNVERIFIED_SDK:-0}" = 1 ]; then
+      warn "$why"
+      warn "unpacking $TARBALL unverified, because UNOQ_ALLOW_UNVERIFIED_SDK=1 says to"
+    else
+      fail "$why - not unpacking $TARBALL unverified
+        SDK $SDK_VERSION is not the release this project pins ($SDK_PINNED). If it
+        really publishes no checksum, and you accept running its setup.sh
+        unchecked, say so:  UNOQ_ALLOW_UNVERIFIED_SDK=1 bash $0"
+    fi
   fi
 
   echo "  extracting..."
