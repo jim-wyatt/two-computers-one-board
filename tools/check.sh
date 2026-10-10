@@ -188,6 +188,9 @@ if wanted docs; then
     # The one page that is a list of facts about the code rather than prose
     # about it, so it is the one page that can be checked against the code.
     run "settings page matches the code" "$PROJECT/tools/check-config-docs.sh"
+    # The workflows rebuild the site only when its inputs change, and a page
+    # can quietly acquire an input outside docs/.
+    run "site inputs are watched" "$PROJECT/tools/check-site-inputs.sh"
   fi
 fi
 

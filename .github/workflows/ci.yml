@@ -178,9 +178,6 @@ jobs:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
         run: |
-          # Anything that is not a pull request - a push to main, a manual run -
-          # builds. The point is to skip work that cannot matter, not to find
-          # excuses; main should always have a proven firmware build.
           # WHAT CHANGED, ON A PUSH AS WELL AS ON A PULL REQUEST
           #
           # This used to answer "yes, everything" for anything that was not a
@@ -194,6 +191,13 @@ jobs:
           # no "before", an API that will not say, a change too large for the
           # compare endpoint to list in full - is answered "everything". The
           # filter exists to save minutes, never to skip a check on a guess.
+          #
+          # main still always has a proven firmware build, which the old rule
+          # ("anything that is not a pull request builds, no excuses") was
+          # there to guarantee. It holds by construction: the firmware can only
+          # change through a push that touches what it is built from, and such
+          # a push builds it. A push that touches none of it cannot have
+          # changed the binary the last such push proved.
           all() {
             echo "firmware=true" >>"$GITHUB_OUTPUT"
             echo "diagrams=true" >>"$GITHUB_OUTPUT"
@@ -202,20 +206,26 @@ jobs:
           }
           case "$EVENT" in
             pull_request)
-              files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" \
-                --jq '.[].filename') || all "could not list the pull request's files"
+              # Both names of a renamed file: one moved out of mcu/ or docs/ is a
+              # change to what is built there, and the listing gives its old
+              # path only as previous_filename. The count is of raw records,
+              # because this endpoint stops at 3000 files without saying so.
+              listing=$(gh api --paginate "repos/$REPO/pulls/$PR/files" \
+                --jq '.[] | "F", .filename, (.previous_filename // empty)') ||
+                all "could not list the pull request's files"
+              [ "$(grep -cx F <<<"$listing")" -lt 3000 ] || all "too large a change to list"
+              files=$(grep -vx F <<<"$listing" || true)
               ;;
             push)
               case "$BEFORE" in
                 '' | 0000000000000000000000000000000000000000) all "no previous commit to compare with" ;;
               esac
-              compare=$(gh api "repos/$REPO/compare/$BEFORE...$AFTER" \
-                --jq '(.files | length), (.files[].filename)') || all "could not compare with the previous commit"
-              count=$(head -1 <<<"$compare")
-              # The endpoint lists at most 300 files and does not say when it
-              # has stopped short.
-              [ "$count" -lt 300 ] || all "too large a change to list"
-              files=$(tail -n +2 <<<"$compare")
+              # The same two precautions. This endpoint stops at 300 files.
+              listing=$(gh api "repos/$REPO/compare/$BEFORE...$AFTER" \
+                --jq '.files[] | "F", .filename, (.previous_filename // empty)') ||
+                all "could not compare with the previous commit"
+              [ "$(grep -cx F <<<"$listing")" -lt 300 ] || all "too large a change to list"
+              files=$(grep -vx F <<<"$listing" || true)
               ;;
             *) all "a manual run" ;;
           esac

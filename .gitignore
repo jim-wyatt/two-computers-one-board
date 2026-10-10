@@ -28,3 +28,7 @@ htmlcov/
 # the board at provisioning time and in CI. Generated HTML in git makes every
 # content diff unreadable and goes stale the moment someone forgets to rebuild.
 /share/learn/
+
+# Claude Code keeps per-session worktrees and local settings here. Never part
+# of the project.
+.claude/

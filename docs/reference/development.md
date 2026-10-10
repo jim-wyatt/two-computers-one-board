@@ -125,6 +125,7 @@ that silently does nothing is worse than no gate.
 | `docs` | build | `mkdocs --strict` | every internal link and anchor resolves |
 | | offline | `tools/check-diagram-assets.sh` | the diagram library is on disk, not at a CDN |
 | | settings | `tools/check-config-docs.sh` | [What you can change](configuration.md) names every setting the code reads |
+| | site inputs | `tools/check-site-inputs.sh` | no page embeds a file the site's path filters do not watch |
 | `workflows` | lint | `actionlint` | `.github/workflows/`, including the shell inside every `run:` block |
 | `diagrams` | render | `tools/check-diagrams.sh` | every diagram actually draws: one headless browser, driven over every page that has one, a few seconds |
 | `mcu` | tests | `ztest` on `native_sim` | the protocol in `app_proto.h` and the rasteriser in `bars.c` |
