@@ -194,7 +194,12 @@ install_unit() {
   local src="$1" name rendered
   name="$(basename "$src")"
   render_unit() {
+    # The home directory by itself, for the units that wait for it to mount.
+    # It has to be rewritten separately: the first expression only matches the
+    # checkout path, so under any account but arduino those units went on
+    # waiting for a /home/arduino that was never going to appear.
     sed -e "s#/home/arduino/two-computers-one-board#$PROJECT#g" \
+      -e "s#^RequiresMountsFor=/home/arduino\$#RequiresMountsFor=$TARGET_HOME#" \
       -e "s#^User=arduino\$#User=$TARGET_USER#" \
       -e "s#^Group=arduino\$#Group=$TARGET_USER#" \
       "$src"

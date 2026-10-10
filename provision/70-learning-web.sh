@@ -5,8 +5,11 @@
 #
 #   sudo bash ~/two-computers-one-board/provision/70-learning-web.sh
 #
-# Idempotent. Safe to run at any time - it claims a TCP port and nothing else.
-# In particular it does NOT touch the USB port, so it works over the network
+# Idempotent. Safe to run at any time. It claims a TCP port and adds one line
+# to /etc/fstab, a read-only loop mount of the share image (nofail, so a board
+# whose image is missing still boots). The server listens on every interface
+# and has no authentication: anyone who can reach the board can read what it
+# serves. In particular it does NOT touch the USB port, so it works over the network
 # dongle, over WiFi, or over the USB gadget link once that exists.
 #
 # The content comes from the FAT32 image built by share/build-image.sh, mounted
@@ -15,6 +18,7 @@
 #
 # REVERT: systemctl disable --now unoq-learn.service &&
 #         rm /etc/systemd/system/unoq-learn.service && systemctl daemon-reload
+#         then: umount /srv/unoq-share, and delete its line from /etc/fstab
 set -uo pipefail
 # shellcheck source=provision/lib.sh
 . "$(cd "$(dirname "$0")" && pwd)/lib.sh"
@@ -111,8 +115,9 @@ echo "Reachable at:"
 #   br-usb  UP    10.55.0.1/24 192.168.137.210/24    <- second address dropped
 #   docker0 DOWN  172.17.0.1/16                      <- printed anyway
 #
-# In client mode the leased address is the ONLY one a plugged-in computer can
-# reach; 10.55.0.1 needs a static route on the host, and docker0 is a bridge
+# (That was when the bridge still carried a fixed 10.55.0.1 as well; it no
+# longer does.) The leased address was the ONLY one a plugged-in computer could
+# reach; 10.55.0.1 needed a static route on the host, and docker0 is a bridge
 # whose daemon 20-dev-tools.sh disables. So the two addresses it offered were
 # the unreachable one and the meaningless one.
 #

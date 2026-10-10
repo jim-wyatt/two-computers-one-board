@@ -33,7 +33,7 @@ else
   or rebuild it:     sudo bash $PROJECT/tools/build-openocd.sh --promote"
 fi
 
-# The stock MCU firmware is Arduino's build and is not redistributable, so it
+# The stock MCU firmware is Arduino's build and is not ours to redistribute, so it
 # cannot be recovered from this repo or from apt.
 #
 # This comment used to say ~/.arduino15 is gone after the purge, and that is
@@ -80,7 +80,7 @@ else
           find ~/.arduino15 -name '*stm32u585xx*.hex'
           mkdir -p $BACKUP_DIR && cp <that file> $BACKUP_DIR/
 
-        Or accept losing it: UNOQ_ALLOW_NO_STOCK_FW=1 sudo bash $0"
+        Or accept losing it: sudo UNOQ_ALLOW_NO_STOCK_FW=1 bash $0"
 fi
 
 step "remove Arduino packages"

@@ -21,11 +21,43 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WS="${ZEPHYR_WORKSPACE:-$HOME/zephyrproject}"
-MCUBOOT_BUILD="${MCUBOOT_BUILD:-/tmp/bmcuboot}"
+# In the workspace, beside the application's build - not in /tmp, where this
+# used to live. /tmp is writable by everything on the board and its contents
+# were trusted: a zephyr.hex already sitting there was flashed to the boot
+# partition without being rebuilt or looked at.
+MCUBOOT_BUILD="${MCUBOOT_BUILD:-$WS/build-mcuboot}"
 APP_HEX="${1:-$WS/build/zephyr/zephyr.signed.hex}"
 
-if [ ! -f "$MCUBOOT_BUILD/zephyr/zephyr.hex" ]; then
-  echo "MCUboot not built. Building it now..."
+# Same reasons as zbuild.sh: cmake and ninja are in ~/.local/bin, which only an
+# interactive shell has on PATH, and a CI runner keeps west on PATH rather than
+# in the workspace venv.
+export PATH="$HOME/.local/bin:$PATH"
+WEST="$WS/.venv/bin/west"
+[ -x "$WEST" ] || WEST="$(command -v west || true)"
+SDK="${ZEPHYR_SDK:-$HOME/zephyr-sdk-1.0.1}"
+[ -d "$SDK" ] && export ZEPHYR_SDK_INSTALL_DIR="$SDK"
+
+# WHEN THE BOOTLOADER IS REBUILT
+# ------------------------------
+# A bootloader is built from two trees, Zephyr and MCUboot, and one that was
+# built against last month's is not the one this workspace would build today.
+# "The file exists" used to be the whole test, so a Zephyr upgrade left the old
+# bootloader in place to be flashed in front of a new application. The revisions
+# it was built from are written beside it, and it is rebuilt when either has
+# moved - or when they cannot be read at all, because not knowing is not the
+# same as unchanged.
+rev() { git -C "$1" rev-parse HEAD 2>/dev/null || echo unknown; }
+BUILT_FROM="zephyr $(rev "$WS/zephyr") mcuboot $(rev "$WS/bootloader/mcuboot")"
+STAMP="$MCUBOOT_BUILD/built-from"
+
+if [ ! -f "$MCUBOOT_BUILD/zephyr/zephyr.hex" ] ||
+  [ "$(cat "$STAMP" 2>/dev/null)" != "$BUILT_FROM" ] ||
+  [[ "$BUILT_FROM" == *unknown* ]]; then
+  echo "Building MCUboot..."
+  [ -n "$WEST" ] || {
+    echo "no west: not in $WS/.venv/bin and not on PATH" >&2
+    exit 1
+  }
   # The cd is load-bearing, and naming the workspace's own west is not enough
   # on its own. `build` is an extension command: west discovers it by walking
   # UP FROM THE CURRENT DIRECTORY looking for a workspace, so run from anywhere
@@ -40,15 +72,15 @@ if [ ! -f "$MCUBOOT_BUILD/zephyr/zephyr.hex" ]; then
   (
     cd "$WS" || exit 1
     ZEPHYR_TOOLCHAIN_VARIANT=zephyr \
-      ZEPHYR_SDK_INSTALL_DIR="${ZEPHYR_SDK:-$HOME/zephyr-sdk-1.0.1}" \
-      "$WS/.venv/bin/west" build -b "${BOARD:-arduino_uno_q}" \
+      "$WEST" build -b "${BOARD:-arduino_uno_q}" \
       "$WS/bootloader/mcuboot/boot/zephyr" -p always -d "$MCUBOOT_BUILD"
   )
+  echo "$BUILT_FROM" >"$STAMP"
 fi
 
 [ -f "$APP_HEX" ] || {
   echo "no signed app image at $APP_HEX" >&2
-  echo "build it with: ~/two-computers-one-board/mcu/zbuild.sh ~/two-computers-one-board/mcu/app" >&2
+  echo "build it with: $HERE/zbuild.sh" >&2
   exit 1
 }
 

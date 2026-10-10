@@ -10,16 +10,16 @@ bats tests/                 # just these
 bats tests/bind-guard.bats  # one file
 ```
 
-Shell is the largest thing in this project — about **5,200 lines across 40
-scripts**, five times the Python and the C put together — and until this suite
+Shell is the largest thing in this project — several thousand lines across forty-odd
+scripts, several times the Python and the C put together — and until this suite
 existed it was checked only by `shellcheck` and `shfmt`. Those are linters. They
 will tell you a variable is unquoted; they will never tell you the bind guard
 counts wrong.
 
 Meanwhile the Python is held at 100% branch coverage by a gate that fails the
-build. That gap was the wrong way round: **every one of the twenty-one findings
-in [the findings log](../docs/reference/clean-board-findings.md) was in shell or
-in a systemd unit.** Not one was in Python or C.
+build. That gap was the wrong way round: **nearly every finding in
+[the findings log](../docs/reference/clean-board-findings.md) was in shell or in
+a systemd unit.** Hardly any were in Python or C.
 
 ## How it works: no refactor, no board
 
@@ -40,7 +40,7 @@ case "$1 $2" in "link show") exit 1 ;; esac   # pretend the bridge is gone
 exit 0
 SH
 
-run "$PROJECT/usb/usb-route.sh" add 02:00:00:00:00:01 192.168.137.1
+run "$PROJECT/usb/usb-route.sh" add 192.168.137.1
 [ "$status" -eq 0 ]
 ! ran_like 'ip route'
 ```
@@ -57,16 +57,28 @@ without touching `/var/lib`.
 
 ## What is covered, and why those first
 
-| suite | tests | why it was picked |
-|---|---:|---|
-| [`bind-guard.bats`](bind-guard.bats) | 21 | The worst failure mode in the project. It exists to stop a browning-out USB bind becoming a permanent reboot loop — and if its own counting is wrong it *causes* that outage, on a board that then cannot be reached over USB to fix it. It has been wrong once already. |
-| [`usb-route.bats`](usb-route.bats) | 14 | Runs as root, with an address off the wire, and moves the board's **default route** — the setting most able to break a machine remotely while leaving it looking fine. It has been wrong once already. |
+| suite | what is at stake |
+|---|---|
+| [`bind-guard.bats`](bind-guard.bats) | The worst failure mode in the project. The guard exists to stop a browning-out USB bind becoming a permanent reboot loop — and if its own counting is wrong it *causes* that outage, on a board that then cannot be reached over USB to fix it. It has been wrong once already. |
+| [`usb-route.bats`](usb-route.bats) | Runs as root, with an address off the wire, and moves the board's **default route** — the setting most able to break a machine remotely while leaving it looking fine. It has been wrong once already. |
+| [`usb-dhcp.bats`](usb-dhcp.bats) | The address the board remembers between boots, and what it does when the computer on the other end will not give it back. |
+| [`usb-profile.bats`](usb-profile.bats) | The only thing here that takes an address on somebody else's subnet without being asked. Most of what is tested is refusal. |
+| [`wifi.bats`](wifi.bats) | Whether it is safe to turn off the radio you are probably connected over. It got that wrong once, by asking only IPv4. |
+| [`leds.bats`](leds.bats) | The board's only output when everything else is down. A wrong colour is worse than a dark board. |
+| [`install-unit.bats`](install-unit.bats) | Every unit is rewritten on its way into `/etc/systemd/system`. Get it wrong and a unit installs happily, then fails at boot with a status that does not name the path. |
+| [`zephyr-sdk.bats`](zephyr-sdk.bats) | The first step of `bootstrap.sh` a stranger's board ever stopped at. It passed on every board it was developed on, and failed on a fresh one. |
+| [`build-flash.bats`](build-flash.bats) | `zbuild` and `zflash` with nothing after them: the right app, and never the unsigned image. Also that CI can run the same script the board does. |
+| [`uplink-fallback.bats`](uplink-fallback.bats) | The last automatic way back onto a network when wifi is off. Wrong one way it strands the board; wrong the other way the radio comes back on every boot. |
+| [`build-image.bats`](build-image.bats) | The web server is stopped for a remount and always started again, on every exit path, and a busy mount is never forced. |
 
-Both of those "already" cases are written down as tests:
+The first two were written first, because both scripts had already failed:
 
-- udev triggers the bind unit **three times** on a healthy plug-in, so an
-  earlier version that counted invocations hit its limit of 3 during the first
-  *successful* plug-in and refused to bind ever again.
+- udev triggered the bind unit **three times** on a healthy plug-in (once for
+  the controller, once for each of the two network interfaces the gadget had
+  then), so an earlier version that counted invocations hit its limit of 3
+  during the first *successful* plug-in and refused to bind ever again. The
+  gadget has one network interface now; the guard counts boots, not
+  invocations, so the number of triggers no longer matters.
 - the route metric was 500, which **beat** NetworkManager's 600 for wifi, so
   plugging the board into a computer silently handed that computer the default
   route. SSH survived, so nothing looked wrong, while `apt` and `git` stopped.
@@ -85,5 +97,5 @@ board nobody can reach".
    asserting nothing. Break the script on purpose, confirm the right test goes
    red, then put it back.
 
-That last step is not optional. Both suites here were mutation-tested against
-the two historical bugs above before being committed.
+That last step is not optional. The suites here were each checked that way
+before being committed: break the script, watch the right test go red.

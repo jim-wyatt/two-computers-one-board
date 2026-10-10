@@ -3,7 +3,7 @@
 .venv/
 # Local scratch for things that cannot be re-downloaded and are not ours to
 # redistribute: the stock Arduino firmware image and a copy of /opt/openocd.
-# See THIRD-PARTY.md.
+# See docs/third-party.md.
 backup/
 # zbuild.sh builds into ~/zephyrproject/build, outside the repo. Anything named
 # build/ in here is a stray IDE configure - never source, never committed.
@@ -20,7 +20,7 @@ compile_commands.json
 htmlcov/
 
 # The fileshare image and its downloaded contents. Microsoft's installers are
-# not ours to redistribute (THIRD-PARTY.md), and the image is ~2 GB of build
+# not ours to redistribute (docs/third-party.md), and the image is ~2 GB of build
 # artefact. Rebuild both with share/fetch-vscode.sh + share/build-image.sh.
 *.img
 

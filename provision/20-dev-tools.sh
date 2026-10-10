@@ -21,7 +21,9 @@ free -h | sed -n 2p
 # --- 1. clangd: C/C++ IntelliSense. .vscode/settings.json expects it plus a
 # --- compile_commands.json, which zbuild.sh symlinks in from the west build.
 # ---
-# --- The version is discovered rather than pinned: Debian ships clangd-19
+# --- The version is discovered rather than pinned; the clangd step further
+# --- down says why.
+#
 # --- Host C compiler. The stock image has NO cc at all - gcc is `un`, not
 # --- merely absent - and two things quietly need one.
 #
@@ -45,7 +47,16 @@ free -h | sed -n 2p
 step "host C compiler"
 apt_install gcc make
 
-# --- here, but a later image ships a different one and a pinned name 404s.
+# The Zephyr SDK's setup.sh fetches the toolchain with wget and exits if it is
+# missing. Everything in this repo downloads with curl, so nothing here would
+# have noticed its absence until user/20-zephyr-sdk.sh, forty lines into a log.
+#
+# REVERT: apt-get remove -y wget
+step "wget (the Zephyr SDK installer needs it)"
+apt_install wget
+
+# --- clangd. Debian ships clangd-19 here, but a later image ships a different
+# --- one and a pinned name 404s, so the newest available is looked up.
 # REVERT: apt-get remove -y clangd-<v> && rm /usr/bin/clangd
 step "clangd"
 if command -v clangd >/dev/null 2>&1; then

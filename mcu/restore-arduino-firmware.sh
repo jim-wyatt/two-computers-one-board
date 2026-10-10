@@ -9,7 +9,7 @@
 # App / Bridge stack working again.
 #
 # You supply the image. It is Arduino's build rather than this project's, so
-# it is not redistributed here (THIRD-PARTY.md) - copy it off your own board
+# it is not redistributed here (docs/third-party.md) - copy it off your own board
 # before purging the Arduino tree, and it will still work once ~/.arduino15 is
 # gone.
 #
@@ -20,7 +20,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 # The stock image is Arduino's build, not ours to redistribute, so it is not in
-# this repository - see THIRD-PARTY.md. Point STOCK_FW at your own copy.
+# this repository - see docs/third-party.md. Point STOCK_FW at your own copy.
 FW="${STOCK_FW:-$HOME/uno-q-backup/zephyr-arduino_uno_q_stm32u585xx.hex}"
 
 [ -f "$FW" ] || {
