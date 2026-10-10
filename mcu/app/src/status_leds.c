@@ -38,8 +38,15 @@ static bool faulted;
 static bool confirmed_seen;
 static int64_t last_seen_ms;
 
-static void link_check(struct k_work *work);
-static K_WORK_DELAYABLE_DEFINE(link_work, link_check);
+/* What each LED is showing, and the beat it is shown on. Dark until told
+ * otherwise - STATUS_OFF is zero.
+ */
+static struct status_look look3;
+static struct status_look look4;
+static uint32_t tick;
+
+static void on_tick(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(tick_work, on_tick);
 
 static void set_chan(const struct gpio_dt_spec *spec, int on)
 {
@@ -54,6 +61,18 @@ static void set_rgb(const struct gpio_dt_spec *led, int r, int g, int b)
 	set_chan(&led[CH_RED], r);
 	set_chan(&led[CH_GREEN], g);
 	set_chan(&led[CH_BLUE], b);
+}
+
+/* The one place a look becomes pins. `lit` is worked out once and gates every
+ * channel, so a two-channel colour cannot blink out of step with itself.
+ */
+static void show(const struct gpio_dt_spec *led, struct status_look look)
+{
+	bool lit = status_rhythm_lit(look.rhythm, tick);
+	bool red = look.colour == STATUS_RED || look.colour == STATUS_YELLOW;
+	bool green = look.colour == STATUS_GREEN || look.colour == STATUS_YELLOW;
+
+	set_rgb(led, lit && red, lit && green, 0);
 }
 
 static bool claim(const struct gpio_dt_spec *led, size_t n)
@@ -72,18 +91,25 @@ static bool claim(const struct gpio_dt_spec *led, size_t n)
 	return any;
 }
 
-/* Runs once a second forever. Deliberately a poll rather than a timeout armed
- * on each message: the interesting event here is the ABSENCE of traffic, and
- * you cannot receive an interrupt for something not happening.
+/* Runs eight times a second forever, and does two jobs on one work item.
+ *
+ * Every beat it redraws both LEDs, which is all a blink is. No second timer
+ * and no thread: the rhythm is a counter, and the counter was already here.
+ *
+ * Every eighth beat - once a second, as before there was any blinking - it
+ * looks at the link. Deliberately a poll rather than a timeout armed on each
+ * message: the interesting event here is the ABSENCE of traffic, and you
+ * cannot receive an interrupt for something not happening.
  */
-static void link_check(struct k_work *work)
+static void on_tick(struct k_work *work)
 {
 	ARG_UNUSED(work);
 
-	if (ready) {
+	tick++;
+	if (ready && (tick % STATUS_TICKS_PER_CHECK) == 0) {
 		bool fresh = (k_uptime_get() - last_seen_ms) < STATUS_LINK_STALE_MS;
 
-		set_rgb(led4, fresh ? 0 : 1, fresh ? 1 : 0, 0);
+		look4 = status_led4_look(fresh);
 
 		/* Re-read the image state rather than trusting the value taken
 		 * at boot.
@@ -103,10 +129,14 @@ static void link_check(struct k_work *work)
 		 */
 		if (!confirmed_seen && !faulted && boot_is_img_confirmed()) {
 			confirmed_seen = true;
-			set_rgb(led3, 0, 1, 0);
+			look3 = status_led3_look(false, true);
 		}
 	}
-	(void)k_work_reschedule(&link_work, K_MSEC(1000));
+	if (ready) {
+		show(led3, look3);
+		show(led4, look4);
+	}
+	(void)k_work_reschedule(&tick_work, K_MSEC(STATUS_TICK_MS));
 }
 
 void status_leds_init(void)
@@ -118,13 +148,14 @@ void status_leds_init(void)
 	if (!ready) {
 		return;
 	}
-	set_rgb(led3, 0, 0, 0);
-	/* Red until the MPU says something. A board nobody has talked to yet is
-	 * genuinely in the "link not proven" state, and starting green would be
-	 * an optimistic lie for the first four seconds. */
-	set_rgb(led4, 1, 0, 0);
+	show(led3, look3);
+	/* The fault look until the MPU says something. A board nobody has talked
+	 * to yet is genuinely in the "link not proven" state, and starting green
+	 * would be an optimistic lie for the first four seconds. */
+	look4 = status_led4_look(false);
+	show(led4, look4);
 	last_seen_ms = 0;
-	(void)k_work_reschedule(&link_work, K_MSEC(1000));
+	(void)k_work_reschedule(&tick_work, K_MSEC(STATUS_TICK_MS));
 }
 
 bool status_leds_present(void)
@@ -145,9 +176,11 @@ void status_leds_set_image_confirmed(bool confirmed)
 	confirmed_seen = confirmed;
 	/* Yellow is red+green together. The only place in this project where two
 	 * channels are lit at once, and it earns it: "on probation" is neither
-	 * healthy nor broken, and a third colour says that better than blinking.
+	 * healthy nor broken, and it gets a colour and a rhythm of its own to
+	 * say so. Shown now rather than on the next beat, as the fault below is.
 	 */
-	set_rgb(led3, confirmed ? 0 : 1, 1, 0);
+	look3 = status_led3_look(false, confirmed);
+	show(led3, look3);
 }
 
 void status_leds_set_fault(void)
@@ -156,5 +189,6 @@ void status_leds_set_fault(void)
 		return;
 	}
 	faulted = true;
-	set_rgb(led3, 1, 0, 0);
+	look3 = status_led3_look(true, confirmed_seen);
+	show(led3, look3);
 }
