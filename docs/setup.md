@@ -231,6 +231,8 @@ well, and says so when you get there; nothing else needs an extra.
 | `--with-learning` | The course, served by the board on port 8080. | A small web server with no password, listening on every network the board is on. Anyone who can reach the board can read what it serves. |
 | `--with-purge` | A few hundred MB of disk back, by removing the remaining Arduino packages. (The ~2 GB of container images go in the default run.) | It is the one step that is hard to undo. The stock firmware is backed up first. |
 | `--everything` | All four. | All four. |
+| `--with-watchdog` | The board resets itself if its kernel hangs, instead of waiting for someone to pull the cable. | It also resets if `systemd` merely stalls for 30 seconds. It has survived a clean firmware build with swap 80% full on one board, which is one measurement and not a promise. Not included in `--everything`. |
+| `--with-esp-lockdown` | The EFI partition, and the random seed on it, readable by root only. Run on one board, through a reboot. | It edits the line of `/etc/fstab` the board boots from. The edit is checked before it is installed and the old file is kept as `/etc/fstab.unoq-esp.bak`. Not included in `--everything`. |
 
 You can add any of them later by running `bootstrap.sh` again with the flag.
 Everything already done is skipped.

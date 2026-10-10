@@ -22,6 +22,9 @@
 #   - claim /dev/ttyHS1 for the LED matrix demo (--with-cpu-bars)
 #   - switch the USB port to peripheral mode (--with-usb-gadget; it drops the
 #     USB host port and every device on it, including a network dongle)
+#   - arm the hardware watchdog (--with-watchdog) or tighten the EFI
+#     partition's permissions (--with-esp-lockdown); neither has been validated
+#     on hardware yet, and --everything does not include them
 #
 # TIME AND SPACE: ~40-60 minutes on a cold board, almost all of it the Zephyr
 # workspace (~3.3 GB) and SDK (~1 GB). Make sure you have ~6 GB free.
@@ -36,10 +39,12 @@ WITH_PURGE=0
 WITH_CPU_BARS=0
 WITH_USB_GADGET=0
 WITH_LEARNING=0
+WITH_WATCHDOG=0
+WITH_ESP_LOCKDOWN=0
 SKIP_MCU=0
 
 usage() {
-  sed -n '2,30p' "$0"
+  sed -n '2,33p' "$0"
   cat <<'EOF'
 
 Options:
@@ -49,6 +54,13 @@ Options:
                       WARNING: drops the USB host port and anything on it
   --with-learning     also serve the learning content over HTTP (70)
   --everything        all of the above
+
+Each run on one board only, and NOT part of --everything:
+  --with-watchdog     also arm the hardware watchdog (80): the board resets if
+                      systemd stops for 30s.
+  --with-esp-lockdown also make the EFI partition root-only (85). Edits the
+                      /etc/fstab entry the board boots from.
+
   --skip-mcu          do not build or flash the MCU firmware at the end
   -h, --help          this
 EOF
@@ -60,6 +72,13 @@ for arg in "$@"; do
     --with-cpu-bars) WITH_CPU_BARS=1 ;;
     --with-usb-gadget) WITH_USB_GADGET=1 ;;
     --with-learning) WITH_LEARNING=1 ;;
+    --with-watchdog) WITH_WATCHDOG=1 ;;
+    --with-esp-lockdown) WITH_ESP_LOCKDOWN=1 ;;
+    # --everything does NOT set the two above, on purpose. It means "every
+    # extra this project stands behind", and those two have only ever run
+    # against faked commands: one can reset the board mid-build, the other
+    # edits the fstab entry it boots from. Each has to be asked for by name
+    # until someone has watched it work on a board.
     --everything)
       WITH_PURGE=1
       WITH_CPU_BARS=1
@@ -107,6 +126,10 @@ echo "  - install the Zephyr SDK and workspace into $HOME (~4.5 GB)"
   echo "  - REMOVE THE ARDUINO PACKAGES (--with-purge; hard to undo)"
 [ "$WITH_USB_GADGET" = 1 ] &&
   echo "  - give up the USB host port and everything plugged into it (--with-usb-gadget)"
+[ "$WITH_WATCHDOG" = 1 ] &&
+  echo "  - arm the hardware watchdog: the board RESETS ITSELF if systemd stalls (--with-watchdog; untested under load)"
+[ "$WITH_ESP_LOCKDOWN" = 1 ] &&
+  echo "  - edit the /boot/efi line of /etc/fstab, the partition this board boots from (--with-esp-lockdown; backed up first)"
 echo
 echo "Every change is listed, with how to undo it, in docs/setup.md."
 if [ -t 0 ]; then
@@ -270,6 +293,14 @@ if [ "$WITH_LEARNING" = 1 ] || [ "$WITH_USB_GADGET" = 1 ]; then
 fi
 [ "$WITH_LEARNING" = 1 ] &&
   run_step "70  learning content web server (root)" sudo "$PROJECT/provision/70-learning-web.sh"
+# The two that are asked for by name only (see the argument parsing). Down
+# here, after the firmware build and the image build, so the watchdog is never
+# armed for the first time with the longest jobs of the run still ahead of it,
+# and 85 edits /etc/fstab after 70 has added its line, not before.
+[ "$WITH_WATCHDOG" = 1 ] &&
+  run_step "80  hardware watchdog (root)" sudo "$PROJECT/provision/80-watchdog.sh"
+[ "$WITH_ESP_LOCKDOWN" = 1 ] &&
+  run_step "85  EFI partition permissions (root)" sudo "$PROJECT/provision/85-esp-permissions.sh"
 # Last, always: it takes the USB host port down with it.
 [ "$WITH_USB_GADGET" = 1 ] &&
   run_step "60  USB gadget (root)" sudo "$PROJECT/provision/60-usb-gadget.sh"

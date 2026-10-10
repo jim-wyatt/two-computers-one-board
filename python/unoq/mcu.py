@@ -46,6 +46,21 @@ MATRIX_ROWS = 8
 MATRIX_COLS = 13
 MATRIX_MAX_LEVEL = 7
 BAUD = 115200
+# What the firmware puts in front of a command it refuses: APP_ERR in
+# app_proto.h. test_contract.py holds the two together.
+ERROR_PREFIX = "Error:"
+# What the Zephyr shell itself says when it will not run a line at all - before
+# any handler of ours is reached, so without our prefix. The second was found
+# on the board: `app matrix px 1 1`, one argument short, came back as two lines
+# of usage text and was returned as though it were the reply.
+_SHELL_REFUSALS = ("command not found", "wrong parameter count")
+
+# The two lines `app temp` can answer with: APP_TEMP_FMT and APP_TEMP_ERR_FMT in
+# app_proto.h, with each %d turned into a signed-integer group. Anchored at both
+# ends because a reading is the whole line or it is not a reading.
+# tests/test_contract.py rebuilds both from the header and fails if they drift.
+_TEMP = re.compile(r"^temp_mc=(-?\d+)$")
+_TEMP_ERR = re.compile(r"^temp_err=(-?\d+)$")
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 _PROMPT = re.compile(r"^\s*\S*:~\$\s*$")
 
@@ -275,7 +290,7 @@ class MCU:
         if lines and lines[0] == command:
             lines = lines[1:]
         for line in lines:
-            if "command not found" in line or line.startswith("Error:"):
+            if line.startswith(ERROR_PREFIX) or any(said in line for said in _SHELL_REFUSALS):
                 raise MCUError(f"{command!r}: {line}")
         return lines
 
@@ -302,6 +317,46 @@ class MCU:
         if not fields:
             raise MCUError(f"could not parse: {out[0]!r}")
         return fields
+
+    def die_temp(self) -> float:
+        """The microcontroller's die temperature in degrees Celsius.
+
+        This is the one temperature on the board Linux cannot read for itself:
+        /sys/class/thermal is all QRB2210, and says nothing about the STM32.
+        The firmware sends integer millidegrees - the unit sysfs uses - and
+        this divides by a thousand.
+
+        The number is the chip's internal sensor converted with ST's factory
+        calibration, which is good for a few degrees and no better. It is
+        junction temperature, so it sits above the air around the board.
+
+        Raises MCUError in three cases that need telling apart, because the
+        fixes differ: the firmware tried and could not read the sensor; the
+        firmware predates `app temp`; or the reply was something else.
+        """
+        out = self.cmd("app temp")
+        for line in out:
+            failed = _TEMP_ERR.match(line)
+            if failed:
+                raise MCUError(
+                    f"the MCU could not read its die temperature sensor ({line}). "
+                    f"The number is a negative Zephyr errno: -19 (ENODEV) means the "
+                    f"sensor or its ADC did not come up at boot, anything else came "
+                    f"from the conversion itself"
+                )
+            if line == "Subcommands:":
+                # What the Zephyr shell does with an `app` subcommand it does
+                # not have: no error, just the help for `app`. Said plainly
+                # here, since "could not parse" would send someone looking for
+                # a protocol bug when the firmware is merely older than this.
+                raise MCUError(
+                    "this firmware has no `app temp` command - it predates the die "
+                    "temperature sensor. Rebuild and update it (mcu/zbuild.sh, then unoq.fota)"
+                )
+        m = _TEMP.match(out[0]) if out else None
+        if not m:
+            raise MCUError(f"could not parse app temp: {out!r}")
+        return int(m.group(1)) / 1000
 
     # -- LED matrix --------------------------------------------------------
 

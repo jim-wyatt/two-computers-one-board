@@ -312,10 +312,23 @@ you must sample `/sys/block/mmcblk0/stat` yourself - that counter does move.
 
 | | LED 1 | LED 2 | LED 3 | LED 4 |
 |---|---|---|---|---|
-| green | internet reachable | all units healthy | image **confirmed** | MPU spoke recently |
-| yellow | — | — | image **unconfirmed**, reverts on reset | — |
-| blue | cable, but no route beyond | — | — | — |
-| red | no uplink at all | unit failed / bind guard tripped | subsystem failed | MPU silent >4s |
+| **steady** — fine | green: internet reachable | green: all units healthy | green: image **confirmed** | green: MPU spoke recently |
+| **slow blink**, once every 2 s — degraded, or in progress | blue: cable, but no route beyond | — | yellow: image **unconfirmed**, reverts on reset | — |
+| **fast blink**, twice a second — needs a human | red: no uplink at all | red: unit failed / bind guard tripped | red: subsystem failed | red: MPU silent >4s |
+| **dark** — nothing is driving it | `unoq-leds` is not running | `unoq-leds` is not running | the firmware is not running | the firmware is not running |
+
+Read it by row. The rhythm identifies the state by itself, and no LED uses the
+same rhythm for two states, so none of this depends on telling red from green.
+The colour is a second witness, not the only one. Both blinks are lit half the
+time.
+
+LED 1 and LED 2 are blinked by the kernel's `timer` LED trigger, which
+`leds.sh` selects and then leaves alone until the state changes: every write to
+`delay_on` or `delay_off` restarts the blink, so rewriting an unchanged state
+would make it stutter. LED 3 and LED 4 are redrawn by the firmware every
+250 ms from one counter, so the red and green channels of yellow cannot fall
+out of step. If a kernel offers no `timer` trigger, `leds.sh` shows the colour
+steady and says so once in its log.
 
 LED 4 is worth understanding: it shows the *absence* of traffic. A blink per
 message would be a clock - `cpubars` sends twice a second, so it would blink
@@ -324,7 +337,9 @@ is news Linux cannot deliver, because a host that has stopped talking cannot
 report that it stopped.
 
 `~/two-computers-one-board/status/leds.sh explain` prints the current scheme; `... test` cycles the
-colours so you can learn which physical LED is which.
+states so you can learn which physical LED is which, and
+`... show 1 blue slow` puts one LED into one colour and rhythm by hand (stop
+`unoq-leds` first, or its next pass puts the truth back).
 
 ## How the MPU flashes the MCU
 

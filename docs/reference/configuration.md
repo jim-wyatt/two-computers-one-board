@@ -100,6 +100,13 @@ Read by `status/leds.sh`, which runs as `unoq-leds.service`. Set these in
 | `UNOQ_LED_INTERVAL` | `5` | Seconds between passes. Every pass re-reads everything, so this is also how stale a light can be. |
 | `UNOQ_LED_NET_EVERY` | `12` | The reachability ping runs on every Nth pass: once a minute at the defaults. |
 | `UNOQ_LED_PROBE_IP` | `1.1.1.1` | The address that ping goes to. |
+| `UNOQ_LED_BLINK_SLOW_MS` | `1000` | The slow blink (degraded, or in progress): milliseconds lit, then the same again dark. Once every two seconds at the default. |
+| `UNOQ_LED_BLINK_FAST_MS` | `250` | The fast blink (needs a human), likewise. Twice a second at the default; do not go below about 170, which is three flashes a second and the ceiling for anything that flashes. Keep it well apart from the slow one: the two rhythms are how the states are told apart without colour. |
+
+These two set LED 1 and LED 2 only. LED 3 and LED 4 blink at the same rates
+from the firmware, where they are constants in
+`mcu/app/include/status_leds.h`; change one side and the other no longer
+matches it.
 
 ## The drive and the web server
 
@@ -124,6 +131,7 @@ Set on the command line, for one run of `bootstrap.sh` or of the script named.
 | `UNOQ_ALLOW_NO_STOCK_FW` | `0` | `bootstrap.sh`, `provision/40-purge-arduino.sh` | `1` lets the firmware be flashed, and the purge go ahead, with no copy of the stock firmware saved. Only for a board whose copy is already gone. |
 | `UNOQ_USER` | whoever ran `sudo` | `provision/lib.sh` | The account that owns the checkout and is written into the units. |
 | `UNOQ_VENV` | `<checkout>/.venv` | `provision/user/40-python-venv.sh`, `tools/` | The Python environment. |
+| `UNOQ_WATCHDOG_SEC` | `30` | `provision/80-watchdog.sh` | Whole seconds without a ping from `systemd` before the hardware watchdog resets the board. Refused below `10`: a timeout that short resets a board that is merely busy, and does it again after every reboot. Only read with `--with-watchdog`. |
 
 ## The MCU control lines
 
@@ -182,6 +190,9 @@ and setting one will mostly make a script look in the wrong place.
 | `UNOQ_BIND_GUARD` | `usb/bind-guard.sh` | The guard `leds.sh` asks whether it has given up. |
 | `UNOQ_AUTOIPD` | `/usr/sbin/avahi-autoipd` | The link-local address daemon. |
 | `UNOQ_NSLOOKUP` | `nslookup` | The resolver probe. |
+| `UNOQ_WATCHDOG_CONF_DIR` | `/etc/systemd/system.conf.d` | Where `80-watchdog.sh` writes its `systemd` drop-in. |
+| `UNOQ_WATCHDOG_SYSFS` | `/sys/class/watchdog` | Where `80-watchdog.sh` looks for a watchdog device. |
+| `UNOQ_FSTAB` | `/etc/fstab` | The mount table `85-esp-permissions.sh` edits. Its backup is written beside it. |
 
 ## Development only
 

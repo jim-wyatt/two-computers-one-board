@@ -76,6 +76,59 @@ ZTEST(link_protocol, test_status_values_contain_no_separators)
 	}
 }
 
+/* --- the temp line -------------------------------------------------------- */
+
+ZTEST(link_protocol, test_temp_line_round_trips)
+{
+	/* Render APP_TEMP_FMT as cmd_app_temp() does and read it back with the
+	 * same format. Below freezing is in the list on purpose: the part is
+	 * rated to -40 C, and a format that lost the sign would report a cold
+	 * board as a warm one.
+	 */
+	static const int samples[] = {31250, 0, -1, -40000, 125000};
+	char buf[64];
+
+	for (size_t i = 0; i < ARRAY_SIZE(samples); i++) {
+		int back = 0;
+
+		snprintf(buf, sizeof(buf), APP_TEMP_FMT, samples[i]);
+		zassert_equal(sscanf(buf, APP_TEMP_FMT, &back), 1, "'%s' did not parse", buf);
+		zassert_equal(back, samples[i], "sent %d, read back %d", samples[i], back);
+	}
+}
+
+ZTEST(link_protocol, test_temp_line_is_one_key_value_token)
+{
+	/* unoq.MCU.die_temp() looks for exactly "temp_mc=<integer>". The key is
+	 * spelled out here so that renaming it in the header fails a test on
+	 * this side too, not only in python/tests/test_contract.py.
+	 */
+	char buf[64];
+
+	snprintf(buf, sizeof(buf), APP_TEMP_FMT, -40000);
+	zassert_equal(strncmp(buf, "temp_mc=", 8), 0, "temp line must start with temp_mc=");
+	zassert_is_null(strchr(buf, ' '), "the temp line is a single token");
+	zassert_is_null(strchr(strchr(buf, '=') + 1, '='), "a value must not contain '='");
+}
+
+ZTEST(link_protocol, test_temp_failure_cannot_be_read_as_a_temperature)
+{
+	/* The error line carries a negative errno. If it shared the reading's
+	 * key - or merely contained it - a parser would hand back -19 millidegrees
+	 * for a sensor that never came up, which is a plausible number.
+	 */
+	char buf[64];
+	int back = 12345;
+
+	snprintf(buf, sizeof(buf), APP_TEMP_ERR_FMT, -19);
+	zassert_is_null(strstr(buf, "temp_mc="), "error line must not carry the reading's key");
+	zassert_equal(sscanf(buf, APP_TEMP_FMT, &back), 0, "'%s' parsed as a temperature", buf);
+	zassert_equal(back, 12345, "a failed parse must leave the value alone");
+
+	zassert_equal(sscanf(buf, APP_TEMP_ERR_FMT, &back), 1, "'%s' did not parse", buf);
+	zassert_equal(back, -19, "errno did not survive the round trip");
+}
+
 /* --- other shared constants ---------------------------------------------- */
 
 ZTEST(link_protocol, test_settings_key_is_namespaced)

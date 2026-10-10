@@ -43,6 +43,7 @@ link_state()                   # {'boot0': 'OUTPUT', 'link_enable': 'OUTPUT'}
 
 with MCU() as mcu:
     mcu.status()               # {'uptime_ms': 12216, 'flip': 0, 'sweeps': 1043712}
+    mcu.die_temp()             # 31.25 - the STM32's own temperature, degrees C
 
     mcu.bars([12, 3, 0, 47])   # LED matrix: one bar per value, 0..100
     mcu.matrix_px(7, 0)        # light one LED - finds the panel's orientation
@@ -57,6 +58,15 @@ shell's built-in groups — `gpio`, `i2c`, `device`, `kernel`, `devmem` — are 
 `mcu.cmd()` away, or you can type them straight into `tio`; wrapping each in a
 Python method bought nothing but more surface to keep in step with Zephyr.
 
+`mcu.die_temp()` is the one temperature on the board Linux cannot read for
+itself: every zone in `/sys/class/thermal` belongs to the QRB2210. It is the
+STM32U585's internal sensor, converted by Zephyr's driver with the two
+calibration values ST programs into each chip at the factory — so it is
+calibrated, but it is still a junction temperature from an on-chip sensor, good
+to a few degrees and always above the air around the board. It raises `MCUError`
+if the firmware could not read the sensor (the shell prints `temp_err=<errno>`
+in place of a reading) or is too old to have `app temp`.
+
 `MCU` is a context manager **on purpose** — the UART is a single shared
 resource and a stale handle blocks `tio`, `mcucon`, and SMP alike.
 
@@ -64,16 +74,6 @@ resource and a stale handle blocks `tio`, `mcucon`, and SMP alike.
 time, so slow commands (`device list`) and fast ones each cost what they should.
 It raises `MCUError` on `command not found` and on any line the firmware
 prefixes with `Error:`, and `ShellTimeout` if no prompt comes back.
-
-### Firmware update
-
-```python
-from unoq import fota
-fota.images()    # slot table
-fota.upload(path); fota.test(); fota.reset(); fota.confirm()
-```
-
-See [mcu.md](mcu.md#update-over-serial-no-swd).
 
 ### Temperatures
 
@@ -97,6 +97,16 @@ returns `None` if nothing matches. Nothing here writes to sysfs.
 
 These are the Linux side's sensors. None of them says anything about the
 microcontroller.
+
+### Firmware update
+
+```python
+from unoq import fota
+fota.images()    # slot table
+fota.upload(path); fota.test(); fota.reset(); fota.confirm()
+```
+
+See [mcu.md](mcu.md#update-over-serial-no-swd).
 
 ## What runs at boot
 
@@ -359,6 +369,7 @@ timer and releases the pins.
 
 ```
 app status                      uptime_ms, flip, sweeps
+app temp                        temp_mc=<n>: the MCU's die temperature, millidegrees C
 app bars <pct> [pct ...]        1..7 values, 0..100 each
 app matrix px <row> <col> <lvl> light one LED; row 0..7, col 0..12, lvl 0..7
 app matrix flip                 rotate 180 degrees, persisted

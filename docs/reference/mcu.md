@@ -148,6 +148,12 @@ orientation set by `app matrix flip`. That is a property of how the board is
 mounted rather than of the running session, so it survives power cycles and
 firmware updates.
 
+`app temp` reads the chip's internal die temperature sensor through ADC1 —
+`CONFIG_SENSOR` and `CONFIG_STM32_TEMP` in
+[`prj.conf`](../../mcu/app/prj.conf), on devicetree nodes Zephyr's board file
+already enables — and the driver applies ST's factory calibration values, so
+the reading is calibrated but no better than a few degrees.
+
 ## Debugging
 
 Open this folder in VS Code and pick **Debug (attach to running MCU)** or
@@ -194,7 +200,7 @@ The serial tasks (FOTA, confirm, console, status) need the port: stop
 Use `native_sim/native/64`; plain `native_sim` is 32-bit and fails on aarch64
 with a `CONFIG_64BIT` error.
 
-Two suites run, 26 cases in total:
+Two suites run, 29 cases in total:
 
 - **`bars`** compiles [`mcu/app/src/bars.c`](../../mcu/app/src/bars.c) — the
   firmware's own rasteriser, not a copy — and checks the drawing rules on the
