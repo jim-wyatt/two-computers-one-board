@@ -752,3 +752,25 @@ unoq-usb-bind.service" ]
   [[ "$output" == *"interpreter is missing"* ]]
   [[ "$output" == *"absent"* ]]
 }
+
+# --- saying it once -----------------------------------------------------------
+
+@test "a step run by hand warns about stale root units in its summary" {
+  load_lib "$BATS_TEST_TMPDIR"
+  stale_root_units() { echo "unoq-usb-bind.service"; }
+  warn() { echo "warn $*"; }
+  run summary
+  [[ "$output" == *"still run as root"* ]]
+  [[ "$output" == *"unoq-usb-bind.service"* ]]
+}
+
+@test "under bootstrap a step's summary leaves that warning for the end" {
+  # Printed after each of fourteen steps on a board that was halfway through
+  # being fixed, most of which could do nothing about it.
+  load_lib "$BATS_TEST_TMPDIR"
+  stale_root_units() { echo "unoq-usb-bind.service"; }
+  warn() { echo "warn $*"; }
+  UNOQ_IN_BOOTSTRAP=1 run summary
+  [[ "$output" != *"still run as root"* ]]
+  [[ "$output" == *"already correct"* ]]
+}

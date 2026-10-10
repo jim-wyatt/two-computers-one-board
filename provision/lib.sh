@@ -63,19 +63,14 @@ fail() {
 
 summary() {
   printf '\n%s%d changed, %d already correct.%s\n' "$P_BOLD" "$CHANGED" "$UNCHANGED" "$P_OFF"
-  # Said at the end of every step, because no single step can fix it for the
-  # others: a board provisioned before root ran its own copies has units that
-  # still execute the checkout, and each stays that way until the step that
-  # installed it runs again. bootstrap.sh only runs the optional steps it is
-  # asked for, so "I re-ran bootstrap" is not proof that they have all gone.
-  local stale
-  stale="$(stale_root_units)"
-  if [ -n "$stale" ]; then
-    warn "these units still run as root from the checkout or the home directory:"
-    warn "  $(tr '\n' ' ' <<<"$stale")"
-    warn "  re-run the step that installed each one - 30-mcu-link.sh for unoq-link,"
-    warn "  35-status-leds.sh for unoq-leds, 60-usb-gadget.sh for the others"
-  fi
+  # A board provisioned before root ran its own copies has units that still
+  # execute the checkout, and each stays that way until the step that installed
+  # it runs again. No single step can fix it for the others, so a step run by
+  # hand says so. Under bootstrap.sh it is said ONCE, by bootstrap, at the end:
+  # the first version printed these four lines after every one of fourteen
+  # steps, most of which could do nothing about it, on a board that was in the
+  # middle of being fixed.
+  [ -n "${UNOQ_IN_BOOTSTRAP:-}" ] || warn_stale_root_units
 }
 
 need_root() {
@@ -265,6 +260,17 @@ unit_runs_as_root() {
     "" | root | 0) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+# warn_stale_root_units - name them, and say what fixes each.
+warn_stale_root_units() {
+  local stale
+  stale="$(stale_root_units)"
+  [ -n "$stale" ] || return 0
+  warn "these units still run as root from the checkout or the home directory:"
+  warn "  $(tr '\n' ' ' <<<"$stale")"
+  warn "  re-run the step that installed each one - 30-mcu-link.sh for unoq-link,"
+  warn "  35-status-leds.sh for unoq-leds, 60-usb-gadget.sh for the others"
 }
 
 # stale_root_units [dir] - installed unoq-* units that run as root and still
