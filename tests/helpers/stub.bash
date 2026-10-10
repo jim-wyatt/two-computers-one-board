@@ -34,6 +34,12 @@ stub_setup() {
 
 # stub <name> [exit_code] [stdout]
 #
+# One line per call, written with ONE write. It used to be three printfs, which
+# is three writes: fine while only one stub ran at a time, and not once a
+# script under test had something running in the background. Two stubs
+# appending at once then interleaved halves of each other's lines, and a test
+# that looked for a whole line did not find it.
+#
 # Records one line per invocation: the command name followed by its arguments,
 # space separated. Arguments containing spaces are not distinguishable in the
 # log, which is fine for everything here and worth knowing before you rely on
@@ -42,7 +48,7 @@ stub() {
   local name="$1" code="${2:-0}" out="${3:-}"
   cat >"$STUB_DIR/$name" <<EOF
 #!/bin/bash
-{ printf '%s' "$name"; printf ' %s' "\$@"; printf '\n'; } >>"$STUB_LOG"
+printf '%s\n' "$name\${*:+ \$*}" >>"$STUB_LOG"
 [ -n '$out' ] && printf '%s\n' '$out'
 exit $code
 EOF
@@ -63,7 +69,7 @@ stub_body() {
   local name="$1"
   {
     echo '#!/bin/bash'
-    echo "{ printf '%s' \"$name\"; printf ' %s' \"\$@\"; printf '\n'; } >>\"\$STUB_LOG\""
+    echo "printf '%s\n' \"$name\${*:+ \$*}\" >>\"\$STUB_LOG\""
     cat
   } >"$STUB_DIR/$name"
   chmod +x "$STUB_DIR/$name"
