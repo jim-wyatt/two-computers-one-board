@@ -128,7 +128,7 @@ chart involves three jobs, of very different kinds:
 Linux measures and sends percentages; the microcontroller decides the pixels.
 
 ```mermaid
-flowchart LR
+flowchart TB
   A["/proc/stat<br/><small>counters</small>"] --> B["cpu.py<br/><small>percentages</small>"]
   B -->|"4 numbers,<br/>twice a second"| C["bars.c<br/><small>rasteriser</small>"]
   C --> D["104 brightness<br/>values"]

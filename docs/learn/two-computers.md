@@ -144,7 +144,7 @@ something.
 ## How they are actually wired
 
 ```mermaid
-flowchart LR
+flowchart TB
   subgraph MPU["MPU — Debian Linux"]
     P["your Python"]
   end

@@ -200,3 +200,21 @@
   box-shadow: none;
   background: var(--md-code-bg-color);
 }
+
+/* --------------------------------------------------------------------------
+ * diagrams
+ *
+ * Drawn at their natural size, never scaled to fit (see mermaid-init.js for
+ * the measurement that settled it). On a desktop column every diagram fits,
+ * and a gate keeps it that way; on a phone a wide one scrolls sideways, which
+ * is worse than fitting and far better than lettering nobody can read.
+ * ----------------------------------------------------------------------- */
+
+.md-typeset pre.unoq-mermaid {
+  overflow-x: auto;
+  text-align: center;
+}
+
+.md-typeset pre.unoq-mermaid > svg {
+  max-width: none;
+}

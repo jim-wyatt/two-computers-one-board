@@ -45,9 +45,13 @@ which mermaid sets before it has drawn anything and sets just the same on a
 diagram it could not parse. A page passes when every block it has on disk has
 drawn and there is no error graphic anywhere in the document.
 
+A diagram that drew must also be READABLE: its lettering displayed at a legible
+size and the drawing no wider than its column, at a desktop window. See
+MIN_TEXT_PX below for the measurement that made this part of the gate.
+
 EXIT STATUS - three answers, because conflating the last two has cost days
     0   every diagram on every page drew
-    1   the SITE is wrong: some diagram did not draw
+    1   the SITE is wrong: some diagram did not draw, or cannot be read
     2   the HARNESS is wrong: the browser did not start, stopped answering, or
         the self-test fixtures came back with the wrong verdicts. Nothing this
         run says about the site should be believed.
@@ -86,17 +90,77 @@ STATE_JS = """
     const svg = el.querySelector("svg");
     return svg && svg.getAttribute("aria-roledescription") !== "error";
   }).length;
+  // How each drawn diagram ended up on the screen: the size its smallest
+  // lettering is DISPLAYED at, which is the font size times however much the
+  // drawing was scaled, and whether it is wider than the block that holds it.
+  const sizes = blocks.map((el, i) => {
+    const svg = el.querySelector("svg");
+    if (!svg || svg.getAttribute("aria-roledescription") === "error") return null;
+    const box = svg.getBoundingClientRect();
+    const natural = svg.viewBox.baseVal.width;
+    const scale = natural ? box.width / natural : 1;
+    let text = Infinity;
+    svg.querySelectorAll("foreignObject *, text, tspan").forEach((t) => {
+      if (t.children.length || !t.textContent.trim()) return;
+      text = Math.min(text, parseFloat(getComputedStyle(t).fontSize) * scale);
+    });
+    return {
+      n: i + 1,
+      text: Number.isFinite(text) ? Math.round(text * 10) / 10 : null,
+      width: Math.round(box.width),
+      room: Math.round(el.clientWidth),
+    };
+  }).filter(Boolean);
   return {
     href: location.href,
     ready: document.readyState,
     blocks: blocks.length,
     drawn: drawn,
+    sizes: sizes,
     marked: blocks.filter((el) => el.getAttribute("data-processed")).length,
     errors: document.querySelectorAll(
       '[aria-roledescription="error"], .error-text').length,
   };
 })()
 """
+
+# DRAWN IS NOT THE SAME AS READABLE
+#
+# A diagram that drew can still be useless. Mermaid's default is to scale a
+# drawing down until it fits the column, lettering and all: measured in this
+# site's 688px text column, one diagram's 16px labels were on screen at 5.9px
+# and four more were under 10px. Every one of them "drew".
+#
+# So two more things are asked of each diagram, at a desktop window:
+#
+#   - its smallest lettering is displayed at MIN_TEXT_PX or more
+#   - it is no wider than the block it sits in, so nobody scrolls sideways
+#
+# The window is fixed so the answer does not depend on the machine. 1440 wide
+# is past the point where the theme shows both sidebars, which is when the text
+# column is at its NARROWEST for a desktop (688px); a diagram that fits there
+# fits every wider or narrower desktop layout. A phone is not checked: there a
+# wide diagram scrolls, by design - see extra.css.
+MIN_TEXT_PX = 12.0
+VIEWPORT = {"width": 1440, "height": 900, "deviceScaleFactor": 1, "mobile": False}
+
+
+def unreadable(sizes: list[dict[str, Any]]) -> str:
+    """Why the drawn diagrams on a page cannot be read, or "" if they can."""
+    faults = []
+    for d in sizes:
+        if d["text"] is not None and d["text"] < MIN_TEXT_PX:
+            faults.append(
+                f"diagram {d['n']}: lettering is displayed at {d['text']:g}px "
+                f"(under {MIN_TEXT_PX:g}px) - it was scaled down to fit"
+            )
+        elif d["width"] > d["room"] + 1:
+            faults.append(
+                f"diagram {d['n']}: {d['width']}px wide in a {d['room']}px column - "
+                f"lay it out top to bottom, or split it"
+            )
+    return "; ".join(faults)
+
 
 # Once an error graphic is on the page the verdict cannot improve, so stop
 # waiting for it to - but give the other diagrams a moment to finish, so the
@@ -329,6 +393,9 @@ def inspect(
             if state["errors"]:
                 give_up = min(give_up, time.monotonic() + SETTLE_AFTER_ERROR)
             elif state["ready"] == "complete" and state["drawn"] == want == state["blocks"]:
+                why = unreadable(state["sizes"])
+                if why:
+                    return False, f"{want} of {want} drew, but: {why}"
                 return True, f"{want} of {want} drew"
         if time.monotonic() >= give_up:
             break
@@ -369,6 +436,8 @@ def run(args: argparse.Namespace, browser: Browser) -> int:
     budget = args.budget_ms / 1000
     began = time.monotonic()
     product = browser.open_tab(began + args.page_timeout)
+    # A fixed window, so "does it fit" has one answer everywhere. See VIEWPORT.
+    browser.call("Emulation.setDeviceMetricsOverride", VIEWPORT, began + args.page_timeout)
     print(f"  browser up in {time.monotonic() - began:.2f}s: {product}")
 
     # SELF-TEST FIRST, in both directions.
@@ -415,9 +484,15 @@ def run(args: argparse.Namespace, browser: Browser) -> int:
 
     elapsed = time.monotonic() - began
     if failed:
-        print(f"{failed} of {len(pages)} pages have diagrams that did not draw ({elapsed:.1f}s)")
+        print(
+            f"{failed} of {len(pages)} pages have diagrams that did not draw "
+            f"or cannot be read ({elapsed:.1f}s)"
+        )
         return 1
-    print(f"{total} diagrams drew across {len(pages)} pages, in one browser, in {elapsed:.1f}s")
+    print(
+        f"{total} diagrams drew, at a readable size, across {len(pages)} pages, "
+        f"in one browser, in {elapsed:.1f}s"
+    )
     return 0
 
 

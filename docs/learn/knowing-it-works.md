@@ -125,7 +125,7 @@ code so the interesting logic sits on the testable side of it, and the untestabl
 part is as small and as dumb as possible.
 
 ```mermaid
-flowchart LR
+flowchart TB
   A["CPU percentages"] --> B["bars.c<br/><small>rasteriser</small>"]
   B --> C["104 brightness values"]
   C --> D["matrix.c<br/><small>registers, interrupt handler</small>"]

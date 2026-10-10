@@ -26,7 +26,7 @@ slightly more. That one loads the next. Each stage exists because the stage
 before it could not yet do what the stage after it needs.
 
 ```mermaid
-flowchart LR
+flowchart TB
   subgraph MPU["MPU — Qualcomm QRB2210"]
     direction TB
     A["Mask ROM<br/><small>factory-burned</small>"] --> B["XBL<br/><small>trains the DDR</small>"]

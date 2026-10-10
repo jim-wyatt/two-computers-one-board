@@ -66,7 +66,7 @@ A gadget is assembled from:
   file is the moment the board appears on the host. This is called **binding**.
 
 ```mermaid
-flowchart LR
+flowchart TB
   subgraph G["the gadget, built in configfs"]
     F1["ncm.usb0<br/><small>network</small>"]
     F3["mass_storage.0<br/><small>the UNO-Q drive</small>"]

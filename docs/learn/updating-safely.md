@@ -47,7 +47,6 @@ bootloader and the application together.
 
 ```mermaid
 stateDiagram-v2
-  direction LR
   [*] --> Running: slot 0, confirmed
   Running --> Pending: upload to slot 1,<br/>mark it "test"
   Pending --> Confirmed: the new image says<br/>"I am fine"
