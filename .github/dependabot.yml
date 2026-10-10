@@ -1,0 +1,21 @@
+# Copyright (c) 2026 Jim Wyatt
+# SPDX-License-Identifier: MIT
+#
+# Actions only, and monthly.
+#
+# The workflows pin each action to a release, and a pin nobody revisits is a
+# version that quietly stops getting fixes. tools/check-versions.sh reports the
+# same thing, but only when somebody remembers to run it.
+#
+# Not for Python or for the tool versions in tools/install-dev-tools.sh. Those
+# are pinned so that the board and CI move together, deliberately, and several
+# are held back on purpose - check-versions.sh's header lists which and why. A
+# bot proposing to "fix" them every month would be noise at best.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci

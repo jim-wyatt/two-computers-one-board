@@ -24,7 +24,8 @@
 #     the newest tag is still v0.12.0 (2023), which predates that support, so
 #     `apt install openocd` (0.12.0) will NOT work.
 #   - The STM32U5 flash driver (`stm32l4x`) is upstream.
-#   - The three .cfg files are plain TCL kept in this repo, not in OpenOCD.
+#   - The adapter .cfg that names this board's SWD pins is kept in this repo
+#     (mcu/board-support/); the STM32 target scripts come from OpenOCD itself.
 #
 # The pinned commit is for reproducibility; override with OPENOCD_COMMIT, or
 # set it to `master` to track the tip.
@@ -73,8 +74,9 @@ make -j"$(nproc)"
 make install
 
 echo "== 5/6 install the board's config files =="
-# openocd_gpiod.cfg is this project's - it names the UNO Q's SWD pins, which
-# are documented nowhere upstream. The two stm32 target scripts are OpenOCD's
+# openocd_gpiod.cfg is kept in this repository, adapted from the one on
+# Arduino's stock image - it names the UNO Q's SWD pins, which are documented
+# nowhere upstream. The two stm32 target scripts are OpenOCD's
 # own (GPL-2.0-or-later) and are taken from the tree we just built rather than
 # vendored here, so they always match the binary instead of drifting from a
 # copy taken at some past version.

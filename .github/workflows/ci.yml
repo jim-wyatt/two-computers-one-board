@@ -3,11 +3,10 @@
 name: checks
 
 # Runs the same gates as tools/check.sh, so a green CI means the same thing as
-# a clean local run. Four jobs:
+# a clean local run. Three jobs:
 #
-#   changes    seconds. Decides which of the expensive two below run at all.
-#   checks     lint, format, types, tests, coverage, docs. Thirty seconds.
-#   diagrams   opens a real browser on every page that has one. ~2 minutes.
+#   changes    seconds. Decides whether the expensive one below runs at all.
+#   checks     lint, format, types, tests, coverage, docs, units, workflows.
 #   firmware   compiles for the real Cortex-M33 and runs the MCU suites. ~5
 #              minutes, because it needs a Zephyr workspace and the SDK.
 #
@@ -42,7 +41,11 @@ concurrency:
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    # A named release, not ubuntu-latest. That label moves to Ubuntu 26 on
+    # 19 October 2026, and a runner image changing underneath this workflow is
+    # what broke the diagram gate twice. Same argument as every other pin here:
+    # move it deliberately, in a commit that says so.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
@@ -67,7 +70,7 @@ jobs:
       - name: Run gates
         run: |
           export PATH="$HOME/.local/bin:$PATH"
-          tools/check.sh python shell c docs
+          tools/check.sh python shell c docs workflows
 
   # THE BROWSER GATE IS NOT HERE, AND THAT IS DELIBERATE.
   #
@@ -104,7 +107,7 @@ jobs:
   #     using whatever chromium the runner image ships
   #   - drive one long-lived browser over the DevTools protocol instead of
   #     launching one per page, which also makes it ~10x faster
-  # Tracked as an issue; do not re-add it by simply uncommenting a job.
+  # Tracked as issue #56; do not re-add it by simply uncommenting a job.
 
   # Does this change touch anything the firmware is built from?
   #
@@ -116,7 +119,7 @@ jobs:
   # keeps this dependency-free, and rather than `git diff` because a shallow
   # clone does not have the base commit to diff against.
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       firmware: ${{ steps.filter.outputs.firmware }}
@@ -172,7 +175,7 @@ jobs:
   firmware:
     needs: [checks, changes]
     if: needs.changes.outputs.firmware == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     steps:
@@ -209,57 +212,44 @@ jobs:
           # job that was never cacheable, only avoidable.
           west-project-filter: ${{ steps.filter.outputs.value }}
 
-      - name: Build the firmware for the real board
-        # The thing that was missing. native_sim below exercises the logic; only
-        # this proves the code still compiles for a Cortex-M33, links inside the
-        # 416K slot, and signs for MCUboot.
-        working-directory: app
-        run: west build -b arduino_uno_q -d /tmp/build mcu/app
-
-      - name: Sign for MCUboot, and check it still fits
-        # Signing is a SEPARATE step from the build, here and in mcu/zbuild.sh:
-        # `west build` does not do it. An unsigned image compiles perfectly and
-        # MCUboot then refuses to boot it, so a job that only built would miss
-        # that completely - the first version of this one did, and the assertion
-        # below is what caught it.
+      - name: Build and sign the firmware for the real board
+        # mcu/zbuild.sh, the same script the board runs - not a copy of what it
+        # does. There used to be a copy here, and the two could drift: change the
+        # key path or a flag in one and the other went on reporting green about
+        # a build nobody runs.
         #
-        # This is also the real size check. The build prints Zephyr's own memory
-        # table against the 416K slot; imgtool is what fails when the image plus
-        # its header and trailer no longer fit, which is the case that bricks a
-        # board on the next update.
-        #
-        # Deliberately identical to what mcu/zbuild.sh does. The two being
-        # separate copies is a known wart - see the issue on unifying them.
+        # native_sim below exercises the logic; only this proves the code still
+        # compiles for a Cortex-M33, links inside the 416K slot, and signs for
+        # MCUboot. Signing is the real size check: the build prints Zephyr's own
+        # memory table, and imgtool is what fails when the image plus its header
+        # and trailer no longer fit - the case that bricks a board on the next
+        # update. An unsigned image compiles perfectly and MCUboot then refuses
+        # to boot it, which is what the assertion at the end is for.
         working-directory: app
+        env:
+          # The build part of the version must be a NUMBER: imgtool wants
+          # maj.min.rev+build. zbuild.sh defaults to an epoch for the same
+          # reason; the run number is the CI equivalent.
+          IMAGE_VERSION: 0.0.0+${{ github.run_number }}
         run: |
           pip3 install --quiet imgtool
-          # The build part of the version must be a NUMBER. `--version 0.0.0+ci`
-          # was rejected outright: imgtool wants maj.min.rev+build, and west
-          # passes its own `--version 0.0.0+0` first, so a second one that does
-          # not parse loses the whole invocation. zbuild.sh uses an epoch here
-          # for the same reason; the run number is the CI equivalent.
-          west sign -t imgtool -d /tmp/build -- \
-            --key "$(west topdir)/bootloader/mcuboot/root-rsa-2048.pem" \
-            --version "0.0.0+${{ github.run_number }}"
-          hex=/tmp/build/zephyr/zephyr.signed.hex
-          [ -s "$hex" ] || { echo "west sign produced no $hex" >&2; exit 1; }
+          # `west topdir`, not $ZEPHYR_BASE: the setup action exports that only
+          # within its own steps. Asking west where the workspace is works from
+          # any directory inside it.
+          ZEPHYR_WORKSPACE="$(west topdir)"
+          export ZEPHYR_WORKSPACE
+          mcu/zbuild.sh
+          hex="$ZEPHYR_WORKSPACE/build/zephyr/zephyr.signed.hex"
+          [ -s "$hex" ] || { echo "zbuild.sh produced no $hex" >&2; exit 1; }
           echo "signed image: $(stat -c %s "$hex") bytes"
 
       - name: Run the MCU test suites
-        # The same suites, on the same platform, as mcu/ztest.sh runs on the
-        # board. native_sim/native/64 rather than plain native_sim: the latter
-        # is a 32-bit target and fails on the board's aarch64 with a
-        # CONFIG_64BIT error, so the board picked /native/64 and CI matches it
-        # rather than testing a configuration nobody runs.
+        # mcu/ztest.sh, again the board's own script, so the suites and the
+        # platform cannot differ between the two. It picks native_sim/native/64
+        # rather than plain native_sim: the latter is a 32-bit target and fails
+        # on the board's aarch64 with a CONFIG_64BIT error.
         working-directory: app
         run: |
-          # `west topdir`, not $ZEPHYR_BASE: the setup action exports that only
-          # within its own steps, so it is empty here and twister was looked for
-          # at /scripts/twister. Asking west where the workspace is works from
-          # any directory inside it.
-          python3 "$(west topdir)/zephyr/scripts/twister" \
-            -T mcu/tests \
-            -p native_sim/native/64 \
-            --outdir /tmp/twister-out \
-            --clobber-output \
-            -v
+          ZEPHYR_WORKSPACE="$(west topdir)"
+          export ZEPHYR_WORKSPACE
+          mcu/ztest.sh

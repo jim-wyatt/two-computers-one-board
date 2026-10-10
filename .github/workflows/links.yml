@@ -1,0 +1,104 @@
+# Copyright (c) 2026 Jim Wyatt
+# SPDX-License-Identifier: MIT
+name: external links
+
+# Asks every external URL in the documentation whether it still resolves, once
+# a month, and files what it finds as ONE issue.
+#
+# NOT A GATE, AND IT CANNOT BECOME ONE BY ACCIDENT. There is no `pull_request`
+# or `push` trigger here, so no commit ever gets a tick from this workflow, red
+# or green. That is the point: tools/check.sh has to pass offline and give the
+# same answer twice, and a hundred other people's servers do neither. A dead
+# third-party link is a chore for somebody, not a reason to block a merge.
+# Internal links are a different matter and ARE gated - `mkdocs --strict`, in
+# the `checks` workflow, with no network.
+#
+# The checking is all in tools/check-links.sh, which runs the same on a laptop.
+# This file only schedules it and turns its output into an issue.
+#
+# IF THIS STOPS RUNNING: GitHub disables scheduled workflows in a public
+# repository after 60 days without a commit. It says so by email, once. Run it
+# by hand from the Actions tab to re-arm it.
+on:
+  schedule:
+    # 06:17 UTC on the 1st. Not on the hour: every repository that says `0 0`
+    # queues at the same instant, and scheduled runs at that moment are the
+    # ones GitHub delays or drops.
+    - cron: "17 6 1 * *"
+  workflow_dispatch:
+
+# Least privilege: nothing but read by default. The one job that files the
+# issue asks for `issues: write` itself, below.
+permissions:
+  contents: read
+
+concurrency:
+  group: links
+  cancel-in-progress: false
+
+jobs:
+  links:
+    # Pinned image, like the other workflows: `ubuntu-latest` moves under you.
+    runs-on: ubuntu-24.04
+    # A clean run is about three minutes - the script paces itself so that
+    # GitHub does not answer twenty links in a row with 429.
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check every external link
+        id: check
+        run: |
+          # The script's exit status is the finding, not a failure of this
+          # step: 0 is clean and 1 is "some links are dead", and both are a
+          # normal month. Anything else means it could not run - no network on
+          # the runner, say - and THAT fails the job, loudly, rather than
+          # filing an issue that lists every link in the docs as dead.
+          status=0
+          tools/check-links.sh >links-report.txt 2>&1 || status=$?
+          cat links-report.txt
+          echo "status=$status" >>"$GITHUB_OUTPUT"
+          [ "$status" -le 1 ]
+
+      - name: Open the issue, or update the one already open
+        if: steps.check.outputs.status == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # The title is the key. It is how next month's run finds this
+          # month's issue, so it must never carry a date or a count - change
+          # it and every run opens a new one.
+          TITLE: External links in the docs are not resolving
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "The monthly link check (\`tools/check-links.sh\`) found links that did not answer 2xx or 3xx. Each is listed with the \`file:line\` that links to it."
+            echo
+            echo "This issue is rewritten by every run that finds something, so what is below is the latest state, not a history. Close it once they are fixed; the next failing run opens a fresh one."
+            echo
+            echo "**UNVERIFIABLE** entries are hosts that refuse anything automated. They are not known to be dead - open them in a browser."
+            echo
+            echo '```'
+            cat links-report.txt
+            echo '```'
+            echo
+            echo "Run: $RUN_URL"
+          } >issue-body.md
+
+          # Listed and matched exactly, rather than `--search`: search matches
+          # loosely and lags behind writes, and either would mean a duplicate.
+          existing="$(gh issue list --state open --limit 500 --json number,title \
+            --jq 'map(select(.title == env.TITLE)) | .[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file issue-body.md
+            # Editing a body notifies nobody. One line, so that whoever is
+            # watching the issue learns it is still true.
+            gh issue comment "$existing" --body "Still failing as of $RUN_URL - the list above has been updated."
+          else
+            gh issue create --title "$TITLE" --body-file issue-body.md
+          fi

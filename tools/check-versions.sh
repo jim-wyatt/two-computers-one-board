@@ -3,7 +3,8 @@
 # SPDX-License-Identifier: MIT
 # Audit every toolchain dependency against what is currently released.
 #
-#   ~/two-computers-one-board/tools/check-versions.sh
+#   ~/two-computers-one-board/tools/check-versions.sh         # everything
+#   ~/two-computers-one-board/tools/check-versions.sh pins    # only the project's own pins
 #
 # Extension auto-update is deliberately OFF on this board (it caused background
 # churn on 3.6 GiB of RAM), so nothing here updates itself. Run this now and
@@ -23,7 +24,40 @@
 #   arm64 extensions- the Marketplace "latest" is often x64-only. If a version
 #                     bump reports "not found", that build has no linux-arm64
 #                     package and you already have the newest usable one.
+#   mkdocs          - held below 2.0 on purpose (python/pyproject.toml says why),
+#                     so "latest is outside the range" there is not a to-do.
+#
+# THE PROJECT'S OWN PINS
+# ----------------------
+# Everything above the last section asks "is what is INSTALLED current?", which
+# only means something on the board. The last section asks a different
+# question: "is what this repository PINS current?" - the versions written into
+# install-dev-tools.sh, pyproject.toml, west.yml, 20-zephyr-sdk.sh and the
+# workflows. Those drift silently, and nothing here is installed from them, so
+# `pins` runs that section alone and works on any machine with git and curl.
+#
+# It reports and never gates: "<-- behind" is information, and the exit status
+# is 0 whatever it finds. A pin is bumped deliberately, with the board and CI
+# moving together - an upstream release must not turn into a red tick.
+#
+# Set GH_TOKEN or GITHUB_TOKEN if you have one: the unauthenticated GitHub API
+# allows 60 requests an hour. It is optional, and the pins section does not use
+# the API at all.
 set -uo pipefail
+
+ONLY=""
+case "${1:-}" in
+  "") ;;
+  pins) ONLY=pins ;;
+  -h | --help)
+    sed -n '4,7p' "$0"
+    exit 0
+    ;;
+  *)
+    echo "unknown argument: $1 (try --help)" >&2
+    exit 2
+    ;;
+esac
 
 # Derived from this file's location, like every other script here. It used to
 # name $HOME/hybrid literally in two places, which only ever worked because a
@@ -33,8 +67,206 @@ set -uo pipefail
 PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 export PATH="$HOME/.local/bin:$PATH"
 
-gh_latest() { curl -sL "https://api.github.com/repos/$1/releases/latest" 2>/dev/null |
+# Sent only when there is a token to send. Without one the API still answers,
+# 60 times an hour per address.
+GH_AUTH=()
+GH_API_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+[ -n "$GH_API_TOKEN" ] && GH_AUTH=(-H "Authorization: Bearer $GH_API_TOKEN")
+
+gh_latest() { curl -sL --max-time 20 "${GH_AUTH[@]}" "https://api.github.com/repos/$1/releases/latest" 2>/dev/null |
   python3 -c "import json,sys;print(json.load(sys.stdin).get('tag_name','?'))" 2>/dev/null; }
+
+# --- The project's own pins --------------------------------------------------
+#
+# Every pin is READ OUT OF the file that sets it. A second copy of the version
+# numbers in here would be one more thing to drift, which is the problem this
+# section exists to report.
+#
+# GitHub is asked with `git ls-remote`, not the REST API. It is not counted
+# against the 60-an-hour limit, it needs no token, and it answers the question
+# `uses:` actually asks - "does this ref exist" - which the releases API does
+# not. "Latest" is therefore the highest version-shaped TAG. For these projects
+# that is the newest release; pre-releases (-rc1 and friends) do not match.
+#
+# Every lookup has a timeout and may fail. The board often has no uplink, so a
+# lookup that fails prints "(could not check)" and the next one runs.
+
+# Sets REFS to "sha<TAB>ref" for every branch and tag of a GitHub repository,
+# and fails, leaving it empty, when the repository could not be asked.
+# GIT_TERMINAL_PROMPT=0 because git asks for a password when a repository does
+# not exist, and would sit there.
+#
+# One TIMEOUT stops the asking. git has no connect timeout of its own, and a
+# network that swallows packets rather than refusing them - a captive portal, a
+# half-up link - would otherwise cost the full wait once per pin: minutes of
+# nothing, to print a column of "(could not check)". A quick failure (no route,
+# no DNS, no such repository) is not a timeout and does not trip this.
+#
+# It sets a variable rather than printing, so that it runs in this shell and
+# the flag survives; inside $( ) it would be set in a subshell and forgotten.
+GITHUB_UNREACHABLE=0
+REFS=""
+remote_refs() {
+  REFS=""
+  [ "$GITHUB_UNREACHABLE" = 1 ] && return 1
+  REFS="$(GIT_TERMINAL_PROMPT=0 timeout 15 git ls-remote --heads --tags \
+    "https://github.com/$1" 2>/dev/null)"
+  case $? in
+    0) [ -n "$REFS" ] ;;
+    124)
+      GITHUB_UNREACHABLE=1
+      REFS=""
+      return 1
+      ;;
+    *)
+      REFS=""
+      return 1
+      ;;
+  esac
+}
+
+# stdin: what remote_refs fetched. $1: an ERE the whole tag name must match.
+# The peeled "^{}" twin of each annotated tag fails that match and drops out.
+newest_tag() { sed -n 's|.*refs/tags/||p' | grep -xE "$1" | sort -V | tail -1; }
+RELEASE_TAG='v?[0-9]+(\.[0-9]+)+' # v4.4.2, 1.0.1
+MAJOR_TAG='v[0-9]+'               # v7 - the moving tag a workflow follows
+
+# The N in `NAME="${NAME:-N}"`, which is how the shell scripts here spell a pin.
+shell_pin() { sed -n "s/^$1=.*:-\\(v\\{0,1\\}[0-9][0-9.]*\\)}.*/\\1/p" "$2" 2>/dev/null | head -1; }
+
+# name, pinned, latest. A leading v is not a difference: SHELLCHECK_VERSION is
+# 0.11.0 and the tag is v0.11.0.
+pin_row() {
+  local flag=""
+  [ -n "$2" ] && [ -n "$3" ] && [ "${2#v}" != "${3#v}" ] && flag="  <-- behind"
+  printf '  %-16s pinned %-12s latest %s%s\n' "$1" "${2:-?}" "${3:-(could not check)}" "$flag"
+}
+
+# name, pinned, owner/repo
+tag_pin() {
+  local latest=""
+  remote_refs "$3" && latest="$(newest_tag "$RELEASE_TAG" <<<"$REFS")"
+  pin_row "$1" "$2" "$latest"
+}
+
+# name, PEP 440 specifier as pyproject.toml has it ("==22.1.8", ">=1.6,<2").
+# Prints the newest release on PyPI and the newest one the specifier allows,
+# because for a range those are different questions: mkdocs 2.x existing is not
+# news, a new 1.x is. Only the comparison operators this project uses are
+# understood; anything else comes back empty and reads as "could not check".
+pypi_row() {
+  local name="$1" spec="$2" latest="" allowed="" note=""
+  read -r latest allowed < <(curl -sL --connect-timeout 5 --max-time 20 "https://pypi.org/pypi/$name/json" 2>/dev/null |
+    python3 -c '
+import json, re, sys
+
+d = json.load(sys.stdin)
+key = lambda v: tuple(int(x) for x in v.split("."))
+ops = {">=": lambda a, b: a >= b, "<=": lambda a, b: a <= b, "==": lambda a, b: a == b,
+       ">": lambda a, b: a > b, "<": lambda a, b: a < b, "!=": lambda a, b: a != b}
+spec = [re.fullmatch(r"(>=|<=|==|!=|<|>)\s*([0-9.]+)", s.strip()).groups()
+        for s in sys.argv[1].split(",")]
+# Final releases only, and not ones that were published and then yanked.
+ok = [v for v, files in d["releases"].items()
+      if re.fullmatch(r"\d+(\.\d+)*", v) and any(not f.get("yanked") for f in files)
+      and all(ops[o](key(v), key(b)) for o, b in spec)]
+print(d["info"]["version"], max(ok, key=key) if ok else "?")
+' "$spec" 2>/dev/null)
+  case "$spec" in
+    "") printf '  %-16s (no pin found in python/pyproject.toml)\n' "$name" ;;
+    ==*) pin_row "$name" "${spec#==}" "$latest" ;;
+    *)
+      [ -n "$latest" ] && [ "$latest" != "$allowed" ] && note="  (latest is outside the range)"
+      printf '  %-16s range  %-12s latest %s, newest in range %s%s\n' \
+        "$name" "$spec" "${latest:-(could not check)}" "${allowed:-?}" "$note"
+      ;;
+  esac
+}
+
+# The specifier after a package name in pyproject.toml: "mkdocs>=1.6,<2" gives
+# >=1.6,<2. The quote in the pattern keeps "mkdocs" from matching
+# "mkdocs-material", and keeps the prose in the comments out of it.
+pyproject_pin() { grep -oE "\"$1[<>=!~][^\"]*\"" "$PROJECT/python/pyproject.toml" 2>/dev/null |
+  head -1 | tr -d '"' | sed "s/^$1//"; }
+
+# One `uses: owner/repo@ref`. Three separate answers, because for an action they
+# really are separate:
+#
+#   does the ref resolve   what decides whether the workflow starts at all
+#   newest release         v9.0.0
+#   newest major tag       v7 - the newest ref of the `@v7` kind that EXISTS
+#
+# astral-sh/setup-uv@v9 is why. v9.0.0 was the latest release, `@v9` looked like
+# an ordinary bump, and it did not resolve: that action stopped moving its
+# major tags at v7. Only asking the remote for the ref itself catches that.
+action_row() {
+  local spec="$1" action ref owner repo state release major flag=""
+  action="${spec%@*}"
+  ref="${spec##*@}"
+  IFS=/ read -r owner repo _ <<<"$action" # owner/repo/sub/path is still owner/repo
+  if ! remote_refs "$owner/$repo"; then
+    printf '  %-42s %-10s (could not check)\n' "$action" "@$ref"
+    return
+  fi
+  release="$(newest_tag "$RELEASE_TAG" <<<"$REFS")"
+  major="$(newest_tag "$MAJOR_TAG" <<<"$REFS")"
+  # A tag, a branch, or a full commit id that some tag or branch points at.
+  if awk -v r="$ref" '$2 == "refs/tags/" r || $2 == "refs/heads/" r || $1 == r { f = 1 } END { exit !f }' <<<"$REFS"; then
+    state="resolves"
+  elif [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+    # ls-remote lists tips only, so a commit in the middle of history cannot
+    # be confirmed this way. That is not the same as it being missing.
+    state="commit, unchecked"
+  else
+    state="DOES NOT RESOLVE"
+  fi
+  # Compare like with like: a major pin against the major tags, anything else
+  # version-shaped against the releases. A branch or a commit id has no
+  # "behind" that can be read off a tag list.
+  if [[ "$ref" =~ ^${MAJOR_TAG}$ ]]; then
+    [ -n "$major" ] && [ "$ref" != "$major" ] && flag="  <-- behind"
+  elif [[ "$ref" =~ ^${RELEASE_TAG}$ ]]; then
+    [ -n "$release" ] && [ "${ref#v}" != "${release#v}" ] && flag="  <-- behind"
+  fi
+  [ "$state" = "DOES NOT RESOLVE" ] && flag="  <-- the workflow will not start"
+  printf '  %-42s %-10s %-17s latest %s, major tag %s%s\n' \
+    "$action" "@$ref" "$state" "${release:-?}" "${major:-none}" "$flag"
+}
+
+pins() {
+  local tools="$PROJECT/tools/install-dev-tools.sh" spec p
+
+  echo "=== project pins: dev tools (tools/install-dev-tools.sh) ==="
+  tag_pin shellcheck "$(shell_pin SHELLCHECK_VERSION "$tools")" koalaman/shellcheck
+  tag_pin shfmt "$(shell_pin SHFMT_VERSION "$tools")" mvdan/sh
+  tag_pin bats "$(shell_pin BATS_VERSION "$tools")" bats-core/bats-core
+
+  echo "=== project pins: python (python/pyproject.toml) ==="
+  for p in clang-format mkdocs mkdocs-material; do
+    pypi_row "$p" "$(pyproject_pin "$p")"
+  done
+
+  echo "=== project pins: Zephyr (west.yml, provision/user/20-zephyr-sdk.sh) ==="
+  # west.yml only. 30-zephyr-workspace.sh repeats the version, and
+  # check-zephyr-pin.sh already fails check.sh if the two disagree.
+  tag_pin zephyr \
+    "$(sed -n 's/^[[:space:]]*revision:[[:space:]]*\(v[0-9][0-9.]*\).*/\1/p' "$PROJECT/west.yml" 2>/dev/null | head -1)" \
+    zephyrproject-rtos/zephyr
+  tag_pin zephyr-sdk "$(shell_pin SDK_VERSION "$PROJECT/provision/user/20-zephyr-sdk.sh")" \
+    zephyrproject-rtos/sdk-ng
+
+  echo "=== project pins: GitHub Actions (.github/workflows) ==="
+  # Local (./path) and docker:// actions have no repository to ask.
+  while read -r spec; do
+    [ -n "$spec" ] && action_row "$spec"
+  done < <(grep -hE '^[[:space:]]*(-[[:space:]]+)?uses:' "$PROJECT"/.github/workflows/*.yml 2>/dev/null |
+    sed -e 's/.*uses:[[:space:]]*//' -e 's/[[:space:]]*#.*//' | tr -d "\"'" |
+    grep -E '^[^./][^/]*/[^@]+@' | sort -u)
+}
+if [ "$ONLY" = pins ]; then
+  pins
+  exit 0
+fi
 
 echo "=== Zephyr ==="
 printf '  installed %-12s latest %s\n' \
@@ -128,8 +360,10 @@ echo "=== OpenOCD ==="
 printf '  installed  %s\n' "$(/opt/openocd/bin/openocd --version 2>&1 | head -1 | cut -d' ' -f1-4)"
 printf '  pinned in build-openocd.sh: %s\n' "$(grep -oP 'OPENOCD_COMMIT:-\K[0-9a-f]+' "$PROJECT/tools/build-openocd.sh" 2>/dev/null)"
 printf '  upstream master head:       %s\n' \
-  "$(curl -sL https://api.github.com/repos/openocd-org/openocd/commits/master 2>/dev/null |
+  "$(curl -sL --max-time 20 "${GH_AUTH[@]}" https://api.github.com/repos/openocd-org/openocd/commits/master 2>/dev/null |
     python3 -c "import json,sys;d=json.load(sys.stdin);print(d['sha'][:12], d['commit']['committer']['date'][:10])" 2>/dev/null)"
+
+pins
 
 echo
 echo "Update extensions with:"
