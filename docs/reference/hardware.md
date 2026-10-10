@@ -114,22 +114,34 @@ readlink -f /sys/bus/spi/devices/spi0.0/of_node
 | Seen from Linux as | `/dev/spidev0.0`, group `spi` (your user is in it) |
 
 So the port this project had been treating as a spare SPI bus is wired to the
-microcontroller. On the other side, Zephyr's board definition enables two SPI
-controllers: `spi2`, which goes to the Arduino header, and `spi3` on PG9, PG10,
-PB5 and PG12, which the header does not account for.
+microcontroller, and the other end has been found by experiment. Zephyr's board
+definition enables `spi3` on four pins the Arduino header does not account for.
+With those pins set as inputs from the MCU's shell, Linux sent long slow runs
+over `/dev/spidev0.0` and the MCU reported what it saw; then the MCU drove its
+output pin and Linux read.
 
-What is established, and what is not:
+| Signal | MCU pin | What was seen |
+|---|---|---|
+| Clock | PG9 | toggling during a transfer, low at rest |
+| Chip select | PG12 | high at rest, low for the whole transfer |
+| Linux to MCU (MOSI) | PB5 | follows the data: all ones, then all zeros |
+| MCU to Linux (MISO) | PG10 | driven high, Linux reads `0xFF`; driven low, `0x00` |
 
-- **Established:** the link exists in the devicetree on the Linux side, and
-  U-Boot names line 70 as its ready signal.
-- **Not verified:** that `spi3` is the microcontroller's end of it, which chip
-  is meant to be the master in practice, and what Arduino's own firmware sends
-  over it. Nothing has been transferred across it from this project.
-- **Not used:** this project's firmware has no SPI code, and everything —
-  frames for the LED matrix, the shell, firmware updates — goes down the
-  115200 serial line. A frame for the panel costs about 9 ms there. This is
-  the obvious faster path, and it is open work:
-  [issue #28](https://github.com/jim-wyatt/two-computers-one-board/issues/28).
+So Linux is the master, the MCU is the slave on `spi3`, and all four lines work.
+
+```bash
+sudo systemctl stop unoq-cpu-bars       # the MCU's shell is needed
+tio /dev/ttyHS1 -b 115200               # then, at its prompt:
+#   gpio conf gpiog 9 i      (and gpiog 10, gpiog 12, gpiob 5)
+#   gpio get gpiog 12        -> 1 at rest, 0 while Linux is transferring
+```
+
+What is still not known is the protocol: what line 70's "ready" role is in a
+real exchange, and what Arduino's own firmware sends. This project's firmware
+has no SPI code, and everything — frames for the LED matrix, the shell,
+firmware updates — goes down the 115200 serial line, where a frame for the
+panel costs about 9 ms. This is the obvious faster path, and it is open work:
+[issue #28](https://github.com/jim-wyatt/two-computers-one-board/issues/28).
 
 One practical consequence today: **do not use `/dev/spidev0.0` as if it were a
 free bus for your own peripherals.** Whatever you clock out of it goes to the
@@ -161,8 +173,27 @@ needed. BOOT0 is only sampled at MCU reset, so set it *before* resetting.
 > `unoq.link.link_state()` reports *direction* rather than value: there is no way
 > to read the value that does not also destroy it.
 
-> `mcu/link-up.sh` is referenced by `/etc/systemd/system/unoq-link.service`.
-> **Do not move or rename it** without reinstalling that unit.
+> `/etc/systemd/system/unoq-link.service` runs root's copy of `mcu/link-up.sh`,
+> at `/usr/local/lib/unoq/mcu/link-up.sh`. **Do not move or rename the script**
+> without re-running `provision/30-mcu-link.sh`, which makes the copy and
+> installs the unit. An edit to it reaches the board the same way.
+
+### The I2C buses
+
+Three appear on the Linux side. What is registered on each, read from sysfs
+without probing anything:
+
+| Bus | What is on it | Use it? |
+|---|---|---|
+| `/dev/i2c-0` | nothing registered | Yes: this is the free one |
+| `/dev/i2c-1` | the display bridge (`anx7625` at `0x58`, and its other addresses) | No: it belongs to the bridge |
+| `/dev/i2c-2` | that bridge's AUX channel | No |
+
+Which connector bus 0 reaches has not been traced on the board. `i2cdetect`
+was deliberately not run to find out: probing writes to the bus.
+
+So of the "spare" buses provisioning opens up to your user, one I2C bus is
+genuinely spare, and the SPI device is not: it is the link described above.
 
 ---
 

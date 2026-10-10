@@ -34,6 +34,9 @@
 #         rm /etc/systemd/system/unoq-usb-gadget.service \
 #            /etc/udev/rules.d/99-unoq-usb-gadget.rules &&
 #         systemctl daemon-reload && udevadm control --reload
+#         (and unoq-usb-bind, unoq-usb-confirm and unoq-uplink-fallback the same
+#         way.) Then, once no other unoq-* unit that runs as root is left
+#         installed (unoq-link, unoq-leds):  rm -r /usr/local/lib/unoq
 set -uo pipefail
 # shellcheck source=provision/lib.sh
 . "$(cd "$(dirname "$0")" && pwd)/lib.sh"
@@ -161,6 +164,19 @@ if write_file 0644 /etc/udev/rules.d/99-unoq-usb-gadget.rules \
   did "udev rules reloaded"
 fi
 
+step "the scripts root runs"
+# All four units below run as root, so they run root's own copies of the usb/
+# scripts and not the ones in this checkout - see "what root runs" in lib.sh.
+# Copied before the units are installed, because install_unit checks that what
+# a unit names is there. The directory is copied whole: these scripts call one
+# another by relative path, and udhcpc is handed usb-dhcp.sh by usb-net-up.sh.
+#
+# A change to a script under usb/ reaches the board by running this step again.
+# The restart further down is what puts it into effect - including for udhcpc,
+# which was started with the path of its handler script and keeps that path
+# until it is started again.
+install_root_scripts
+
 step "systemd units"
 install_unit "$PROJECT/usb/unoq-usb-gadget.service"
 # The bind half is a separate unit on purpose - see the comment in it.
@@ -253,4 +269,8 @@ at all. mDNS is what makes that a single thing you can type: Windows 10+,
 macOS and Linux all resolve it with nothing installed.
 
 If you would rather have the number, ask the board:  usb/status.sh
+
+The services run the copies in $RUNTIME_DIR, not the ones in the checkout.
+After editing a script under usb/, run this step again for the board to use it;
+usb/status.sh says when the two differ.
 EOF

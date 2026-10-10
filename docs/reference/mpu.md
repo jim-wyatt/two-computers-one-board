@@ -125,8 +125,15 @@ the first two. The others arrive with the flag named.
 | `unoq-uplink-fallback` | If wifi has been turned off and the USB link has given no internet by the deadline, turns wifi back on | `--with-usb-gadget` | root | one-shot |
 
 "You" is the account that owns the checkout: the unit files are written with
-`arduino` and rewritten to the real user and path when they are installed. The
-four USB units are explained in
+`arduino` and rewritten to the real user and path when they are installed.
+
+The six that run as root do not run the scripts in the checkout. They run
+root-owned copies in `/usr/local/lib/unoq/`, which the step that installs each
+unit makes first. After editing one of those scripts, run the step again for
+the board to use it: see [What root runs](provisioning.md#what-root-runs).
+The two that run as you run from the Python environment in the checkout.
+
+The four USB units are explained in
 [usb.md](usb.md#you-cannot-switch-the-role-from-software) and
 [The bind guard](usb.md#the-bind-guard).
 

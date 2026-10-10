@@ -104,6 +104,9 @@ done
 # first run it did not exist at login, so nothing did - and everything after
 # the step that created it could not find what it had just installed.
 export PATH="$HOME/.local/bin:$PATH"
+# Tells each step it is one of many, so that warnings about the board as a
+# whole are left for the end of this script. -E carries it through sudo.
+export UNOQ_IN_BOOTSTRAP=1
 
 # --- what this is about to do ----------------------------------------------
 
@@ -324,6 +327,11 @@ EOF
 [ "$WITH_USB_GADGET" = 0 ] &&
   echo "  IP over USB + fileshare:  sudo bash provision/60-usb-gadget.sh"
 echo
+
+# Once, after everything that was going to run has run. What is left here is
+# what this invocation did not reach - typically the USB units, on a board that
+# has the gadget and was not asked for it again.
+warn_stale_root_units
 
 if [ -n "$FIRMWARE_PROBLEM" ]; then
   fail "everything above is in place, but $FIRMWARE_PROBLEM.

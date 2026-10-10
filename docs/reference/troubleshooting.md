@@ -392,6 +392,25 @@ Something killed the daemon with SIGTERM instead of SIGINT, so the cleanup that
 blanks it never ran. `app matrix off`, or `hpy -c "from unoq import MCU;
 MCU().matrix_off()"`. The systemd unit sets `KillSignal=SIGINT` to avoid this.
 
+**You edited a script and the board still does what it did before.**
+The services that run as root do not run the scripts in the checkout. They run
+root-owned copies in `/usr/local/lib/unoq/`, and those change only when a
+provisioning step is run. `usb/status.sh` says whether the two differ, under
+*what root runs*. To refresh every copy:
+
+```bash
+sudo bash ~/two-computers-one-board/provision/35-status-leds.sh
+```
+
+When each script then takes effect is listed in
+[Trying a script change on the board](development.md#trying-a-script-change-on-the-board).
+
+**A provisioning step warns that units "still run as root from the checkout".**
+The board was set up before root had its own copies, and the step that
+installed those units has not been run since. Run the step the warning names.
+A plain `./bootstrap.sh` does not run `60-usb-gadget.sh`, so the four USB
+units need that step, or `./bootstrap.sh --with-usb-gadget`.
+
 **A service fails with `status=203/EXEC` after you move the checkout.**
 A virtualenv is **not relocatable**. Its console scripts carry an absolute
 shebang, so after `mv ~/old-name ~/new-name` the file at the new path still

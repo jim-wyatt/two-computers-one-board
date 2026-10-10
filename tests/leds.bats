@@ -230,6 +230,52 @@ EOF
   [ "$(look_of LED2)" = "red fast" ]
 }
 
+# --- finding the guard without being told where it is -----------------------
+#
+# Every test above hands leds.sh a guard through UNOQ_BIND_GUARD. The service
+# sets no such thing: it relies on "$HERE/../usb/bind-guard.sh", a path out of
+# its own directory and into a sibling. That holds in the checkout because the
+# repository is laid out that way, and holds for the root-owned copy the
+# service really runs only because install_root_scripts (provision/lib.sh)
+# copies usb/ and status/ side by side. Both are run here with the real guard
+# and a counter at its limit.
+
+guard_at_its_limit() {
+  unset UNOQ_BIND_GUARD
+  export UNOQ_STATE_DIR="$BATS_TEST_TMPDIR/state"
+  export UNOQ_USB_BIND_MAX_ATTEMPTS=3
+  mkdir -p "$UNOQ_STATE_DIR"
+  echo "some-earlier-boot 3" >"$UNOQ_STATE_DIR/usb-bind-attempts"
+}
+
+@test "from the checkout, the real guard is found beside usb/" {
+  guard_at_its_limit
+  leds once
+  [ "$status" -eq 0 ]
+  [ "$(look_of LED2)" = "red fast" ]
+}
+
+@test "as root's copy, the real guard is found beside it in root's directory" {
+  guard_at_its_limit
+  RT="$BATS_TEST_TMPDIR/unoq"
+  (
+    export UNOQ_RUNTIME_DIR="$RT"
+    # shellcheck disable=SC1091
+    source "$PROJECT/provision/lib.sh"
+    install_root_scripts
+  ) >/dev/null
+  run "$RT/status/leds.sh" once
+  kernel_reacts
+  [ "$status" -eq 0 ]
+  [ "$(look_of LED2)" = "red fast" ]
+  # And it is root's guard that answered, not the checkout's reached some
+  # other way: take root's copy away and the LED has nothing to go on.
+  rm "$RT/usb/bind-guard.sh"
+  run "$RT/status/leds.sh" once
+  kernel_reacts
+  [ "$(look_of LED2)" = "green steady" ]
+}
+
 @test "a guard below its limit leaves it green and steady" {
   guard_says "attempts: 2/3  (/var/lib/unoq/usb-bind-attempts)"
   leds once

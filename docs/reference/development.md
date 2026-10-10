@@ -30,7 +30,7 @@ The reasoning behind the checks is the chapter
 │   ├── flash.sh            flash over SWD
 │   ├── flash-all.sh        bootloader + application, for first flash and recovery
 │   ├── ztest.sh            the firmware tests
-│   ├── link-up.sh          BOOT0 + serial-link enable (run by unoq-link.service)
+│   ├── link-up.sh          BOOT0 + serial-link enable (unoq-link.service runs root's copy)
 │   └── restore-arduino-firmware.sh
 ├── python/                 the Linux-side package (an editable install)
 │   ├── unoq/               link.py (GPIOs), mcu.py (shell), fota.py,
@@ -39,8 +39,8 @@ The reasoning behind the checks is the chapter
 ├── provision/              what bootstrap.sh runs; see provisioning.md
 │   ├── lib.sh              the primitives that make every step idempotent
 │   └── user/               the half that must not run as root
-├── usb/                    the composite USB gadget: network + fileshare
-├── status/                 the status LEDs Linux can drive, and their unit
+├── usb/                    the composite USB gadget: network + fileshare (the services run root's copies)
+├── status/                 the status LEDs Linux can drive, and their unit (likewise)
 ├── share/                  the drive image the board hands out
 ├── tests/                  bats suites for the shell scripts
 └── tools/                  check.sh (every gate), and the maintenance scripts
@@ -51,6 +51,50 @@ editable install target) and `provision/lib.sh` (every script sources it by
 relative path). `env.sh` and the scripts named in unit files may move *with*
 the checkout — `provision/user/50-shell-env.sh` repoints `~/.bashrc`, and
 `install_unit` rewrites the unit paths — but not independently of it.
+
+## Trying a script change on the board
+
+The services that run as root do not run the scripts in the checkout. They run
+root-owned copies in `/usr/local/lib/unoq/`, which a provisioning step makes.
+The reason is in [What root runs](provisioning.md#what-root-runs). The
+consequence is one extra command.
+
+After editing anything under `usb/`, `status/leds.sh` or `mcu/link-up.sh`:
+
+```bash
+sudo bash ~/two-computers-one-board/provision/35-status-leds.sh
+```
+
+Any of steps `30`, `35` and `60` refreshes every copy, and `35` is the one
+that touches nothing else. It prints `changed  updated …` for each script it
+replaced, and restarts the LED service if anything changed. When the change
+takes effect depends on the script:
+
+| You edited | It takes effect |
+|---|---|
+| `status/leds.sh` | at once: step `35` restarts `unoq-leds` |
+| `usb/usb-dhcp.sh`, `usb-route.sh`, `usb-profile.sh` | at the next lease event |
+| `usb/gadget-up.sh`, `usb-net-up.sh`, `bind-guard.sh` | at the next cable plug or boot |
+| `usb/gadget-down.sh`, `uplink-fallback.sh` | at the next stop or boot |
+| `mcu/link-up.sh` | at the next boot |
+
+To put a USB change into effect at once, run `60-usb-gadget.sh` instead. It
+restarts the gadget, which drops the USB network for a few seconds.
+
+If the board is not doing what the script you are looking at says, compare the
+two copies:
+
+```bash
+~/two-computers-one-board/usb/status.sh      # the section "what root runs"
+```
+
+The bats suites and `tools/check-units.sh` test the scripts in the checkout
+and need none of this.
+
+Two things did not change. A unit that runs as you (`unoq-cpu-bars`,
+`unoq-learn`) runs the editable Python install, so a Python edit needs only
+`sudo systemctl restart <unit>`. And a script you run by hand runs the copy
+you name.
 
 ## The quality gates
 
@@ -75,7 +119,7 @@ that silently does nothing is worse than no gate.
 | `shell` | lint | `shellcheck -x` | every tracked `*.sh` |
 | | format | `shfmt -i 2 -ci` | every tracked `*.sh` |
 | | behaviour | `bats` | `tests/*.bats` — see [the suite's own guide](../../tests/README.md) |
-| | units | `tools/check-units.sh` | systemd accepts every unit file and udev rule, and everything they start exists |
+| | units | `tools/check-units.sh` | systemd accepts every unit file and udev rule as provisioning would install them, and everything they start exists — for a root unit, in the set of scripts that is copied for root |
 | `c` | version pin | `tools/check-zephyr-pin.sh` | the board and CI build the same Zephyr |
 | | format | `clang-format` | `mcu/**/*.[ch]`, in Zephyr's own style |
 | `docs` | build | `mkdocs --strict` | every internal link and anchor resolves |

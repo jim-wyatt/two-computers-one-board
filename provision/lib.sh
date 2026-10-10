@@ -63,6 +63,14 @@ fail() {
 
 summary() {
   printf '\n%s%d changed, %d already correct.%s\n' "$P_BOLD" "$CHANGED" "$UNCHANGED" "$P_OFF"
+  # A board provisioned before root ran its own copies has units that still
+  # execute the checkout, and each stays that way until the step that installed
+  # it runs again. No single step can fix it for the others, so a step run by
+  # hand says so. Under bootstrap.sh it is said ONCE, by bootstrap, at the end:
+  # the first version printed these four lines after every one of fourteen
+  # steps, most of which could do nothing about it, on a board that was in the
+  # middle of being fixed.
+  [ -n "${UNOQ_IN_BOOTSTRAP:-}" ] || warn_stale_root_units
 }
 
 need_root() {
@@ -184,26 +192,376 @@ write_file() {
   return 0
 }
 
-# install_unit <source.service> - copy a unit into /etc/systemd/system with the
-# repo path and owning user substituted in, then reload only if it changed.
+# --- what root runs ---------------------------------------------------------
+#
+# WHY THERE ARE TWO COPIES OF SOME SCRIPTS
+# ----------------------------------------
+# Six of the units installed here run as root: unoq-link, unoq-leds and the four
+# USB ones. They used to execute the scripts in the checkout, which is in a home
+# directory and belongs to the person who cloned it. So anything able to write
+# there - an editor plugin, a compromised user process, a `git pull`, a branch
+# switch - changed what root would run at the next boot or cable plug, with no
+# password asked. And not one file each: the scripts call their siblings by
+# relative path (usb-net-up.sh hands usb-dhcp.sh to udhcpc, leds.sh reaches
+# ../usb/bind-guard.sh), so it was the whole directory that was trusted.
+#
+# Now root runs root-owned COPIES, in a directory only root can write, and the
+# units that run as root are pointed at those. The copies mirror the layout of
+# the repository - usb/, status/, mcu/ - so every relative reference between
+# them means what it meant before and no script had to learn a new path.
+#
+# What that changes for a person: editing a script in the checkout no longer
+# changes what the board does. Re-running a provisioning step does - with sudo,
+# which is the point. Provisioning is the gate, and the `changed  updated ...`
+# line it prints is the moment a change reaches a root service.
+#
+# The units that run as the user out of the Python venv (unoq-cpu-bars,
+# unoq-learn) are not part of this. They have User= and no root to lend, and a
+# virtualenv cannot be copied anyway.
+RUNTIME_DIR="${UNOQ_RUNTIME_DIR:-/usr/local/lib/unoq}"
+RUNTIME_DIR="${RUNTIME_DIR%/}"
+export RUNTIME_DIR
+
+# runtime_files - the scripts root runs, as paths relative to the checkout.
+#
+# ONE set, installed whole by every step that installs a root unit, rather than
+# each step copying the files it thinks it needs. Three reasons:
+#
+#   - the steps overlap: leds.sh (step 35) asks usb/bind-guard.sh (step 60's)
+#     whether the guard has given up, so "its own files" is not a clean split;
+#   - install_runtime removes what is not in the set it was given, and three
+#     steps each pruning down to a different subset would delete one another's
+#     scripts;
+#   - a script that nothing starts costs nothing. The USB scripts sitting in
+#     /usr/local/lib/unoq on a board that never enabled the gadget are inert.
+#
+# usb/ is a glob on purpose. A new helper there is called by a sibling as
+# "$HERE/new.sh", and a hand-kept list that missed it would produce a copy of
+# the caller with nothing to call - found at the next cable plug, by root, on a
+# board that may be reachable only over that cable.
+runtime_files() {
+  local f
+  echo mcu/link-up.sh
+  echo status/leds.sh
+  for f in "$PROJECT"/usb/*.sh; do
+    [ -f "$f" ] && echo "usb/$(basename "$f")"
+  done
+  # Not the status of that last test: a glob that matched nothing is an empty
+  # set, which install_runtime refuses in words, not a failure to report here.
+  return 0
+}
+
+# unit_runs_as_root <unit file> - true unless it names some other account.
+# A unit with no User= runs as root; that default is the whole problem.
+unit_runs_as_root() {
+  local user
+  user="$(sed -n 's/^User=[[:space:]]*//p' "$1" 2>/dev/null | tail -1)"
+  case "$user" in
+    "" | root | 0) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# warn_stale_root_units - name them, and say what fixes each.
+warn_stale_root_units() {
+  local stale
+  stale="$(stale_root_units)"
+  [ -n "$stale" ] || return 0
+  warn "these units still run as root from the checkout or the home directory:"
+  warn "  $(tr '\n' ' ' <<<"$stale")"
+  warn "  re-run the step that installed each one - 30-mcu-link.sh for unoq-link,"
+  warn "  35-status-leds.sh for unoq-leds, 60-usb-gadget.sh for the others"
+}
+
+# stale_root_units [dir] - installed unoq-* units that run as root and still
+# execute something from the checkout or anywhere else in the home directory.
+# Prints their names; prints nothing on a board with none.
+stale_root_units() {
+  local dir="${1:-/etc/systemd/system}" u
+  local -a under=(-e "$PROJECT/")
+  # Guarded: an empty TARGET_HOME would make the pattern "/", which every
+  # absolute path contains.
+  [ -n "${TARGET_HOME:-}" ] && under+=(-e "$TARGET_HOME/")
+  for u in "$dir"/unoq-*.service; do
+    [ -f "$u" ] || continue
+    unit_runs_as_root "$u" || continue
+    if grep -E '^Exec[A-Za-z]+=' "$u" | grep -qF "${under[@]}"; then
+      basename "$u"
+    fi
+  done
+}
+
+# runtime_dir_exposed <dir> [uid] - the directory and every one above it that
+# someone other than <uid> (default root) could rename things in. Prints one
+# per line; prints nothing when the path is sound.
+#
+# A root-owned file is only as protected as the directories on the way to it:
+# whoever can write a parent can rename the child aside and put their own in
+# its place, whatever the child's own mode says.
+runtime_dir_exposed() {
+  local d="$1" uid="${2:-0}" owner mode
+  while :; do
+    if [ -e "$d" ]; then
+      owner="$(stat -c %u "$d")"
+      mode="$(stat -c %A "$d")"
+      # drwxrwxr-x: character 6 is group write, character 9 is other write.
+      if [ "$owner" != "$uid" ] || [ "${mode:5:1}" = w ] || [ "${mode:8:1}" = w ]; then
+        echo "$d"
+      fi
+    fi
+    [ "$d" = / ] && break
+    d="$(dirname "$d")"
+  done
+}
+
+# _runtime_dir <dir> - make it, or put its owner and mode right. 0 = changed.
+#
+# The owner is "whoever this process is", which under sudo is root and is the
+# only owner a step can give a file anyway. Spelled $EUID so that the suites,
+# which run as an ordinary user, exercise the same lines against directories
+# of their own.
+_runtime_dir() {
+  local d="$1" have
+  if [ ! -d "$d" ]; then
+    install -d -o "$EUID" -g "$(id -g)" -m 0755 "$d" || fail "could not create $d"
+    did "created $d"
+    return 0
+  fi
+  # The last three digits only. A directory made under a setgid parent - and
+  # Debian's /usr/local has been one - reads as 2755, keeps that bit through a
+  # numeric chmod, and would otherwise be "fixed" on every run for ever. The
+  # bit is harmless here: the group it would hand down is the one set below.
+  have="$(stat -c '%u:%g %a' "$d")"
+  [ "${have% *}:${have: -3}" = "$EUID:$(id -g):755" ] && return 1
+  if ! chown "$EUID:$(id -g)" "$d" || ! chmod 0755 "$d"; then
+    fail "could not fix the owner and mode of $d"
+  fi
+  did "owner and mode of $d put right"
+  return 0
+}
+
+# _runtime_put <mode> <source> <destination> - 0 = written, 1 = already right.
+#
+# "Already right" is content AND owner AND mode: a copy with the correct bytes
+# that has become group-writable is exactly as broken as one with the wrong
+# bytes, and must not be reported as ok.
+#
+# Written beside the destination and renamed over it, so there is no moment at
+# which the path holds half a script. udhcpc runs usb-dhcp.sh as root on every
+# lease event and does not ask provisioning whether it has finished.
+_runtime_put() {
+  local mode="$1" src="$2" dst="$3" verb=installed tmp
+  if [ -f "$dst" ] && [ ! -L "$dst" ]; then
+    if cmp -s "$src" "$dst" &&
+      [ "$(stat -c '%u:%g %a' "$dst")" = "$EUID:$(id -g) ${mode#0}" ]; then
+      return 1
+    fi
+    verb=updated
+  fi
+  tmp="$(dirname "$dst")/.$(basename "$dst").new"
+  if ! install -o "$EUID" -g "$(id -g)" -m "$mode" "$src" "$tmp" ||
+    ! mv -fT "$tmp" "$dst"; then
+    rm -f "$tmp"
+    fail "could not install $dst"
+  fi
+  did "$verb $dst"
+  return 0
+}
+
+# install_runtime <relative-path>... - make $RUNTIME_DIR hold exactly these
+# files from the checkout, owned by root, mode 0755, and nothing else.
+# The steps do not call this with a list of their own - they call
+# install_root_scripts, below, which passes the one set there is.
+#
+# Returns 0 if anything changed and 1 if nothing did, like write_file - a step
+# that has to restart a long-running service uses that to know whether the
+# process it left running is now out of date.
+#
+# "AND NOTHING ELSE" IS NOT TIDINESS. A script deleted or renamed in the
+# repository would otherwise stay behind in root's directory: executable,
+# root-owned, no longer reviewed by anyone, and still there for an old unit or
+# a sibling's "$HERE/..." to find. A stale file root will run is the problem
+# this directory exists to end, so the same call that installs also removes.
+#
+# That makes the directory one this function OWNS, and it refuses to adopt one
+# it did not create - see the checks below. Pointing UNOQ_RUNTIME_DIR at
+# /usr/local/lib and having it emptied is not a mistake to leave possible.
+install_runtime() {
+  local dest="$RUNTIME_DIR" changed=1 same=0 rel f tmp
+  local -a set=("$@") parents=()
+  local -A keep=()
+
+  # An empty set would prune everything and install nothing, which is the one
+  # outcome that leaves every root unit pointing at a file that is not there.
+  [ ${#set[@]} -gt 0 ] || fail "install_runtime: no scripts to install from $PROJECT"
+  [ -n "${TARGET_HOME:-}" ] || fail "install_runtime: no home directory known for $TARGET_USER"
+
+  # Everything is checked BEFORE anything is written: a set with one bad name
+  # in it must not leave the directory half replaced.
+  for rel in "${set[@]}"; do
+    case "$rel" in
+      "" | env | /* | .. | ../* | */.. | */../*)
+        fail "install_runtime: not a path inside the checkout: '$rel'"
+        ;;
+    esac
+    # Regular files only. A symlink would copy whatever it points at, from
+    # anywhere on the board, into a world-readable file.
+    if [ ! -f "$PROJECT/$rel" ] || [ -L "$PROJECT/$rel" ]; then
+      fail "install_runtime: $PROJECT/$rel is not a regular file"
+    fi
+    keep["$rel"]=1
+  done
+
+  case "$dest" in
+    /*/*) ;;
+    *) fail "install_runtime: refusing to manage '$dest' - UNOQ_RUNTIME_DIR must be an absolute path below the root directory" ;;
+  esac
+  [ -L "$dest" ] && fail "install_runtime: $dest is a symbolic link - root's scripts must live where it says, not where a link leads"
+  # The env file is written first and never pruned, so it doubles as the mark
+  # of a directory this function made. An empty directory is fair game too: it
+  # is what an interrupted first run leaves.
+  if [ -e "$dest" ] && [ ! -f "$dest/env" ] && [ -n "$(ls -A "$dest" 2>/dev/null)" ]; then
+    fail "install_runtime: $dest exists and was not created by this - not touching it.
+  Everything in it that is not one of this project's scripts would be deleted.
+  Move it aside, or set UNOQ_RUNTIME_DIR to a directory of its own."
+  fi
+
+  _runtime_dir "$dest" && changed=0
+
+  # WHO THE BOARD BELONGS TO, WRITTEN DOWN.
+  #
+  # The scripts used to work this out from where they were: gadget-up.sh took
+  # the fileshare image from the home directory of whoever owned the script.
+  # The copy is owned by root, so that answer is now /root and wrong. Deriving
+  # things from file ownership is what stopped being true here, so the two
+  # facts are stated instead - as data, read with sed, not as shell to source.
+  tmp="$(mktemp)"
+  cat >"$tmp" <<EOF
+# Written by provision/lib.sh (install_runtime). Do not edit: it is rewritten
+# by the next provisioning step, and nothing here is a setting.
+#
+# The scripts beside this file are root-owned copies of the ones in
+# UNOQ_CHECKOUT, and are what the unoq-* services that run as root execute.
+# Editing the checkout does not change them. Re-running a step does:
+#   sudo bash $PROJECT/provision/35-status-leds.sh
+UNOQ_OWNER_HOME=$TARGET_HOME
+UNOQ_CHECKOUT=$PROJECT
+EOF
+  if _runtime_put 0644 "$tmp" "$dest/env"; then changed=0; fi
+  rm -f "$tmp"
+
+  for rel in "${set[@]}"; do
+    # Every directory on the way down, outermost first, not only the last one:
+    # `install -D` would create them with whatever the umask allows and never
+    # look at them again.
+    parents=()
+    f="$(dirname "$rel")"
+    while [ "$f" != . ]; do
+      parents=("$f" ${parents[@]+"${parents[@]}"})
+      f="$(dirname "$f")"
+    done
+    for f in ${parents[@]+"${parents[@]}"}; do
+      _runtime_dir "$dest/$f" && changed=0
+    done
+    if _runtime_put 0755 "$PROJECT/$rel" "$dest/$rel"; then
+      changed=0
+    else
+      same=$((same + 1))
+    fi
+  done
+  [ "$same" -gt 0 ] && skip "$same of root's scripts in $dest already match the checkout"
+
+  # Everything that is not a directory, so a stray symlink or socket goes too.
+  while IFS= read -r -d '' f; do
+    rel="${f#"$dest"/}"
+    [ "$rel" = env ] && continue
+    [ -n "${keep[$rel]:-}" ] && continue
+    rm -f "$f" || fail "could not remove $f"
+    did "removed $f (not one of the scripts root runs any more)"
+    changed=0
+  done < <(find "$dest" -mindepth 1 ! -type d -print0)
+  while IFS= read -r -d '' f; do
+    rmdir "$f" 2>/dev/null || continue
+    did "removed empty $f"
+    changed=0
+  done < <(find "$dest" -mindepth 1 -depth -type d -empty -print0)
+
+  # Only meaningful as root: as anyone else every directory is "not root's".
+  if [ "$EUID" = 0 ]; then
+    f="$(runtime_dir_exposed "$dest")"
+    if [ -n "$f" ]; then
+      warn "root's scripts are in a path that is not root's alone to change:"
+      warn "  $(tr '\n' ' ' <<<"$f")"
+      warn "  whoever can write one of those can replace what root runs"
+    fi
+  fi
+
+  return "$changed"
+}
+
+# install_root_scripts - install_runtime, with the set from runtime_files.
+# What every step that installs a root unit calls, before it installs the unit.
+# Returns what install_runtime returns: 0 if anything changed, 1 if not.
+install_root_scripts() {
+  local -a set=()
+  mapfile -t set < <(runtime_files)
+  install_runtime ${set[@]+"${set[@]}"}
+}
+
+# render_unit <source.service> - the unit as it will be installed, on stdout.
 #
 # The units are checked in with this board's literal paths so they stay valid,
-# readable files. Rewriting them here is what lets the repo be cloned anywhere
-# and still produce units that point at the clone.
+# readable files, and /home/arduino/two-computers-one-board in them is a
+# placeholder. What it becomes depends on who would be running the thing named:
+#
+#   on an Exec*= line of a unit that runs as root   -> $RUNTIME_DIR
+#   everywhere else                                 -> $PROJECT, the checkout
+#
+# "Everywhere else" is every line of a unit that has User= (unoq-cpu-bars and
+# unoq-learn run from the venv, which lives in the checkout and cannot be
+# copied), and the lines of a root unit that are not executed - Documentation=
+# still opens the file a person would edit.
+#
+# The rule is by LINE, not by a list of directories that happen to be copied,
+# so that it cannot be got half right: there is no spelling of a root unit's
+# ExecStart that leaves root executing the checkout. A script that is not in
+# the set install_runtime copies does not fall back to the checkout copy - it
+# is simply not there, and install_unit refuses it below.
+#
+# A function of its own, not private to install_unit, because
+# tools/check-units.sh has to verify the units exactly as they will be
+# installed, and a second copy of these expressions over there would be right
+# until the day this one changed.
+render_unit() {
+  local src="$1" exec_root="$PROJECT"
+  unit_runs_as_root "$src" && exec_root="$RUNTIME_DIR"
+  # The home directory by itself, for the units that wait for it to mount.
+  # It has to be rewritten separately: the first expressions only match the
+  # checkout path, so under any account but arduino those units went on
+  # waiting for a /home/arduino that was never going to appear.
+  sed -e "/^Exec[A-Za-z]*=/s#/home/arduino/two-computers-one-board#$exec_root#g" \
+    -e "s#/home/arduino/two-computers-one-board#$PROJECT#g" \
+    -e "s#^RequiresMountsFor=/home/arduino\$#RequiresMountsFor=$TARGET_HOME#" \
+    -e "s#^User=arduino\$#User=$TARGET_USER#" \
+    -e "s#^Group=arduino\$#Group=$TARGET_USER#" \
+    "$src"
+}
+
+# install_unit <source.service> - copy a unit into /etc/systemd/system with the
+# paths and the owning user substituted in (see render_unit), then reload only
+# if it changed.
+#
+# A unit that runs as root needs install_runtime to have run FIRST: its Exec
+# lines name root's copies, and the check below is of the path as rewritten.
+# In the other order the step stops here, with the old unit still in place and
+# still working, rather than installing one that points at nothing.
+#
+# This is also what moves a board provisioned before root had its own copies:
+# the unit already installed there names the checkout, so it no longer matches
+# what is rendered, and it is rewritten and reloaded like any other change.
 install_unit() {
   local src="$1" name rendered
   name="$(basename "$src")"
-  render_unit() {
-    # The home directory by itself, for the units that wait for it to mount.
-    # It has to be rewritten separately: the first expression only matches the
-    # checkout path, so under any account but arduino those units went on
-    # waiting for a /home/arduino that was never going to appear.
-    sed -e "s#/home/arduino/two-computers-one-board#$PROJECT#g" \
-      -e "s#^RequiresMountsFor=/home/arduino\$#RequiresMountsFor=$TARGET_HOME#" \
-      -e "s#^User=arduino\$#User=$TARGET_USER#" \
-      -e "s#^Group=arduino\$#Group=$TARGET_USER#" \
-      "$src"
-  }
   [ -r "$src" ] || fail "install_unit: cannot read $src"
 
   # Captured for the checks below only. Command substitution strips trailing
@@ -217,7 +575,7 @@ install_unit() {
   # syntax and no Exec lines in nothing - and the write pipeline would then
   # install an empty unit file. systemd loads that happily and the service
   # simply never runs.
-  rendered="$(render_unit)" || fail "install_unit: could not render $src"
+  rendered="$(render_unit "$src")" || fail "install_unit: could not render $src"
   [ -n "$rendered" ] || fail "install_unit: $src rendered to nothing"
   grep -q '^\[' <<<"$rendered" ||
     fail "install_unit: $src has no [Section] header - not a unit file"
@@ -282,7 +640,10 @@ install_unit() {
   $prog
   from: $line
   Provisioning steps have an order - if this is a venv entry point, the venv
-  step has not run yet; if it is a script, check the path in $src."
+  step has not run yet; if it is a script, check the path in $src.
+  A unit that runs as root runs the copies in $RUNTIME_DIR, so
+  its script has to be one install_runtime copies (runtime_files, in
+  provision/lib.sh) and install_runtime has to have run before this."
     fi
 
     # AND ITS INTERPRETER, which -x does not tell you about.
@@ -326,7 +687,7 @@ install_unit() {
     bash \"$PROJECT/provision/user/40-python-venv.sh\""
         ;;
     esac
-  done < <(grep -E '^(ExecStart|ExecStartPre|ExecStartPost|ExecStop|ExecReload)=' <<<"$rendered" || true)
+  done < <(grep -E '^Exec[A-Za-z]+=' <<<"$rendered" || true)
 
   # Documentation=file: targets, for the same reason as the Exec paths above -
   # except these fail SILENTLY. Nothing reads them until a person runs
@@ -349,7 +710,7 @@ install_unit() {
     done
   done < <(grep -E '^Documentation=' <<<"$rendered" || true)
 
-  if render_unit | write_file 0644 "/etc/systemd/system/$name"; then
+  if render_unit "$src" | write_file 0644 "/etc/systemd/system/$name"; then
     systemctl daemon-reload
   fi
 }
