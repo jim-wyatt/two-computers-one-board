@@ -49,7 +49,13 @@ setup() {
 
   stub sudo
   stub curl
-  stub sleep
+  # The sudo refresher sleeps a minute between refreshes, in the background,
+  # for the whole run. A sleep that returned at once would make it spin; this
+  # one makes its minute a twentieth of a second.
+  stub_body sleep <<'SH'
+[ "$1" = 60 ] && exec /bin/sleep 0.05
+exit 0
+SH
 
   # `bash <script>` is how bootstrap.sh runs every step that is not sudo's, the
   # build and the flash among them. The fake goes in a directory of its own
@@ -58,9 +64,12 @@ setup() {
   mkdir -p "$STEPS_BIN"
   cat >"$STEPS_BIN/bash" <<'SH'
 #!/bin/bash
-{ printf 'bash'; printf ' %s' "$@"; printf '\n'; } >>"$STUB_LOG"
+printf '%s\n' "bash${*:+ $*}" >>"$STUB_LOG"
 case "$1" in
   */mcu/zbuild.sh)
+    # The one step here that takes any time at all, so that the sudo refresher
+    # (a "minute" of a twentieth of a second, in these tests) gets to run.
+    /bin/sleep 0.25
     if [ -e "$FLAGS/build-fails" ]; then
       echo "ninja: build stopped: subcommand failed."
       exit 1
@@ -141,4 +150,80 @@ bootstrap() {
   [[ "$output" == *"TIME AND SPACE"* ]]
   [[ "$output" != *"set -uo pipefail"* ]]
   [[ "$output" != *"PROJECT="* ]]
+}
+
+# --- sudo, on a board where it wants a password and one where it does not ----
+#
+# Every board this was developed on had passwordless sudo. A stock one does
+# not, and sudo forgets a password after fifteen minutes - less than the
+# workspace download takes.
+
+# What `sudo -n -k true` says decides only the wording.
+needs_a_password() {
+  stub_body sudo <<'SH'
+[ "$*" = "-n -k true" ] && exit 1
+exit 0
+SH
+}
+
+@test "sudo is validated once and then kept alive" {
+  needs_a_password
+  bootstrap
+  [ "$status" -eq 0 ]
+  [ "$(grep -cx 'sudo -v' "$STUB_LOG")" -eq 1 ]
+  ran "sudo -n -v"
+  [[ "$output" == *"will prompt for your password, once"* ]]
+}
+
+@test "it is kept alive on a passwordless machine too, where that costs nothing" {
+  # Deciding which kind of machine this is was got wrong twice. Nothing rests
+  # on the answer now: only the line that says whether a prompt is coming.
+  bootstrap
+  [ "$status" -eq 0 ]
+  ran "sudo -n -v"
+  [[ "$output" == *"without a password"* ]]
+  [[ "$output" != *"will prompt"* ]]
+}
+
+@test "a password still cached from a minute ago is kept alive like any other" {
+  # The case the first version missed: `sudo -n true` is true on the strength
+  # of the cache, the run was called passwordless, and nothing refreshed it.
+  stub_body sudo <<'SH'
+[ "$*" = "-n -k true" ] && exit 1
+[ "$*" = "-n true" ] && exit 0
+exit 0
+SH
+  bootstrap
+  [ "$status" -eq 0 ]
+  ran "sudo -n -v"
+}
+
+@test "the refresher does not outlive the run" {
+  needs_a_password
+  bootstrap
+  [ "$status" -eq 0 ]
+  before="$(grep -cx 'sudo -n -v' "$STUB_LOG")"
+  /bin/sleep 0.3
+  [ "$(grep -cx 'sudo -n -v' "$STUB_LOG")" -eq "$before" ]
+}
+
+@test "the refresher holds nothing open that the caller is waiting on" {
+  # adb shell, and `| tee`, wait for every copy of the pipe to close. The
+  # refresher's sleep outlives the script by up to a minute.
+  needs_a_password
+  out="$BATS_TEST_TMPDIR/piped"
+  env PATH="$STEPS_BIN:$PATH" timeout 20 /bin/bash "$PROJECT/bootstrap.sh" </dev/null 2>&1 | cat >"$out"
+  grep -q 'done ####' "$out"
+}
+
+@test "a refused password stops the run before anything is done" {
+  stub_body sudo <<'SH'
+[ "$*" = "-n -k true" ] && exit 1
+[ "$*" = "-v" ] && exit 1
+exit 0
+SH
+  bootstrap
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"sudo is required"* ]]
+  ! ran_like '^bash .*/provision/'
 }
