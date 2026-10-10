@@ -1,3 +1,7 @@
+<!--
+Copyright (c) 2026 Jim Wyatt
+SPDX-License-Identifier: MIT
+-->
 # The hardware, honestly
 
 The UNO Q is two computers sharing a board.
@@ -6,7 +10,7 @@ The UNO Q is two computers sharing a board.
 |---|---|---|
 | Part | Qualcomm QRB2210 (`arduino,imola`) | STM32U585 Cortex-M33 |
 | Runs | Debian, Python, your services | Zephyr firmware |
-| Memory | 3.6 GiB shared | 2 MB flash / 768 KB RAM |
+| Memory | 3.6 GiB shared | 2 MB flash / 786 KB RAM (768 KB of it in Zephyr's memory map) |
 | Reached via | native Linux syscalls | SWD, or a serial link |
 
 Most Arduino-header GPIO is wired to the **MCU**, not the MPU. The MPU has its
@@ -15,7 +19,7 @@ own separate GPIO / I²C / SPI — that is what [`unoq`](mpu.md) talks to.
 ```mermaid
 flowchart TB
   subgraph MPU["QRB2210 — Debian Linux"]
-    U["USB-C<br/><small>device only</small>"]
+    U["USB-C<br/><small>host or device,<br/>decided by the cable</small>"]
     W["wifi / BT"]
     E["eMMC 29 GB"]
     L12["LED 1 · LED 2<br/><small>/sys/class/leds</small>"]
@@ -27,6 +31,7 @@ flowchart TB
   end
   MPU ---|"lpuart1 → /dev/ttyHS1<br/><small>115200</small>"| MCU
   MPU ---|"gpio 37 BOOT0 · gpio 38 NRST"| MCU
+  MPU ---|"gpio 70 serial link enable"| MCU
   MPU ---|"gpio 25/26 SWD"| MCU
 ```
 
@@ -35,6 +40,12 @@ them wrong makes a working board look broken. They are the subject of the next
 section.
 
 ---
+
+> [!NOTE]
+> Everything on this page was found by observing one running board. None of it
+> has been confirmed by Arduino, Qualcomm or ST, and it may be different on
+> another board revision or software image. Check it against your own board
+> before you rely on it.
 
 ## The two GPIOs nobody documents
 
@@ -112,9 +123,11 @@ needed. BOOT0 is only sampled at MCU reset, so set it *before* resetting.
 
 ---
 
-## The two UARTs
+## The MCU's two UARTs
 
-They are **not** interchangeable.
+The STM32 has two serial ports, and they are **not** interchangeable. The Linux
+side has a third of its own — see
+[the next section](#the-third-uart-the-mpus-own-console).
 
 | Node | Pins | Goes to |
 |---|---|---|
@@ -128,6 +141,57 @@ Linux. Override it in a board overlay — see
 
 The RTS/CTS pair on `lpuart1` is the giveaway: hardware flow control means a
 board-to-board link.
+
+## The third UART: the MPU's own console
+
+`/dev/ttyMSM0` is a serial port on the **Linux** side, and it has nothing to do
+with the MCU. It is the kernel console.
+
+| | |
+|---|---|
+| Hardware | Qualcomm GENI serial at `4a90000.serial` — a *different* port from `/dev/ttyHS1` (`4a88000.serial`) |
+| Role | The kernel console: `/sys/class/tty/console/active` reads `tty0 ttyMSM0` |
+| Selected by | Devicetree, not the kernel command line — `chosen/stdout-path = serial0:115200n8`, and there is no `console=` in `/proc/cmdline` |
+| Held by | `serial-getty@ttyMSM0.service` → `agetty`, offering a login prompt |
+
+```bash
+cat /sys/class/tty/console/active        # tty0 ttyMSM0
+cat /proc/cmdline                        # no console= in it
+systemctl status serial-getty@ttyMSM0
+```
+
+The two Linux serial ports have unrelated names because of Qualcomm's history.
+**MSM** is *Mobile Station Modem*. The GENI serial driver registers plain PIO
+ports as `ttyMSM*` and DMA-capable high-speed ports as `ttyHS*` — the same
+peripheral block in two flavours.
+
+### It is the last recovery path
+
+If the USB gadget will not bind, wifi is off, and no network reaches the board,
+this port still gives a root login. It also carries kernel messages from the
+first boot line onwards, before any network exists.
+
+That is exactly the failure `usb/bind-guard.sh` and `usb/uplink-fallback.sh`
+are written for. This port is the escape hatch underneath both.
+
+### It is a login for anyone who can touch the board
+
+Anyone with a UART adapter and the right pads gets a password prompt. That is
+normal for a development board, and worth knowing about one that sits on a
+desk. If you do not want it:
+
+```bash
+sudo systemctl disable --now serial-getty@ttyMSM0
+```
+
+Doing so also removes the recovery login described above.
+
+### Where it comes out is not verified
+
+**Which physical pads this port lands on is not visible from software** and
+needs the schematic. Everything else in this section was confirmed on the
+running board; the pinout was not. There is deliberately no pin table here.
+See [issue #38](https://github.com/jim-wyatt/two-computers-one-board/issues/38).
 
 ---
 
@@ -236,7 +300,7 @@ No root needed — your user is in the `gpiod` group.
 > nothing; it was placed there by an install script, so apt will never reinstall
 > it. Copy it somewhere safe (`cp -a /opt/openocd ~/uno-q-backup/`) before you
 > purge anything, and note that it is reproducible from source — see
-> [the README](../../README.md#rebuilding-openocd).
+> [Working on this project](development.md#rebuilding-openocd).
 
 `apt install openocd` does **not** substitute: Debian ships 0.12.0 (2023), which
 predates the libgpiod v2 support this board needs.

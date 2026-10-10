@@ -46,7 +46,8 @@ The microcontroller sweeps the whole panel about **a thousand times a second**
 Each sweep visits 104 LEDs, so it is switching pins roughly **100,000 times a
 second** — one every 10 microseconds.
 
-Recall from page one what happens when Linux is asked to hit an exact moment: it
+Recall from [Two computers on one board](two-computers.md) what happens when
+Linux is asked to hit an exact moment: it
 usually does, and occasionally it is 2 milliseconds late because the kernel had
 something else to do. Two milliseconds is **200 slots**. The display would not
 glitch subtly; a visible chunk of the panel would go dark, at random, forever.
@@ -102,9 +103,9 @@ we know that is that somebody measured.
 
 The LEDs are single-colour blue and can only be on or off. Yet the bars fade.
 
-The trick is the same one again, applied to brightness: within each sweep, an
-LED that should be at level 3 of 7 is lit during three of the seven available
-slots, and dark for four. Too fast to see, so your eye reports "less bright".
+The trick is the same one again, applied to brightness: an LED that should be
+at level 3 of 7 is lit on three sweeps out of every seven, and left dark on the
+other four. Too fast to see, so your eye reports "less bright".
 This is **pulse-width modulation** — brightness as a *fraction of time on*.
 
 ```c
@@ -116,33 +117,36 @@ Eight levels from a panel with two states, bought entirely with timing.
 ## Splitting the work
 
 Now the design decision this whole project exists to demonstrate. Drawing a bar
-chart involves two very different jobs:
+chart involves three jobs, of very different kinds:
 
 | Job | Where | Why |
 |---|---|---|
-| How busy is each core? | Linux | It is arithmetic on `/proc/stat` |
-| How tall is each bar? | Linux | Arithmetic again — percentage to pixels |
+| How busy is each core? | Linux | It is arithmetic on `/proc/stat`, a file only Linux has |
+| How tall is each bar? | MCU | Arithmetic again — percentage to pixels — with no hardware in it, which is why it can be tested off the chip |
 | Which LED is lit *right now*? | MCU | 10 μs of slack, forever |
+
+Linux measures and sends percentages; the microcontroller decides the pixels.
 
 ```mermaid
 flowchart LR
   A["/proc/stat<br/><small>counters</small>"] --> B["cpu.py<br/><small>percentages</small>"]
   B -->|"4 numbers,<br/>twice a second"| C["bars.c<br/><small>rasteriser</small>"]
   C --> D["104 brightness<br/>values"]
-  D --> E["matrix.c<br/><small>ISR, every 10 µs</small>"]
+  D --> E["matrix.c<br/><small>interrupt handler, every 10 µs</small>"]
   E --> F(["the panel"])
 ```
 
-The message between them is tiny: a few numbers saying how tall each bar is.
-Everything expensive happens on Linux; everything time-critical happens on the
+The message between them is tiny: four percentages, one per core. The measuring
+happens on Linux; the drawing, and everything time-critical, happens on the
 microcontroller; the wire between carries almost nothing.
 
 The rasteriser — the code that turns "core 2 is at 47%" into which pixels are
 lit — lives in `mcu/app/src/bars.c`. It is **pure arithmetic with no hardware in
-it at all**, which is why it can be tested on your laptop:
+it at all**, which is why it can be tested without the microcontroller: on the
+board's Linux side, as an ordinary program.
 
 ```bash
-~/two-computers-one-board/mcu/ztest.sh        # 26 test cases, no board required
+~/two-computers-one-board/mcu/ztest.sh        # 26 test cases, nothing flashed
 ```
 
 Those tests build for `native_sim` — a fake Zephyr "board" that is really just a
@@ -150,19 +154,6 @@ Linux program. The rasteriser cannot tell the difference, because it never
 touches a pin. **Separating the calculation from the hardware is what made it
 testable**, and that is a habit worth taking to every embedded project you
 touch.
-
-## Two shapes of frame
-
-The Zephyr LED matrix library takes frames two different ways, and mixing them
-up is a classic mistake:
-
-| Form | Type | Use |
-|---|---|---|
-| Per-pixel | `uint8_t[104]` | One brightness (0–7) per LED — what greys need |
-| Bit-packed | `uint32_t[4]` | One *bit* per LED, on or off — compact, no grey |
-
-The bars use the first, because a bar chart without brightness levels is a much
-worse bar chart.
 
 ## Try it: drive it yourself
 
@@ -188,9 +179,13 @@ Then load a core and watch the real thing respond:
 yes > /dev/null & sleep 6; kill %1
 ```
 
+That keeps one core flat out for six seconds: `&` starts `yes` in the
+background, `sleep 6` waits, and `kill %1` stops the background job.
+
 > [!TIP]
-> **Go deeper.** The panel wiring — which pin pair lights which LED — is a table
-> taken from Arduino's own core, credited in [THIRD-PARTY.md](../third-party.md).
+> **Go deeper.** Which pin pair lights which LED, and how long each gets, are
+> facts read out of Arduino's own core for this panel. No code or table was
+> copied; they are credited in [Credits](../third-party.md#derived-work).
 > The driver is `mcu/app/src/matrix.c`; the rasteriser is `bars.c`.
 
 ## Check yourself
@@ -202,4 +197,26 @@ yes > /dev/null & sleep 6; kill %1
 4. You read the sweep counter twice and it has not moved. Give two very
    different explanations, and say how you would tell them apart.
 
-Next: replacing the firmware on a running board without being able to visit it.
+<details markdown="1">
+<summary>Answers — try each one first</summary>
+
+1. **No.** The panel only ever lights one LED at any instant. It moves on fast
+   enough that persistence of vision assembles the picture, and a fast shutter
+   simply catches what is really there.
+2. **By being lit for only part of the time.** This is pulse-width modulation:
+   brightness as a fraction of time on, switched too fast to see. Level 3 of 7
+   is on for three parts in seven, so your eye reports "less bright".
+3. **It is pure arithmetic with no hardware in it.** That lets it build for
+   `native_sim`, where it cannot tell the difference because it never touches
+   a pin. Making it touch one — writing a register or driving the panel from
+   inside `bars.c` — would break that.
+4. **Either the panel is dark, or the microcontroller really is stuck.** The
+   driver does not scan a display with nothing on it, so a dark panel sweeps
+   zero times and that is healthy. To tell them apart, give it something to
+   draw — `mcu.bars([50, 50, 50, 50])` — and read the counter again: it should
+   now climb by about 1100 a second.
+
+</details>
+
+Next: [Updating safely](updating-safely.md) — replacing the firmware on a
+running board without being able to visit it.

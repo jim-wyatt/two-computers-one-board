@@ -12,7 +12,15 @@ This course teaches you **hybrid MPU + MCU development**: writing software that
 runs across two very different processors that share one circuit board, and
 getting them to cooperate.
 
-If those letters mean nothing to you yet, good. That is what page one is for.
+If those letters mean nothing to you yet, good. That is what the next chapter is
+for.
+
+> [!NOTE]
+> This is an independent project. It is not made, reviewed or endorsed by Arduino,
+> Qualcomm, STMicroelectronics, the Zephyr Project or anyone else whose hardware
+> and software it describes.
+> It is one person's account of one board.
+> [Credits and trademarks](../third-party.md#trademarks-and-affiliation).
 
 ## Who this is for
 
@@ -66,8 +74,11 @@ what changes when you write software for each, and how they talk.
 
 ## How to read this
 
-Pages are numbered and meant to be read in order — each one assumes the one
-before it. The sidebar tracks where you are.
+The chapters are meant to be read in order — each one assumes the one before
+it, and each ends with a link to the next. The full list is at the bottom of
+this page.
+
+Any term you do not recognise is in the [glossary](../glossary.md).
 
 Three kinds of thing appear on every page:
 
@@ -75,6 +86,10 @@ Three kinds of thing appear on every page:
 
 **Try it** blocks are commands to run on the board. You learn embedded
 development by watching real hardware do something, and being surprised.
+
+**No board yet?** Read anyway. Most Try it blocks show what the board printed,
+so the ideas stand without one, and the first chapters ask for very little.
+Come back and run them when it arrives.
 
 > [!TIP]
 > **Go deeper** boxes like this one point at the reference documentation —
@@ -91,9 +106,19 @@ development by watching real hardware do something, and being surprised.
 - A computer to plug it into.
 - Nothing else. No soldering, no extra parts, no oscilloscope.
 
-If your board has not been set up yet, that is what
-[bootstrap.sh](../../README.md) does, and the next-to-last page explains what it
-did and why.
+If your board has not been set up yet, [Set up a board](../setup.md) walks you
+through it: one script, about an hour, mostly waiting. The next-to-last page of
+the course explains what that script did and why. You can read the first few
+chapters while it runs.
+
+> [!IMPORTANT]
+> **Set the board up with `./bootstrap.sh --with-cpu-bars`.** The exercises
+> use the worked example — CPU load on the LED matrix — running as a service,
+> and that option is what installs it. Many of them start with
+> `sudo systemctl stop unoq-cpu-bars` and end by starting it again, because the
+> service holds the one wire to the microcontroller and you are about to borrow
+> it. If you set up without the option, run `./bootstrap.sh --with-cpu-bars`
+> now; everything already done is skipped.
 
 ## A warning that will save you an afternoon
 
@@ -106,5 +131,36 @@ instead: **how would I know if this were working?** Most of the debugging tools
 in this course exist to answer that question, and the habit of asking it is more
 valuable than anything else here.
 
+## The chapters
+
+**What is actually here**
+
+1. [Two computers on one board](two-computers.md)
+2. [The Linux side](the-linux-side.md)
+3. [The microcontroller side](the-microcontroller-side.md)
+4. [From power to prompt](from-power-to-prompt.md)
+
+**Making them cooperate**
+
+5. [How they talk](how-they-talk.md)
+6. [From source to chip](from-source-to-chip.md)
+7. [How the build knows your hardware](how-the-build-knows-your-hardware.md)
+8. [The LED matrix](the-led-matrix.md)
+
+**Living with real hardware**
+
+9. [Updating safely](updating-safely.md)
+10. [One cable, many devices](one-cable-many-devices.md)
+11. [Four lights that tell the truth](four-lights.md)
+12. [Debugging without a screen](debugging-without-a-screen.md)
+
+**Making it yours**
+
+13. [Knowing it works](knowing-it-works.md)
+14. [From factory to this](from-factory-to-this.md)
+15. [Make it yours](make-it-yours.md)
+
 Ready? The board has two computers on it, and they are more different than they
 look.
+
+Next: [Two computers on one board](two-computers.md).

@@ -5,24 +5,37 @@ the files listed here, which belong to other projects and keep their own terms.
 Each one carries its original licence header — do not replace those with this
 project's.
 
-!!! warning "Independent project — no affiliation, no endorsement"
+## Trademarks and affiliation
 
-    This project is **not affiliated with, authorised by, sponsored by, or
-    endorsed by** any of the companies or projects named in it.
+**This is an independent project. It is not affiliated with, authorised by,
+sponsored by, or endorsed by any of the companies or projects named in it.**
 
-    Arduino® and UNO®, Qualcomm® and Snapdragon®, STMicroelectronics® and
-    STM32®, Arm® and Cortex®, Zephyr®, Linux®, Debian®, Python®, Microsoft®,
-    Windows®, Visual Studio Code, GitHub®, macOS® and Qwiic® are the property
-    of their respective owners, and may be registered trademarks in some
-    jurisdictions.
+Arduino® and UNO®, Qualcomm® and Snapdragon®, STMicroelectronics® and STM32®,
+Arm® and Cortex®, Zephyr®, Linux®, Debian®, Python®, Microsoft®, Windows®,
+Visual Studio Code, GitHub®, macOS® and Qwiic® are the property of their
+respective owners, and may be registered trademarks in some jurisdictions.
 
-    They are used here **descriptively** — to say accurately what this software
-    runs on, builds with and talks to. You cannot explain a Zephyr application
-    that flashes an STM32 over SWD without naming Zephyr and STM32.
+The same goes for every other product and project name on this site — USB-C®,
+Bluetooth®, Raspberry Pi®, Docker®, SparkFun®, MCUboot, OpenOCD, U-Boot and the
+rest: each belongs to its owner.
 
-    No vendor logos or brand artwork appear anywhere in this project, and no
-    vendor binaries are redistributed. If you own one of these marks and object
-    to how it is used, open an issue and it will be changed.
+They are used here **descriptively** — to say accurately what this software
+runs on, builds with and talks to. You cannot explain a Zephyr application that
+flashes an STM32 over SWD without naming Zephyr and STM32. That is descriptive
+use, not a claim on the names, and nothing here should be read as suggesting
+that any of these organisations produced, reviewed or endorsed this project.
+
+- The only third-party mark shown is GitHub's, as the link to this project's
+  repository. No other vendor logo, icon or brand artwork is used or
+  redistributed. The mark on this site is [`docs/assets/logo.svg`](assets/logo.svg) — four LED bars,
+  drawn for this project and MIT-licensed like the rest of it.
+- No vendor binaries or firmware images are redistributed. See
+  [Not included](#not-included) for what was deliberately removed and why.
+- Where third-party *files* are included, they keep their own licence headers
+  and are listed below.
+
+If you own one of these marks and object to how it is used here, open an issue
+and it will be changed.
 
 ## Licences, not trademarks
 
@@ -36,6 +49,9 @@ project's *code* grants nothing at all in respect of its *name*.
 | `.vscode/STM32U585.svd` | STMicroelectronics | Apache-2.0 |
 | `.clang-format` | The Zephyr Project | Apache-2.0 |
 
+Both are copied unmodified, and both keep the notice they came with. The text of
+the Apache licence is in [`LICENSES/Apache-2.0.txt`](../LICENSES/Apache-2.0.txt).
+
 ## Derived work
 
 `mcu/app/src/matrix.c` implements the 8×13 LED panel from scratch, but two
@@ -46,6 +62,10 @@ the 10 µs slot. That wiring is not described anywhere else — not in the UNO Q
 datasheet and not in Zephyr's `arduino_uno_q` board definition, which does not
 mention the panel at all. The grayscale scheme, the refresh ISR and the
 register-level `MODER`/`BSRR` handling are this project's.
+
+`mcu/board-support/openocd_gpiod.cfg` is adapted from the adapter configuration
+Arduino ships on the board's stock image (`/opt/openocd/openocd_gpiod.cfg`). It
+is six lines naming which GPIO lines carry SWD; the numbers are Arduino's.
 
 ## Build-time dependencies
 
@@ -60,7 +80,14 @@ completeness because the firmware links against them:
 | [MkDocs](https://www.mkdocs.org/) + [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/) | BSD-2-Clause / MIT |
 
 OpenOCD is GPL. `tools/build-openocd.sh` builds it from upstream source into
-`/opt/openocd`; no OpenOCD code is vendored into this repository.
+`/opt/openocd`; no OpenOCD code is vendored into this repository. If you pass a
+built `/opt/openocd` on to someone else, the GPL applies to you: give them the
+source, or say where it is. The script prints the commit it built.
+
+The firmware you build also links the modules Zephyr pulls in for this board,
+among them ST's STM32Cube HAL (BSD-3-Clause) and Arm's CMSIS (Apache-2.0). This
+project publishes no firmware binary; if you publish one, their notices go with
+it.
 
 ## Inside the site you are reading
 
@@ -70,10 +97,17 @@ and is served over the network, so it is redistribution and belongs here.
 
 | In `share/learn/` | Owner | Licence |
 |---|---|---|
-| `assets/stylesheets/`, `assets/javascripts/` | Martin Donath (squidfunk) and contributors | MIT |
-| `assets/javascripts/lunr/` | The lunr.js authors | MIT |
-| `assets/external/unpkg.com/mermaid@11/` | The Mermaid authors | MIT |
-| Icons (inlined as SVG) | Material Design Icons / FontAwesome / Octicons | Apache-2.0 / CC-BY-4.0 / MIT |
+| `assets/stylesheets/`, `assets/javascripts/bundle.*.js` | Martin Donath (squidfunk) and contributors — Material for MkDocs | MIT |
+| inside that bundle | RxJS; tslib; clipboard.js; escape-html; focus-visible | Apache-2.0; 0BSD; MIT; MIT; W3C |
+| `assets/javascripts/workers/search.*.js` | Oliver Nightingale — lunr.js | MIT |
+| `assets/javascripts/lunr/min/` | Mihai Valentin and others — lunr-languages, with the Snowball stemmers | MPL-1.1 |
+| `assets/javascripts/lunr/tinyseg.js`, `wordcut.js` | Taku Kudo — TinySegmenter; Vee Satayamas — wordcut | see each project |
+| `assets/external/unpkg.com/mermaid@11/` | The Mermaid authors. It bundles DOMPurify, d3, dagre, cytoscape, KaTeX, lodash and others, each under its own permissive licence | MIT |
+| `assets/external/unpkg.com/iframe-worker/` | Martin Donath | MIT |
+| Icons, inlined as SVG | Pictogrammers — Material Design Icons; GitHub — Octicons; Fonticons — Font Awesome Free | Apache-2.0; MIT; CC BY 4.0 |
+
+The site is in English only, so the language files under `lunr/` are never
+loaded. They are there because the theme ships them.
 
 `assets/javascripts/mermaid-init.js` sits beside those and is ours, not
 third-party - it is the few lines that actually call `mermaid.run()`, which the
@@ -119,5 +153,5 @@ been removed from the git history.
 
 If you want the stock firmware back on your own board you need your own copy,
 taken **before** you purge the Arduino tree — see
-[Keep your own copies](../README.md#keep-your-own-copies) in the README for the
+[Keep your own copies](reference/development.md#keep-your-own-copies) for the
 commands. `mcu/restore-arduino-firmware.sh` uses it via `STOCK_FW`.

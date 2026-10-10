@@ -69,19 +69,22 @@ Zephyr gives you a few things worth having without giving up that property:
 
 It is not Linux. Zephyr compiles into *one binary containing your application
 and the OS together*. There is no kernel to boot separately, no init system, no
-packages. The whole thing on this board is under 85 KB.
+packages. The whole thing on this board is about 83 KB.
+
+Ask for the size of the file that gets written to the chip:
 
 ```bash
-ls -l ~/zephyrproject/build/zephyr/zephyr.bin
+stat -c '%s bytes' ~/zephyrproject/build/zephyr/zephyr.bin
 ```
 
 ```
 84752 bytes
 ```
 
-Eighty-five kilobytes: operating system, drivers, LED matrix code, serial shell,
-update machinery, and the application. For comparison, the page you are reading
-is about a tenth of that.
+Yours will differ by a little; the figure moves every time the code does. Call
+it 83 KB: operating system, drivers, LED matrix code, serial shell, update
+machinery, and the application. For comparison, the page you are reading is
+about a tenth of that.
 
 ## Where the program lives
 
@@ -99,7 +102,7 @@ first the way Linux loads an executable. That is why "flashing" the board means
 writing to the chip's permanent storage, and why it takes a few seconds rather
 than being instant.
 
-Our application uses **82 KB of 2048 KB**. The chip is 96% empty.
+Our application uses **83 KB of 2048 KB**. The chip is 96% empty.
 
 ## The shape of a Zephyr program
 
@@ -120,16 +123,27 @@ int main(void)
 
 If you have used an Arduino, `setup()` and `loop()` are the same shape. The
 difference is that `k_msleep()` genuinely yields to other threads rather than
-spinning, and that there *are* other threads — the shell and the LED refresh are
-running alongside your `main`.
+spinning, and that there *are* other threads running alongside your `main`.
+
+That is the general shape. This project's own
+[`main.c`](https://github.com/jim-wyatt/two-computers-one-board/blob/main/mcu/app/src/main.c)
+is the same thing with the loop left out: its `main()` sets the hardware up and
+returns, and nothing stops, because the work is done elsewhere. The shell has a
+thread of its own, and the LED panel is refreshed from a timer **interrupt** —
+the hardware stopping whatever the processor was doing, at a fixed interval, to
+run one short function at once. A loop in `main()` would have nothing to do but
+sleep, so there is none.
 
 ## The contract between the two chips
 
 Here is a problem that only exists because there are two computers: the LED
 matrix is 8 rows by 13 columns, and **both sides need to know that**.
 
-The C code needs it to drive the panel. The Python code needs it to work out how
-tall a bar should be. But C constants cannot be imported into Python.
+The C code needs it to drive the panel, and to turn a percentage into lit
+pixels. The Python code needs it to know how many bars fit across the panel, and
+so how many numbers it may send. (The split, here and for the rest of the
+course: Linux measures and sends percentages; the microcontroller decides the
+pixels.) But C constants cannot be imported into Python.
 
 This project's answer is to write the numbers once, in a header both sides treat
 as the source of truth:
@@ -153,14 +167,16 @@ being on or off.
 
 ## Try it: talk to it directly
 
-The microcontroller runs a shell over the serial wire. You can type at it.
+The microcontroller runs a shell over the serial wire. You can type at it with
+`tio`, a serial terminal: it shows whatever arrives on the wire and sends
+whatever you type.
 
 ```bash
 sudo systemctl stop unoq-cpu-bars    # take the serial port back
-tio /dev/ttyHS1                      # or: mcucon
+tio /dev/ttyHS1 -b 115200
 ```
 
-Press Enter and you get a prompt. Try:
+Press Enter and you get a prompt, `unoq:~$`. Try:
 
 ```
 help
@@ -185,9 +201,30 @@ sudo systemctl start unoq-cpu-bars
 
 1. Your MCU program calls `malloc()` in a loop and never frees. On Linux, what
    happens? Here, what happens?
-2. Why is 85 KB enough for an operating system here but not on the other chip?
+2. Why is 83 KB enough for an operating system here but not on the other chip?
 3. The LED matrix dimensions are written in a C header and again in Python. Why
    is that not simply a bug?
 
-Next: both chips are awake — but nothing you wrote runs for the first ten
-seconds. What is in charge before that?
+<details markdown="1">
+<summary>Answers — try each one first</summary>
+
+1. **On Linux the damage stops at your process; here it takes the whole board
+   with it.** Linux has a supervisor: a misbehaving process is the one that
+   suffers, and the system carries on. On the MCU nothing frees memory for you
+   and there are only 786 KB of it, so the program runs out — perhaps at hour
+   six — with nothing else there to notice or recover. That is why most
+   microcontroller programs allocate everything up front.
+2. **Because it has far less to do.** There are no processes, no filesystem,
+   no users, no packages and no init system. Zephyr compiles into one binary
+   holding your application and the OS together, with only the parts this
+   project uses.
+3. **Because the duplication is unavoidable, and it is checked.** C constants
+   cannot be imported into Python, so Python must keep its own copy. A test
+   parses the C header and fails if the two ever disagree, which is what makes
+   the copy safe.
+
+</details>
+
+Next: [From power to prompt](from-power-to-prompt.md) — both chips are awake,
+but nothing you wrote runs for the first several seconds. What is in charge
+before that?

@@ -5,6 +5,8 @@ name = "unoq"
 version = "0.1.0"
 description = "Talk to the Arduino UNO Q's STM32U585 from the Linux MPU"
 requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Jim Wyatt" }]
 dependencies = ["pyserial", "gpiod", "smpclient"]
 
 # Re-run the editable install after adding a script here, or the command will
@@ -15,6 +17,11 @@ unoq-learn = "unoq.learn:main"
 
 # Install with:  uv pip install --python ~/two-computers-one-board/.venv/bin/python -e 'python[dev]'
 # Everything below is also what tools/check.sh runs.
+[project.urls]
+Homepage = "https://jim-wyatt.github.io/two-computers-one-board/"
+Source = "https://github.com/jim-wyatt/two-computers-one-board"
+Issues = "https://github.com/jim-wyatt/two-computers-one-board/issues"
+
 [project.optional-dependencies]
 # clang-format is PINNED, unlike the rest. Ruff and mypy disagreeing between
 # versions produces a new diagnostic, which is a real finding; a formatter

@@ -66,15 +66,15 @@ promise you exact timing, and the big chip cannot.
 |---|---|---|
 | Reading `/proc/stat` for CPU load | MPU | It is a file on a Linux filesystem |
 | Serving this web page | MPU | Networking, TCP, sockets, files |
-| Refreshing 104 LEDs hundreds of times a second | MCU | Miss the timing and you see flicker |
+| Refreshing 104 LEDs about a thousand times a second | MCU | Miss the timing and you see flicker |
 | Reading a sensor every millisecond, exactly | MCU | Determinism is the entire requirement |
-| Deciding what the LEDs should show | MPU | It is arithmetic on data Linux already has |
+| Deciding what the LEDs should show | MPU | It is the one with the data: only Linux knows how busy its cores are |
 
 That last pair is the interesting one, and it is exactly what this project does.
 Deciding *what* to draw is a data problem — it belongs on Linux. Making the
 light actually appear is a timing problem — it belongs on the microcontroller.
 The two halves meet in the middle, and the message that crosses between them is
-tiny: a handful of bytes saying "the bars are this tall".
+tiny: a handful of bytes saying "these four cores are this busy".
 
 **This is the design skill the whole course is teaching.** Not how to use these
 two specific chips, but how to look at a problem and see which half belongs
@@ -93,19 +93,22 @@ free -h
 Four cores, gigabytes of RAM, a Linux kernel. Nothing surprising for a computer.
 
 Now ask the *other* one. This talks over a wire to the microcontroller and asks
-it how it is doing:
+it how it is doing. Only one program can use that wire at a time, and the demo
+service has it, so borrow it first:
 
 ```bash
+sudo systemctl stop unoq-cpu-bars      # give up the wire
 cd ~/two-computers-one-board
 ./.venv/bin/python -c "
 from unoq import MCU
 with MCU() as mcu:
     print(mcu.status())
 "
+sudo systemctl start unoq-cpu-bars     # and give it back
 ```
 
 ```
-{'uptime_ms': 20438, 'flip': 0, 'sweeps': 29627}
+{'uptime_ms': 20438, 'flip': 0, 'sweeps': 19874}
 ```
 
 Three numbers, from a computer with no screen, no operating system as you know
@@ -114,8 +117,12 @@ it, and no way to print to your terminal except by sending bytes down a wire.
 - `uptime_ms` — milliseconds since the microcontroller last started. **Notice it
   does not match the Linux uptime.** They boot separately and reset separately.
   Two computers.
-- `sweeps` — how many times it has scanned the whole LED grid. That number climbs
-  by thousands per second, which is the determinism from earlier, counted.
+- `sweeps` — how many times it has scanned the whole LED grid. While something
+  is on the panel that number climbs by about a thousand every second, which is
+  the determinism from earlier, counted. With the panel dark it stands still:
+  there is nothing to scan.
+- `flip` — which way up the picture is drawn. It comes back in
+  [The LED matrix](the-led-matrix.md).
 
 ## The one thing that surprises everyone
 
@@ -153,8 +160,9 @@ Three connections matter, and you will meet all of them:
 
 1. **A serial line (UART)** — a pair of wires carrying bytes, one bit at a time.
    This is the conversation. On Linux it appears as a file: `/dev/ttyHS1`.
-2. **A reset/boot control line** — a single wire Linux can pull high or low to
-   decide *how* the microcontroller starts. Get this wrong and the chip runs the
+2. **A reset/boot control line** — a single wire, called BOOT0, that Linux can
+   pull high or low to decide *how* the microcontroller starts. Linux drives it
+   from a **GPIO**: a general-purpose pin that software can set or read. Get this wrong and the chip runs the
    wrong program, or none.
 3. **A programming interface (SWD)** — separate wires used to write new software
    into the chip's flash memory and to inspect it while it runs.
@@ -174,7 +182,26 @@ Before moving on, you should be able to answer these:
 3. Which chip should decode a JPEG? Which should generate a precise 40 kHz pulse
    train? Why?
 
+<details markdown="1">
+<summary>Answers — try each one first</summary>
+
+1. **Because the matrix needs exact timing, not power.** Linux is a
+   time-sharing system: your program is interrupted constantly, and a pin flip
+   meant for every 100 microseconds occasionally lands 2 milliseconds late. On
+   hardware that must be refreshed on a strict schedule, that is visible
+   flicker.
+2. **Nothing at all.** The two chips do not share memory, so there is no
+   address for `x` on the other side. The microcontroller only learns the value
+   if you serialise it into bytes and send it down the wire.
+3. **The MPU decodes the JPEG; the MCU generates the pulse train.** Decoding is
+   a data problem that wants speed, memory and files. The pulse train is a
+   timing problem, and determinism — the same timing every time — is what the
+   microcontroller can promise and Linux cannot.
+
+</details>
+
 If the second one made you pause — the answer is *nothing at all* — then you
 have the main idea.
 
-Next: what is actually running on the Linux side, and why it looks so ordinary.
+Next: [The Linux side](the-linux-side.md) — what is actually running there, and
+why it looks so ordinary.

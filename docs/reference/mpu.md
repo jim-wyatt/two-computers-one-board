@@ -1,3 +1,7 @@
+<!--
+Copyright (c) 2026 Jim Wyatt
+SPDX-License-Identifier: MIT
+-->
 # MPU workflow
 
 The Linux side: direct hardware access, the `unoq` package for talking to the
@@ -23,8 +27,9 @@ import gpiod, smbus2, spidev, serial
 | SPI | `/dev/spidev0.0` | needs the `spi` group + udev rule |
 | Serial | `/dev/ttyHS1` | the MCU link |
 
-Group membership and the udev rule are set up by
-[`provision/20-dev-tools.sh`](../../provision/20-dev-tools.sh).
+Group membership (`i2c`, `spi`, `gpiod`) and the SPI udev rule are set up by
+[`provision/10-optimize-board.sh`](../../provision/10-optimize-board.sh). A new
+group takes effect at your next login.
 
 ## The `unoq` package
 
@@ -70,18 +75,135 @@ fota.upload(path); fota.test(); fota.reset(); fota.confirm()
 
 See [mcu.md](mcu.md#update-over-serial-no-swd).
 
+## What runs at boot
+
+Eight systemd units, of which a board set up with a plain `./bootstrap.sh` has
+the first two. The others arrive with the flag named.
+
+| Unit | What it does | Installed by | Runs as | Kind |
+|---|---|---|---|---|
+| `unoq-link` | Drives BOOT0 low and the serial-link enable high, so the MCU runs its firmware and `/dev/ttyHS1` carries data | always (`provision/30-mcu-link.sh`) | root | one-shot, stays active |
+| `unoq-leds` | Drives LED 1 (connectivity) and LED 2 (does anything need a human) | always (`provision/35-status-leds.sh`) | root | long-running, always restarted |
+| `unoq-cpu-bars` | Draws CPU load on the LED matrix. Holds `/dev/ttyHS1` | `--with-cpu-bars` (`provision/50-cpu-bars.sh`) | you | long-running |
+| `unoq-learn` | Serves the documentation and installers over HTTP on port 8080 | `--with-learning` (`provision/70-learning-web.sh`) | you | long-running |
+| `unoq-usb-gadget` | Builds the USB gadget definition and prepares the `br-usb` bridge. Never binds | `--with-usb-gadget` (`provision/60-usb-gadget.sh`) | root | one-shot, stays active |
+| `unoq-usb-bind` | Asks the bind guard, then binds the gadget and brings the USB network up. Not enabled at boot: udev starts it when a USB device controller or the gadget's network interface appears | `--with-usb-gadget` | root | one-shot, re-run on every plug-in |
+| `unoq-usb-confirm` | Waits 120 seconds, then clears the bind guard's counter: this boot survived | `--with-usb-gadget` | root | one-shot |
+| `unoq-uplink-fallback` | If wifi has been turned off and the USB link has given no internet by the deadline, turns wifi back on | `--with-usb-gadget` | root | one-shot |
+
+"You" is the account that owns the checkout: the unit files are written with
+`arduino` and rewritten to the real user and path when they are installed. The
+four USB units are explained in
+[usb.md](usb.md#you-cannot-switch-the-role-from-software) and
+[The bind guard](usb.md#the-bind-guard).
+
+```bash
+systemctl list-units 'unoq-*' --all        # which of them this board has, and their state
+```
+
+## Swap in use is not a problem here
+
+`free -h` on this board can show about 1 GiB of swap in use. On a
+desktop that means the machine is short of memory. Here it does not, because
+this board's swap is not what swap usually means.
+
+```bash
+free -h
+cat /proc/swaps
+```
+
+```
+Filename        Type       Size      Used     Priority
+/dev/zram0      partition  1877576   1076316  100
+```
+
+There is **no swap file and no swap partition on the eMMC**. The swap device is
+`zram0`: a compressed block device that lives in RAM. "Swapping" here means
+compressing cold pages in place, not writing them to flash.
+
+### What it saves
+
+One measurement, 3h41m after boot, with a full development environment running:
+
+| | |
+|---|---|
+| Pages parked | 1010 MiB |
+| Compressed to | 316 MiB (3.20×, `lzo-rle`) |
+| Real RAM occupied | 331 MiB |
+| **Net RAM saved** | **678 MiB** |
+
+```bash
+cat /sys/block/zram0/mm_stat
+```
+
+The first three numbers on that line are, in bytes: the size of the pages
+parked (`orig_data_size`), what they compressed to (`compr_data_size`), and the
+RAM the device really occupies (`mem_used_total`). The kernel documents the
+rest in `Documentation/admin-guide/blockdev/zram.rst`.
+
+The ratio is the first divided by the second, 1010 / 316. The saving is the
+first less the third, which is a little more than the compressed data. Straight
+after boot all three are near zero: nothing has been parked yet.
+
+### Parking or thrashing
+
+Swap being *used* tells you nothing. What matters is whether pages that were
+swapped out keep being read back.
+
+```bash
+grep -E '^pswp(in|out) ' /proc/vmstat
+```
+
+The same measurement gave `pswpout 277888` and `pswpin 15991` since boot. Pages
+went in and were read back roughly **1 time in 17**. That is cold memory being
+parked and left alone, which is the behaviour you want. Thrashing is the other
+case: pages being read back about as fast as they are written out.
+
+### Why this is the right design on eMMC
+
+zram is why a 3.6 GiB board comfortably runs a full IDE, and it costs no flash
+wear at all. A conventional swap file on the eMMC would quietly eat write
+endurance.
+
+The desktop instinct — swap is in use, so the board is under-provisioned, so
+start disabling things — reaches the opposite of the right conclusion.
+
+### Where the memory goes
+
+The deployed system is not the load. From the same session:
+
+| | RSS |
+|---|---|
+| `unoq-cpu-bars` | 26.6 MiB |
+| `unoq-learn` | 20.7 MiB |
+| `unoq-leds` | 3.8 MiB |
+| `unoq-usb-gadget` | 0.7 MiB |
+| **all four services** | **~52 MiB** |
+| vscode-server + Claude Code extension + ruff server | **1373 MiB** |
+
+Everything this project installs costs about 52 MiB. The rest is the
+development environment running on the board, which is a legitimate thing to do
+here. It is why the numbers look alarming during development, and why they will
+not look like that for someone who only runs the apps.
+
 ---
 
-# CPU bars on the LED matrix
+## CPU bars on the LED matrix
 
 Host CPU load, one bar per core, on the board's 8×13 panel. It is the smallest
 thing that uses both halves of the board for what each is good at: Linux reads
 `/proc/stat`, the STM32 holds a 100 kHz refresh loop steady while it does.
 
 ```bash
-unoq-cpu-bars                       # until Ctrl-C
-python -m unoq.cpubars --interval 0.25 --count 20
+sudo systemctl stop unoq-cpu-bars   # if the service is installed: it holds the port
+hpy -m unoq.cpubars                 # until Ctrl-C
+hpy -m unoq.cpubars --interval 0.25 --count 20
 ```
+
+`hpy` is the project's Python (an alias from `env.sh`). The same program is
+installed as `~/two-computers-one-board/.venv/bin/unoq-cpu-bars`, which is what
+the service runs; that directory is not on `PATH`, so type the full path or use
+`hpy -m unoq.cpubars`.
 
 ```python
 from unoq import MCU, CpuSampler
@@ -94,20 +216,29 @@ with MCU() as mcu:
 `/proc/stat` holds counters since boot, so a single reading is the average since
 power-on; keep one `CpuSampler` alive and take differences.
 
-## At every boot
+### At every boot
 
 ```bash
 sudo bash ~/two-computers-one-board/provision/50-cpu-bars.sh      # install + enable
 journalctl -u unoq-cpu-bars -f
 ```
 
-> **It holds `/dev/ttyHS1` open.** pyserial opens the port exclusively, so while
-> the service runs, `mcucon`, `tio`, `unoq.MCU` and FOTA all fail with *device
-> busy*. Stop it before working on the MCU:
+> **It holds `/dev/ttyHS1` open, and locks it.** While the service runs,
+> `mcucon`, `tio`, `unoq.MCU` and FOTA are all refused; the Python ones raise
+> `PortBusy` and name the process holding the port. Stop it before working on
+> the MCU, and start it again afterwards:
 >
 > ```bash
 > sudo systemctl stop unoq-cpu-bars
 > ```
+>
+> The lock is two locks, taken by `open_port()` in
+> [`python/unoq/mcu.py`](../../python/unoq/mcu.py). pyserial's
+> `exclusive=True` is an advisory `flock`: it stops only another program that
+> asks for the same lock, and `tio`, `screen` and `cat` do not. The `TIOCEXCL`
+> ioctl is what makes the kernel refuse every later `open()`. See
+> [troubleshooting](troubleshooting.md#tio-can-leave-the-port-unusable-after-it-exits)
+> for how the second one can outlive the program that set it.
 >
 > Flashing over SWD (`flash.sh`, `zflash`) is unaffected — that is OpenOCD on
 > the GPIO lines, not the UART.
@@ -123,7 +254,7 @@ It also declares `Requires=unoq-link.service`, because `/dev/ttyHS1` reads
 nothing until that unit has driven the UART-enable GPIO. Ordering alone would
 let this start against a silent port and restart forever.
 
-## Which half does what
+### Which half does what
 
 | | Runs on | File |
 |---|---|---|
@@ -136,7 +267,7 @@ The wire format is whole percentages, so `app bars 100 50 0 0` typed into `tio`
 does exactly what the daemon does. Nothing on the MCU knows what a CPU core is,
 and nothing on the MPU knows how a bar is drawn.
 
-## Reading the display
+### Reading the display
 
 Bars are 2 columns wide with a 1-column gap, centred, growing from the bottom.
 
@@ -158,7 +289,7 @@ for i in 1 2 3 4; do (timeout 10 bash -c 'while :; do :; done' &) ; done
 The dark idle state is deliberate — a baseline glow would be indistinguishable
 from a low but real load.
 
-## Orientation
+### Orientation
 
 **The panel's rows run in whichever direction your board is mounted**, and the
 firmware cannot know which. If the bars hang from the top instead of standing on
@@ -173,7 +304,7 @@ ok flip=1
 `flip` is stored in NVS, so it survives reboots and firmware updates. `app
 status` reports it. From Python: `mcu.matrix_px(7, 0)` and `mcu.matrix_flip()`.
 
-## Is it actually running?
+### Is it actually running?
 
 A charlieplexed panel is invisible to software — nothing the MCU can read back
 tells you what is lit. The one observable is the refresh sweep counter:
@@ -201,7 +332,7 @@ you are.
 The panel starts lazily on the first `app bars`, and `app matrix off` stops the
 timer and releases the pins.
 
-## Shell commands
+### Shell commands
 
 ```
 app status                      uptime_ms, flip, sweeps
@@ -211,14 +342,14 @@ app matrix flip                 rotate 180 degrees, persisted
 app matrix off                  blank the panel, stop the refresh
 ```
 
-## Why seven bars
+### Why seven bars
 
 Bars are at least one column wide and always separated by one blank column, so
 *n* bars need 2*n*−1 columns. Thirteen columns therefore cap it at seven. The
 UNO Q's MPU has four cores, so this is not a limit you will meet; a bigger host
 gets `cpu0..cpu6` and a warning on stderr, never a silent truncation.
 
-## How the panel works
+### How the panel works
 
 104 LEDs on eleven pins (PF0–PF10), charlieplexed: each LED is one *ordered*
 pair of pins, lit by driving one high, one low, and leaving the other nine
@@ -246,14 +377,15 @@ directly instead of calling `gpio_pin_configure_dt()`: pins must change
   will fight the refresh ISR. PF11–PF15 are untouched.
 - The refresh ISR runs at 100 kHz whenever the panel is on. It is cheap, but it
   is not free — `app matrix off` if you are measuring something timing-sensitive.
-- `unoq-cpu-bars` only appears on `PATH` after re-running the editable install;
-  `python -m unoq.cpubars` always works.
+- `unoq-cpu-bars` is not on `PATH`: it is installed into the project's venv, at
+  `~/two-computers-one-board/.venv/bin/unoq-cpu-bars`. Use that path, or
+  `hpy -m unoq.cpubars`.
 - **Close the shell handle before using SMP.** `MCU` and `fota` both want the
   same UART, and reopening it immediately after a close drops the first SMP
   frame — which looks exactly like a firmware fault but is a host-side race.
   Leave the `with MCU()` block first, and give it a moment.
 - `cbor2` is capped `<6.0.0` by `smp`, and `pydantic` pins `pydantic-core`
   exactly. Both show as "outdated" and **must not** be upgraded — see the
-  maintenance notes in [the README](../../README.md#things-that-look-out-of-date-but-are-not).
+  maintenance notes in [Working on this project](development.md#maintenance).
 - Reading `/dev/ttyHS1` returns zero bytes if GPIO line 70 is not driven high.
   `MCU()` calls `link_up()` for you; raw `pyserial` does not.

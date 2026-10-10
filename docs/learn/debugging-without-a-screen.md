@@ -32,9 +32,18 @@ the top.
 
 ```bash
 systemctl status unoq-cpu-bars       # Linux side
-./.venv/bin/python -c "from unoq import MCU; print(MCU().status())"
 ```
 
+Then ask the microcontroller itself. The service above holds the serial port,
+so stop it first and start it again afterwards:
+
+```bash
+sudo systemctl stop unoq-cpu-bars
+hpy -c "from unoq import MCU; print(MCU().status())"
+sudo systemctl start unoq-cpu-bars
+```
+
+`hpy` is the project's Python, one of the shortcuts `env.sh` defines.
 `uptime_ms` climbing means the microcontroller is alive. If it is *small*, the
 chip reset recently — which is itself a large clue.
 
@@ -57,7 +66,8 @@ tio /dev/ttyHS1
 ```
 
 A prompt means the firmware is running and its shell thread is scheduled. That
-single fact eliminates an enormous amount.
+single fact eliminates an enormous amount. Leave `tio` with Ctrl-T then `q`,
+and put the service back with `sudo systemctl start unoq-cpu-bars`.
 
 ### 4. `printf`, honestly
 
@@ -72,7 +82,8 @@ disappearance.
 Because SWD is wired up, you can halt the processor and inspect it — set
 breakpoints, read variables, single-step, look at registers.
 
-In VS Code, the Run panel has **Debug (attach)** and **Debug (flash then run)**.
+In VS Code, the Run panel has **Debug (attach to running MCU)** and
+**Debug (flash then run)**.
 Underneath, OpenOCD talks SWD over GPIO and `arm-zephyr-eabi-gdb` connects to it.
 
 This is the rung people skip, and it is the one that answers questions the others
@@ -96,7 +107,7 @@ Notice how many are *configuration*, not code. On embedded, that ratio is normal
 
 ## The lesson this project learned the hard way
 
-While preparing this board from a factory restore, twelve real bugs were found in
+While preparing this board from a factory restore, seventeen real bugs were found in
 the setup scripts — and **five of them reported success**. A check looked for a
 file at a path that had moved. An identity check parsed its input wrongly and
 never matched anything, on any board, ever. A verification tested three of the
@@ -138,24 +149,27 @@ and watch the error:
 
 ```bash
 sudo systemctl start unoq-cpu-bars      # the service grabs /dev/ttyHS1
-cd ~/two-computers-one-board
-./.venv/bin/python -c "
+hpy -c "
 from unoq import MCU
 with MCU() as mcu: print(mcu.status())
 "
 ```
 
+The last lines of what comes back look like this (the process name and number
+will differ):
+
 ```
-SerialException: [Errno 11] Could not exclusively lock port /dev/ttyHS1
+unoq.mcu.PortBusy: /dev/ttyHS1 is flagged exclusive. Open right now: unoq-cpu-bars (pid 812).
+  Stop it first - for the demo that is:  systemctl stop unoq-cpu-bars
 ```
 
-It fails immediately, and says why. Now confirm *that* is the reason, rather
-than assuming:
+It fails immediately, says why, and says what to do. Now confirm *that* is the
+reason, rather than assuming:
 
 ```bash
 sudo fuser -v /dev/ttyHS1
 sudo systemctl stop unoq-cpu-bars
-./.venv/bin/python -c "
+hpy -c "
 from unoq import MCU
 with MCU() as mcu: print(mcu.status())
 "
@@ -188,10 +202,24 @@ first five minutes. Something that works 75% of the time survives your testing,
 ships, and fails in front of someone else — and the error message points at
 hardware rather than at the actual cause.
 
-The fix is one flag: open the port with `exclusive=True`, so the kernel refuses
-the second opener outright. The documentation had always said to stop the
-service first; that flag is what turned it from advice into a rule the machine
-enforces.
+The fix took two locks, because the first one turned out not to lock.
+
+The obvious one is pyserial's `exclusive=True`. This project used it, and its
+comments said that made the kernel refuse a second opener. It does not. That
+flag takes an *advisory* lock (`flock`), which stops another program only if
+that program asks for the same lock. `tio`, `screen` and `cat` do not ask, and
+walk straight through it.
+
+The second is the `TIOCEXCL` ioctl, set on the port straight after opening it.
+That one the kernel enforces: any later `open()` of the port by an ordinary
+user fails with "device busy". `open_port()` in `python/unoq/mcu.py` takes
+both, and turns either refusal into the `PortBusy` message you saw, naming the
+process that has the port open.
+
+The documentation had always said to stop the service first; the second lock is
+what turned that from advice into a rule the machine enforces. The first is a
+small example of this page's main lesson: a lock that had never been seen to
+refuse anything was assumed to work.
 
 When you find yourself writing "remember to X first" in a README, ask whether
 the code could simply make X unnecessary or impossible to forget.
@@ -212,5 +240,22 @@ the code could simply make X unnecessary or impossible to forget.
    convince you that it is true?
 3. The board reset five minutes ago and you want to know why. Which command?
 
-Next: catching all of that before the wire, so the board is not where you find
-out you were wrong.
+<details markdown="1">
+<summary>Answers — try each one first</summary>
+
+1. **A timing bug.** Printing takes time, so it changes the timing of the thing
+   you are debugging. The `printk` was not fixing anything; the delay it added
+   was hiding the fault, and removing it brought the fault back.
+2. **Seeing it say something else when it should.** A check that cannot fail is
+   indistinguishable from a check that always passes. Break something on
+   purpose — run it somewhere it should have failed — and confirm it
+   complains. Until it has failed once, you do not know it works.
+3. **`journalctl -b -1`, the previous boot.** If something reset the board, the
+   evidence is in the boot before the one you are in; the chapter's example is
+   `journalctl -b -1 -u unoq-usb-bind`. `journalctl --list-boots` shows you
+   what is available.
+
+</details>
+
+Next: [catching all of that before the wire, so the board is not where you find
+out you were wrong](knowing-it-works.md).

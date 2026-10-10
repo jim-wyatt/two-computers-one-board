@@ -151,6 +151,14 @@ cannot report that it has stopped talking.
 It is the only indicator on the board that says something about the *other*
 chip's health, and it is on the correct chip to say it.
 
+> [!NOTE]
+> "Heard from Linux" means one of the firmware's own `app` commands arrived:
+> `app status`, `app bars`, or an `app matrix` command. Nothing else counts.
+> On a board set up for this course the thing sending them is
+> `unoq-cpu-bars.service`, which draws twice a second. So LED 4 is green while
+> that service runs and red a few seconds after it stops, and it starts red at
+> every MCU reset until the first command arrives.
+
 ## A bug this design produced, and what it taught
 
 The first version read the confirmed flag once, in `main()`, and cached it. So
@@ -177,21 +185,36 @@ Learn them by watching them cycle:
 sudo ~/two-computers-one-board/status/leds.sh test
 ```
 
-Now make LED 2 tell the truth about a real failure. Break something on purpose:
+Now make LED 2 tell the truth about a real failure. Break something on purpose.
+Asking systemd to start a unit that does not exist is not enough: it prints an
+error and leaves nothing behind, and LED 2 looks at the list of failed units.
+So run a real, throwaway unit whose only job is to fail:
 
 ```bash
-sudo systemctl start does-not-exist.service    # fails immediately
-sudo systemctl --failed
+sudo systemd-run --unit=unoq-demo-fail /bin/false   # runs, exits 1, is marked failed
+systemctl --failed                                  # unoq-demo-fail.service is listed
 ```
 
-Within five seconds LED 2 should go red. Clear it:
+The LEDs are sampled every five seconds, so within about that long LED 2 should
+go red. Clear it, and it goes green again on the next sample:
 
 ```bash
-sudo systemctl reset-failed
+sudo systemctl reset-failed unoq-demo-fail
 ```
 
-And prove LED 4 is watching Linux rather than blinking on a timer — stop
-talking to the MCU for five seconds and watch it go red, then come back.
+And prove LED 4 is watching Linux rather than blinking on a timer. Stop the one
+thing that talks to the MCU, and watch:
+
+```bash
+sudo systemctl stop unoq-cpu-bars     # Linux goes quiet
+```
+
+LED 4 turns red about five seconds later: four seconds of silence, checked once
+a second. Then start talking again:
+
+```bash
+sudo systemctl start unoq-cpu-bars    # green again within a second or two
+```
 
 > [!TIP]
 > **Go deeper** — [hardware.md](../reference/hardware.md) has the full
@@ -207,8 +230,34 @@ talking to the MCU for five seconds and watch it go red, then come back.
 2. Why is "healthy" a colour here rather than an unlit LED?
 3. LED 4 is driven by the MCU and reports on Linux. Why can that not be done the
    other way round?
-4. You want to add a fifth indicator for "the SD card is nearly full". Argue
+4. You want to add a fifth indicator for "the storage is nearly full". Argue
    both sides using the rule at the top of this page.
 
-Next: when none of the lights help, and you have to find out what a program with
-no screen is actually doing.
+<details markdown="1">
+<summary>Answers — try each one first</summary>
+
+1. **The entries are colour channels, not LEDs.** Six of the seven are the red,
+   green and blue elements of two RGB packages, and `mmc0::` is a kernel entry
+   for a light that is not on this board at all. That makes two physical LEDs
+   for Linux; the other two belong to the STM32, which sees them as `led3_*`
+   and `led4_*`.
+2. **Because a dark LED is ambiguous.** It cannot distinguish "nothing is
+   wrong" from "the thing that checks whether anything is wrong is not
+   running". With green for healthy, and an `ExecStopPost` that turns the LEDs
+   off, a dead checker makes the board go dark rather than stay confidently
+   green.
+3. **Because the news is Linux going quiet, and Linux cannot report that.** A
+   host that has stopped talking cannot report that it has stopped talking.
+   Only the other chip can notice the silence, so the indicator has to be on
+   the MCU.
+4. **No single answer.** For: a change in it would carry information you did
+   not already have, it changes slowly enough that every transition means
+   something, and it may need a human. Against: you would have to say what
+   "nearly" means, whether anything else already tells you, and whether it is
+   worth a glance every time you look at the board. A good answer also makes
+   it re-sample, and makes "not full" a colour rather than an unlit LED.
+
+</details>
+
+Next: [when none of the lights help, and you have to find out what a program
+with no screen is actually doing](debugging-without-a-screen.md).

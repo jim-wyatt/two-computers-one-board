@@ -1,19 +1,27 @@
+<!--
+Copyright (c) 2026 Jim Wyatt
+SPDX-License-Identifier: MIT
+-->
 # MCU workflow
 
 Firmware for the STM32U585, built with stock Zephyr + west. No Arduino tooling.
 
 ```
-~/zephyrproject/      west workspace, Zephyr v4.4.1, board `arduino_uno_q`
+~/zephyrproject/      west workspace, Zephyr v4.4.2, board `arduino_uno_q`
 ~/zephyr-sdk-1.0.1/   Zephyr SDK (arm-zephyr-eabi)
 ```
 
 ## Build
 
 ```bash
-zbuild ~/two-computers-one-board/mcu/app                      # this project's app
+zbuild                                       # this project's app, mcu/app
+zbuild -p always                             # the same, as a pristine rebuild
 zbuild samples/hello_world                   # any upstream Zephyr sample
-zbuild ~/two-computers-one-board/mcu/app -p always            # pristine rebuild
+zbuild ~/some/other/app                      # or an app of your own, by path
 ```
+
+With no app named, `zbuild` builds this project's firmware. A first argument
+that starts with a dash is passed to `west build` for that default build.
 
 (`zbuild` / `zflash` are aliases from [`env.sh`](../../env.sh); the scripts are
 `mcu/zbuild.sh` and `mcu/flash.sh`.)
@@ -27,7 +35,7 @@ clangd works in either.
 `launch.json`. Anything else builds into `~/zephyrproject/build-<name>`:
 
 ```bash
-zbuild ~/two-computers-one-board/mcu/app        # -> ~/zephyrproject/build
+zbuild                         # -> ~/zephyrproject/build
 zbuild samples/hello_world     # -> ~/zephyrproject/build-hello_world
 ```
 
@@ -36,11 +44,25 @@ sample never repoints this project's `compile_commands.json` at foreign code —
 which would leave clangd quietly indexing the wrong tree. Only this project's
 own app updates its index. Override the directory with `BUILD_DIR=...`.
 
+## Signing
+
+`zbuild` signs every image, because MCUboot refuses one that is not. It signs
+with MCUboot's published sample key (`bootloader/mcuboot/root-rsa-2048.pem` in
+the workspace), which everyone has. So the signature shows an image is intact,
+not whose it is. For anything you deploy, generate a key of your own with
+`imgtool keygen`, build the bootloader with its public half
+(`CONFIG_BOOT_SIGNATURE_KEY_FILE`), and keep the private half off the device.
+
 ## Flash over SWD
 
 ```bash
-zflash ~/zephyrproject/build/zephyr/zephyr.signed.hex
+zflash                                                  # what zbuild just built
+zflash ~/zephyrproject/build-hello_world/zephyr/zephyr.hex    # or any other image
 ```
+
+With no image named, `zflash` writes
+`~/zephyrproject/build/zephyr/zephyr.signed.hex` — this project's firmware, and
+always the signed one. If there is no build yet it says so and touches nothing.
 
 > **Never flash the unsigned `zephyr.hex` over a MCUboot chain.** It links into
 > slot0 but has no image header, so the bootloader refuses it and the board
@@ -99,6 +121,9 @@ ok bars=4
 
 `sweeps` counts LED-matrix refresh passes — see [mpu.md](mpu.md#is-it-actually-running).
 
+The `app` commands and their arguments are listed in
+[mpu.md](mpu.md#shell-commands).
+
 Command groups: `app` (yours), `gpio`, `i2c`, `device`, `kernel`, `devmem` —
 poke hardware without rebuilding. Drive any of them from Python with
 [`unoq.MCU.cmd()`](mpu.md#the-unoq-package).
@@ -110,10 +135,13 @@ expected, not a fault.
 ## What the firmware is
 
 [`mcu/app/src/main.c`](../../mcu/app/src/main.c) is the `app` shell command group
-and nothing else. `main()` loads the persisted panel orientation, brings up the
-matrix, and returns — there is no main loop, because everything that runs after
-init runs on its own: the shell has its own thread, and the panel is refreshed
-from a timer ISR inside `matrix.c`.
+and nothing else. `main()` loads the persisted panel orientation, claims the
+two status LEDs and sets LED 3 from whether the running image is confirmed,
+brings up the matrix, and returns — there is no main loop, because everything
+that runs after init runs on its own: the shell has its own thread, the panel
+is refreshed from a timer ISR inside `matrix.c`, and the status LEDs are
+re-checked once a second by a work item in
+[`status_leds.c`](../../mcu/app/src/status_leds.c).
 
 One byte of state is persisted in NVS (`storage_partition`): the panel
 orientation set by `app matrix flip`. That is a property of how the board is
@@ -122,9 +150,39 @@ firmware updates.
 
 ## Debugging
 
-Open this folder in VS Code and pick **Debug (attach)** or **Debug (flash then
-run)**. OpenOCD runs on the board; you get breakpoints, memory view, and
-peripheral registers decoded from `.vscode/STM32U585.svd` (202 peripherals).
+Open this folder in VS Code and pick **Debug (attach to running MCU)** or
+**Debug (flash then run)** in the Run panel. OpenOCD runs on the board; you get
+breakpoints, memory view, and peripheral registers decoded from
+`.vscode/STM32U585.svd` (202 peripherals).
+
+## VS Code tasks
+
+**Terminal → Run Task** lists these, from
+[`.vscode/tasks.json`](../../.vscode/tasks.json). Each is a thin wrapper round a
+command documented on this page or in
+[Working on this project](development.md#the-quality-gates).
+
+| Task | What it runs |
+|---|---|
+| **MCU: build** | `mcu/zbuild.sh` on this project's app: build, sign, refresh `compile_commands.json` |
+| **MCU: build (pristine)** | The same with `-p always`, from a clean build directory |
+| **MCU: flash (SWD)** | `mcu/flash.sh` with the signed image |
+| **MCU: update over serial (FOTA)** | Upload, mark for test and reset. No SWD. Reverts unless confirmed |
+| **MCU: confirm firmware** | `fota.confirm()`: keep the running image |
+| **MCU: flash bootloader + app (recovery)** | `mcu/flash-all.sh`: the whole MCUboot chain over SWD |
+| **MCU: console** | `tio /dev/ttyHS1 -b 115200`. Ctrl-T then `q` to leave |
+| **MCU: status** | Prints the link GPIO state and `MCU().status()` |
+| **MCU: link up (BOOT0 + UART enable)** | `mcu/link-up.sh`, for a board that looks dead or a silent `/dev/ttyHS1` |
+| **Test: host (native_sim)** | `mcu/ztest.sh`: the firmware tests, run on the board's Linux side |
+| **Test: on target** | `mcu/ztest.sh -p arduino_uno_q` |
+| **Test: python (pytest + coverage)** | `pytest`, all against fakes |
+| **Check: all quality gates** | `tools/check.sh` |
+| **Check: fast (skip the MCU build)** | `tools/check.sh --fast`, which is what the pre-commit hook runs |
+| **Check: reformat in place** | `tools/check.sh --fix` |
+| **Maint: check dependency versions** | `tools/check-versions.sh` |
+
+The serial tasks (FOTA, confirm, console, status) need the port: stop
+`unoq-cpu-bars` first if it is installed.
 
 ## Tests
 
@@ -170,7 +228,8 @@ tests in the same commit. On the Python side,
 `python/tests/test_contract.py` parses the header and fails if the panel
 constants in `unoq/mcu.py` drift from the firmware's.
 
-See [the README](../../README.md#quality-gates) for the full gate list.
+See [Working on this project](development.md#the-quality-gates) for the full
+gate list.
 
 ## Upgrading Zephyr
 

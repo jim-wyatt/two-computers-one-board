@@ -20,7 +20,7 @@ are where you come back to check a number.
 
     ---
 
-    Board anatomy: the five GPIO lines between the two chips, the two UARTs, the
+    Board anatomy: the five GPIO lines between the two chips, the three UARTs, the
     LED matrix wiring, the four RGB LEDs, SWD, and the flash layout.
 
     **Read this first.** More debugging time is lost to the GPIO table at the
@@ -47,6 +47,13 @@ are where you come back to check a number.
     IP over USB in both directions, the fileshare drive, why the port's role
     cannot be switched from software, and the bind guard.
 
+-   :material-tune:{ .lg .middle } **[What you can change](configuration.md)**
+
+    ---
+
+    Every setting the project reads, with its default, and where to set it so
+    that it actually takes effect.
+
 -   :material-lifebuoy:{ .lg .middle } **[Troubleshooting](troubleshooting.md)**
 
     ---
@@ -58,8 +65,22 @@ are where you come back to check a number.
     ---
 
     The unedited log from taking a factory-restored board through
-    `bootstrap.sh`. Twenty-one findings, and the observation that only two of
-    them announced themselves as errors.
+    `bootstrap.sh`, and what turned up afterwards. Of the first seventeen
+    findings, only two announced themselves as errors.
+
+-   :material-progress-wrench:{ .lg .middle } **[Provisioning](provisioning.md)**
+
+    ---
+
+    What `bootstrap.sh` runs, step by step: what each one changes, which need
+    root, and the same thing by hand.
+
+-   :material-source-branch:{ .lg .middle } **[Working on this project](development.md)**
+
+    ---
+
+    The source layout, the quality gates, the tests, CI, and the maintenance
+    and recovery procedures.
 
 -   :material-book-alphabet:{ .lg .middle } **[Glossary](../glossary.md)**
 
@@ -78,9 +99,9 @@ does.
 ### Firmware
 
 ```bash
-zbuild ~/two-computers-one-board/mcu/app                  # build + auto-sign for MCUboot
-zflash ~/zephyrproject/build/zephyr/zephyr.signed.hex
-mcucon                                   # watch the MCU console (Ctrl-t q to leave)
+zbuild                                   # build this project's firmware, and sign it
+zflash                                   # write that build to the MCU over SWD
+mcucon                                   # watch the MCU console (Ctrl-C to leave)
 ~/two-computers-one-board/mcu/ztest.sh                    # firmware tests, on the host
 ```
 
@@ -112,14 +133,14 @@ journalctl -u unoq-cpu-bars -n 50        # or any other unit
 ```bash
 tools/build-docs.sh                      # render docs/ -> share/learn/
 tools/build-docs.sh --serve              # live preview on :8000
-sudo bash share/build-image.sh           # push it onto the USB drive
+sudo bash share/build-image.sh           # render, then push onto the drive and web server
 ```
 
 ### Quality gates
 
 ```bash
 tools/check.sh                           # all of them
-tools/check.sh --fast                    # skip the ~70s Zephyr build
+tools/check.sh --fast                    # skip the two slow gates: firmware tests, diagram render
 tools/check.sh --fix                     # reformat in place, then check
 ```
 
@@ -129,7 +150,8 @@ tools/check.sh --fix                     # reformat in place, then check
 |---|---|
 | `mcu/app/` | The firmware — `main.c`, `matrix.c` (charlieplex driver), `bars.c` (rasteriser) |
 | `python/unoq/` | The Linux-side package — `link.py`, `mcu.py`, `fota.py`, `cpu.py` |
-| `usb/` | The composite gadget, the bridge, the bind guard, the LEDs |
+| `usb/` | The composite gadget, the bridge, the bind guard |
+| `status/` | The status LEDs |
 | `provision/` | Root setup, numbered in order; `provision/user/` is the half that must not be root |
 | `docs/` | This site, and the course |
 

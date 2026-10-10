@@ -215,7 +215,7 @@ documentation](https://docs.kernel.org/driver-api/usb/gadget.html)** and
 **[gadget ConfigFS](https://docs.kernel.org/usb/gadget_configfs.html)** — the
 exact mechanism this board uses to *become* a network adapter and a disk. The
 ConfigFS page is short and is essentially the specification for
-[`usb/usb-gadget.sh`](https://github.com/jim-wyatt/two-computers-one-board/blob/main/usb/usb-gadget.sh).
+[`usb/gadget-up.sh`](https://github.com/jim-wyatt/two-computers-one-board/blob/main/usb/gadget-up.sh).
 
 **[RFC 2131](https://www.rfc-editor.org/rfc/rfc2131)** — DHCP. Worth skimming
 once, so that "the board asks the laptop for an address" stops being magic and

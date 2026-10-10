@@ -99,7 +99,7 @@ Every serial protocol solves this somehow:
 - **Fixed size**: agree every message is exactly 8 bytes.
 
 This project uses the first. The microcontroller runs a **shell**, the same one
-you typed at on the previous page, and the "protocol" is: send a command line,
+you typed at in [The microcontroller side](the-microcontroller-side.md), and the "protocol" is: send a command line,
 read text back until the prompt returns.
 
 ```c
@@ -129,16 +129,30 @@ badly** — echoing commands, wrapping output in escape codes, dribbling bytes a
 few at a time. A fake that answers instantly and perfectly would let broken code
 pass.
 
-## Try it: watch the conversation
+## Try it: have the conversation by hand
 
-Two windows, or two SSH sessions. In the first, watch the raw wire:
+First be the Python library yourself. Stop the demo, which is holding the wire,
+and open it in `tio`, the serial terminal:
 
 ```bash
 sudo systemctl stop unoq-cpu-bars
-mcucon                     # raw bytes from /dev/ttyHS1
+tio /dev/ttyHS1 -b 115200
 ```
 
-In the second, make something happen:
+Press Enter to get a prompt, then type the command the library sends:
+
+```
+unoq:~$ app status
+uptime_ms=12216 flip=0 sweeps=1043712
+unoq:~$
+```
+
+Your numbers will differ. Everything on that screen crossed the wire: the
+characters you typed came back as the shell's echo, then the reply line in
+exactly the format `APP_STATUS_FMT` promises, then the prompt that says the
+reply is over. Leave `tio` with `Ctrl-t q`.
+
+Now let Python do the same thing:
 
 ```bash
 cd ~/two-computers-one-board
@@ -147,28 +161,51 @@ from unoq import MCU
 with MCU() as mcu:
     print(mcu.status())
 "
-```
-
-Watch the first window. You will see the command arrive, the echo, and the
-reply — the actual bytes crossing between two computers. Then:
-
-```bash
 sudo systemctl start unoq-cpu-bars
 ```
 
+It prints the same three fields — `uptime_ms`, `flip` and `sweeps` — as a
+Python dictionary. The library sent the line you typed, threw
+away the echo and the colour codes, read until the prompt came back, and split
+what was left on spaces and `=`.
+
+One after the other, and not side by side in two windows, for a reason: **only
+one program can hold the wire at a time**. The library opens `/dev/ttyHS1`
+exclusively, and a second program that tries is refused with a message saying
+the port is taken. That is deliberate. Two readers on one serial line each get
+fragments of the other's conversation, which is a far worse failure than a
+clean refusal. It is also why the exercise starts by stopping the demo.
+
 ## The other direction
 
-So far Linux asks and the MCU answers. The demo works the other way: Linux
-computes bar heights and pushes them down, hundreds of times a minute, and the
-MCU never replies.
+So far Linux asks a question and the MCU answers it. The demo sends *data* the
+other way: twice a second, Linux measures how busy each core is and pushes four
+percentages down the wire. The MCU decides which pixels that means.
 
-That asymmetry is deliberate. Waiting for an acknowledgement to every frame
-would cap the frame rate at the round-trip time of the wire. For a display, a
-dropped frame is invisible — the next one is 200 ms away — so the cost of losing
-one is far lower than the cost of waiting for confirmation.
+```
+unoq:~$ app bars 100 50 25 0
+ok bars=4
+```
 
-**Choosing whether a message needs an answer is a real design decision**, and
-"always" is usually the wrong one.
+Notice that the MCU still answers. Every frame gets an `ok bars=4` back, and the
+Python side waits for it — and for the prompt after it — before it does anything
+else. Is that wait worth having?
+
+Here, yes. At two frames a second there is half a second between frames and the
+round trip is a small fraction of that, so waiting costs nothing you could
+see. And the reply buys something: it is the only thing that tells Linux the
+other end is still there. If the MCU has been reset, or the link has gone down,
+the wait times out and the program finds out, instead of carrying on sending
+frames to nobody.
+
+Now change the numbers. At a thousand frames a second the same choice would be
+wrong: waiting for each reply would cap the frame rate at the round-trip time of
+the wire, and a dropped frame would not matter, because the next one replaces it
+a millisecond later. There you would stream the frames and not wait.
+
+**Choosing whether a message needs an answer is a real design decision.** The
+right answer depends on how often you send, what a lost message costs, and what
+the reply tells you that you could not learn otherwise.
 
 > [!TIP]
 > **Go deeper** — [Beej's Guide to Network Programming](https://beej.us/guide/bgnet/)
@@ -186,7 +223,27 @@ one is far lower than the cost of waiting for confirmation.
 1. `/dev/ttyHS1` reads nothing at all, and the MCU is definitely running. Which
    of the two control pins do you suspect, and why?
 2. Your terminal fills with `ÿ?ÿ<`. What is wrong, and is it a hardware fault?
-3. Why does the demo not wait for the MCU to confirm each frame? When would that
-   be the wrong choice?
+3. The demo waits for the MCU to confirm every frame. What does that wait cost
+   here, and what does it buy? When would waiting be the wrong choice?
 
-Next: turning source code into something the chip can run — and getting it there.
+<details markdown="1">
+<summary>Answers — try each one first</summary>
+
+1. **Line 70, the UART link enable.** Without it the microcontroller transmits
+   into a disconnected wire and Linux reads an eternally empty file, with no
+   error anywhere. BOOT0 (line 37) wrong looks different: the firmware flashes
+   and verifies but never runs.
+2. **A baud rate mismatch, and no, it is not a hardware fault.** The receiver
+   is sampling at the wrong moments and reconstructing bytes that were never
+   sent. Both ends must agree on the speed in advance; ours is 115200.
+3. **It costs almost nothing and it buys knowing the link is alive.** At two
+   frames a second the round trip is a small part of the half second between
+   frames, and a reply that never comes is how Linux learns the MCU has gone
+   away. Waiting would be the wrong choice at a high frame rate — a thousand a
+   second, say — where it would cap the rate at the round-trip time of the
+   wire and where a lost frame is replaced almost at once anyway.
+
+</details>
+
+Next: [From source to a running chip](from-source-to-chip.md) — turning source
+code into something the chip can run, and getting it there.
