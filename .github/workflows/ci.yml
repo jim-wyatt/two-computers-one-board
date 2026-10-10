@@ -161,6 +161,13 @@ jobs:
   # keeps this dependency-free, and rather than `git diff` because a shallow
   # clone does not have the base commit to diff against.
   changes:
+    # Listing a pull request's files is a read of the pull request. On this
+    # public repository the default token can do that with contents alone, which
+    # is why the filter has been working; in a private fork it could not, and it
+    # would fall back to "everything" on every pull request without saying why.
+    permissions:
+      contents: read
+      pull-requests: read
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -236,7 +243,7 @@ jobs:
             *) all "a manual run" ;;
           esac
 
-          if grep -qE '^(mcu/|west\.yml|\.github/workflows/ci\.yml)' <<<"$files"; then
+          if grep -qE '^(mcu/|west\.yml|west-project-filter|\.github/workflows/ci\.yml)' <<<"$files"; then
             echo "firmware=true" >>"$GITHUB_OUTPUT"
             echo "firmware inputs changed - building"
           else
