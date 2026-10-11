@@ -22,7 +22,7 @@
 #
 # WHAT IT CANNOT COVER
 # --------------------
-# The root steps (provision/10, 20, 30, ...) remove Debian packages and manage
+# The root steps (provision/10, 15, 45, ... - the ones outside provision/user/) remove Debian packages and manage
 # services that exist only on the board's image, and flashing needs the board.
 # Those are still verified by hand, on hardware.
 #

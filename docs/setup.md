@@ -232,8 +232,9 @@ There are four words, and they are the whole vocabulary:
 The numbers are the order things run in, and each is the start of a file name:
 stage `25` is `provision/user/25-zephyr-sdk.sh`. The gaps are the
 [optional extras](#the-optional-extras), which have numbers of their own.
-Stages `20` to `40` run as you, and their banners say so; the others run as
-root. [Provisioning](reference/provisioning.md) has what each one changes and
+Stages `20` to `40` run as you, and their banners say so. So does `60`, the
+firmware: it builds in your workspace, and must not be run with `sudo`. The
+others run as root. [Provisioning](reference/provisioning.md) has what each one changes and
 how to undo it.
 
 ### How long it takes
