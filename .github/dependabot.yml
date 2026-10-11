@@ -3,7 +3,7 @@
 #
 # Actions only, and monthly.
 #
-# The workflows pin each action to a release, and a pin nobody revisits is a
+# The workflows pin each action to the commit of a release, and a pin nobody revisits is a
 # version that quietly stops getting fixes. tools/check-versions.sh reports the
 # same thing, but only when somebody remembers to run it.
 #
