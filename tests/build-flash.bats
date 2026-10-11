@@ -152,9 +152,14 @@ on_a_runner() {
   rm -rf "$ZEPHYR_WORKSPACE/.venv"
   stub west
   stub imgtool
+  # mcu/sign-params.py reads two numbers out of the build's devicetree. Here
+  # there is no devicetree, so python3 is a fake that answers as the real
+  # script does for this board.
+  stub python3 0 "--align 16 --slot-size 425984"
   # What `west build` would have left, so the signing branch is taken.
   mkdir -p "$ZEPHYR_WORKSPACE/build/zephyr"
-  echo "CONFIG_BOOTLOADER_MCUBOOT=y" >"$ZEPHYR_WORKSPACE/build/zephyr/.config"
+  printf '%s\n' "CONFIG_BOOTLOADER_MCUBOOT=y" "CONFIG_ROM_START_OFFSET=0x400" \
+    >"$ZEPHYR_WORKSPACE/build/zephyr/.config"
 }
 
 @test "with no workspace venv, west and imgtool come from PATH" {
@@ -162,7 +167,117 @@ on_a_runner() {
   IMAGE_VERSION=0.0.0+7 run "$PROJECT/mcu/zbuild.sh"
   [ "$status" -eq 0 ]
   ran "west build -b arduino_uno_q -d $ZEPHYR_WORKSPACE/build $PROJECT/mcu/app"
-  ran "west sign -t imgtool -d $ZEPHYR_WORKSPACE/build -p $STUB_DIR/imgtool -- --key $ZEPHYR_WORKSPACE/bootloader/mcuboot/root-rsa-2048.pem --version 0.0.0+7"
+}
+
+# --- signing -----------------------------------------------------------------
+#
+# zbuild signs with imgtool itself. `west sign -t imgtool` did it before and is
+# deprecated; the replacement Zephyr offers rebuilds every object whenever the
+# version changes, and this project changes the version on every build.
+#
+# What these cannot show is that the image is the RIGHT one. That was checked
+# once, by hand: one build signed both ways, and imgtool reporting the same
+# digest, header and sizes for each, differing only in the signature bytes,
+# which are random by design.
+
+@test "the image is signed by imgtool directly, in both formats, with the build's own numbers" {
+  on_a_runner
+  B="$ZEPHYR_WORKSPACE/build/zephyr"
+  K="$ZEPHYR_WORKSPACE/bootloader/mcuboot/root-rsa-2048.pem"
+  IMAGE_VERSION=0.0.0+7 run "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -eq 0 ]
+  ran "imgtool sign --version 0.0.0+7 --header-size 0x400 --align 16 --slot-size 425984 --key $K $B/zephyr.bin $B/zephyr.signed.bin"
+  ran "imgtool sign --version 0.0.0+7 --header-size 0x400 --align 16 --slot-size 425984 --key $K $B/zephyr.hex $B/zephyr.signed.hex"
+  ran "python3 $PROJECT/mcu/sign-params.py $ZEPHYR_WORKSPACE/build $ZEPHYR_WORKSPACE/zephyr"
+}
+
+@test "the deprecated west sign is not used" {
+  on_a_runner
+  run "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -eq 0 ]
+  refute ran_like '^west sign'
+}
+
+@test "what was signed is verified against the key before the build says it is done" {
+  on_a_runner
+  run "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -eq 0 ]
+  ran "imgtool verify -k $ZEPHYR_WORKSPACE/bootloader/mcuboot/root-rsa-2048.pem $ZEPHYR_WORKSPACE/build/zephyr/zephyr.signed.bin"
+}
+
+@test "an image that does not verify fails the build" {
+  on_a_runner
+  stub_body imgtool <<'SH'
+[ "$1" = verify ] && exit 1
+exit 0
+SH
+  run "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"does not verify"* ]]
+}
+
+@test "an image that does not verify is not left where flash.sh would find it" {
+  on_a_runner
+  # An imgtool that writes its output, as the real one does, and then fails
+  # to verify it.
+  stub_body imgtool <<'SH'
+[ "$1" = verify ] && exit 1
+[ "$1" = sign ] && : >"${@: -1}"
+exit 0
+SH
+  run "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -ne 0 ]
+  [ ! -e "$ZEPHYR_WORKSPACE/build/zephyr/zephyr.signed.hex" ]
+  [ ! -e "$ZEPHYR_WORKSPACE/build/zephyr/zephyr.signed.bin" ]
+}
+
+@test "a signing that fails does not leave the last build's signed image behind" {
+  # Otherwise flash.sh, which takes zephyr.signed.hex by default, would flash
+  # the PREVIOUS firmware and report success.
+  on_a_runner
+  : >"$ZEPHYR_WORKSPACE/build/zephyr/zephyr.signed.hex"
+  : >"$ZEPHYR_WORKSPACE/build/zephyr/zephyr.signed.bin"
+  stub_body imgtool <<'SH'
+[ "$1" = sign ] && exit 1
+exit 0
+SH
+  run "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -ne 0 ]
+  [ ! -e "$ZEPHYR_WORKSPACE/build/zephyr/zephyr.signed.hex" ]
+  [ ! -e "$ZEPHYR_WORKSPACE/build/zephyr/zephyr.signed.bin" ]
+}
+
+@test "a signing that writes its output and then fails leaves nothing to flash" {
+  # imgtool opens its output before it has finished deciding whether it can
+  # sign. The .bin succeeds here and the .hex is written, then refused.
+  on_a_runner
+  stub_body imgtool <<'SH'
+[ "$1" = sign ] || exit 0
+: >"${@: -1}"
+case "${@: -1}" in *.hex) exit 1 ;; esac
+exit 0
+SH
+  run "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -ne 0 ]
+  [ ! -e "$ZEPHYR_WORKSPACE/build/zephyr/zephyr.signed.hex" ]
+  [ ! -e "$ZEPHYR_WORKSPACE/build/zephyr/zephyr.signed.bin" ]
+}
+
+@test "a devicetree that gives no numbers stops the build before imgtool is asked to guess" {
+  on_a_runner
+  stub python3 1
+  run "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not work out how to sign"* ]]
+  refute ran_like '^imgtool sign'
+}
+
+@test "a build with no header size in its config is not signed with a guessed one" {
+  on_a_runner
+  echo "CONFIG_BOOTLOADER_MCUBOOT=y" >"$ZEPHYR_WORKSPACE/build/zephyr/.config"
+  run "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -ne 0 ]
+  refute ran_like '^imgtool sign'
 }
 
 @test "an SDK directory that does not exist is not exported" {
