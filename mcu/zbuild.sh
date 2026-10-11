@@ -163,6 +163,10 @@ fi
 if grep -q "^CONFIG_BOOTLOADER_MCUBOOT=y" "$BUILD/zephyr/.config" 2>/dev/null; then
   VERSION="${IMAGE_VERSION:-0.0.0+$(date +%s 2>/dev/null || echo 0)}"
   echo "signing for MCUboot (version $VERSION)"
+  # Both removed before anything can fail, so that no failure below leaves the
+  # PREVIOUS build's signed image sitting there. flash.sh takes
+  # zephyr.signed.hex by default, and would flash the old firmware and say so.
+  rm -f "$BUILD/zephyr/zephyr.signed.bin" "$BUILD/zephyr/zephyr.signed.hex"
   [ -n "$IMGTOOL" ] || {
     echo "no imgtool: not in $WS/.venv/bin and not on PATH - the image cannot be signed" >&2
     exit 1
@@ -183,9 +187,6 @@ if grep -q "^CONFIG_BOOTLOADER_MCUBOOT=y" "$BUILD/zephyr/.config" 2>/dev/null; t
     exit 1
   fi
   for ext in bin hex; do
-    # Removed first, so a signing that fails cannot leave the previous
-    # build's signed image sitting there to be flashed as though it were new.
-    rm -f "$BUILD/zephyr/zephyr.signed.$ext"
     "$IMGTOOL" sign --version "$VERSION" --header-size "$HEADER" \
       "${FLASH_ARGS[@]}" --key "$KEY" \
       "$BUILD/zephyr/zephyr.$ext" "$BUILD/zephyr/zephyr.signed.$ext" >/dev/null || {

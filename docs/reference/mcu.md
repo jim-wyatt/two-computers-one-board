@@ -46,8 +46,13 @@ own app updates its index. Override the directory with `BUILD_DIR=...`.
 
 ## Signing
 
-`zbuild` signs every image, because MCUboot refuses one that is not. It signs
-with MCUboot's published sample key (`bootloader/mcuboot/root-rsa-2048.pem` in
+`zbuild` signs every image, because MCUboot refuses one that is not, and then
+checks the signature against the key before it reports the build as done. It
+calls `imgtool` itself, with the slot size and flash alignment read from the
+build's own devicetree by `mcu/sign-params.py`; `west sign -t imgtool`, which
+used to do this, is deprecated.
+
+The key is MCUboot's published sample key (`bootloader/mcuboot/root-rsa-2048.pem` in
 the workspace), which everyone has. So the signature shows an image is intact,
 not whose it is. For anything you deploy, generate a key of your own with
 `imgtool keygen`, build the bootloader with its public half
