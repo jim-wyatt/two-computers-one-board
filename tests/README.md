@@ -69,6 +69,7 @@ without touching `/var/lib`.
 | [`install-runtime.bats`](install-runtime.bats) | The root-owned copies of the scripts that the root services run. A stale or writable file there is something root executes at the next boot; a missing one is a service that does not start. |
 | [`gadget-up.bats`](gadget-up.bats) | Which file the host is handed as the drive. Run as root's copy, a script that asks who owns it gets the answer `root`, and the drive comes up empty. |
 | [`usb-net-up.bats`](usb-net-up.bats) | The script that makes a bound gadget a network link, run at every boot and plug-in. A second DHCP client on the same bridge, the board's own wifi interface dragged onto it, or whatever is in the last-address file reaching a command line. |
+| [`gadget-down.bats`](gadget-down.bats) | The way back from the USB gadget, which kills what its pid files name, as root. A stale file getting an unrelated process killed. |
 | [`usb-status.bats`](usb-status.bats) | The comparison between the checkout and root's copies. If it says "same" when they are not, an edit that never reached the board looks like a fix that does nothing. |
 | [`cleanup.bats`](cleanup.bats) | A step that deletes things as root at the end of every run. Clearing root's `uv` cache and calling it yours, ignoring `UNOQ_KEEP_CACHES`, or reporting a change on a board with nothing to clear. |
 | [`host-tools.bats`](host-tools.bats) | The first download of a fresh board failing with nothing but the name of the command, so that a full disk and a dead network look the same. |
