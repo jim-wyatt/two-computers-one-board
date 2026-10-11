@@ -406,5 +406,5 @@ cat <<EOF
 
 If the fstab entry predates this, it needs the partition offset adding:
   $IMG $MOUNT vfat loop,ro,nofail,offset=$PART_OFFSET,umask=0022,utf8 0 0
-provision/70-learning-web.sh writes it correctly.
+provision/75-learning-web.sh writes it correctly.
 EOF

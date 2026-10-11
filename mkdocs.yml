@@ -47,7 +47,7 @@ repo_name: jim-wyatt/two-computers-one-board
 edit_uri: edit/main/docs/
 
 docs_dir: docs
-# Where 70-learning-web.sh serves from and share/build-image.sh copies onto the
+# Where 75-learning-web.sh serves from and share/build-image.sh copies onto the
 # drive. Generated output - it is in .gitignore, not in the repository.
 site_dir: share/learn
 

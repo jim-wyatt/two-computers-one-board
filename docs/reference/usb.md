@@ -21,14 +21,14 @@ Set it up once with:
 ```bash
 sudo bash ~/two-computers-one-board/share/fetch-vscode.sh    # ~1.8 GB, needs internet
 sudo bash ~/two-computers-one-board/share/build-image.sh     # FAT32 image
-sudo bash ~/two-computers-one-board/provision/60-usb-gadget.sh
+sudo bash ~/two-computers-one-board/provision/95-usb-gadget.sh
 ```
 
 Then plug it in. Nothing to configure on the computer.
 
 The web page on port 8080 in the picture is a separate extra, and serves the
 same image. Add it at any point after the image is built, with
-`sudo bash ~/two-computers-one-board/provision/70-learning-web.sh` (or
+`sudo bash ~/two-computers-one-board/provision/75-learning-web.sh` (or
 `./bootstrap.sh --with-learning`). Without it you still have the network link
 and the drive.
 
@@ -507,7 +507,7 @@ UNOQ_UPLINK_DEADLINE=240     # seconds to wait after boot
 journalctl -b -u unoq-uplink-fallback -t unoq-uplink-fallback
 ```
 
-Both are enabled unconditionally by `60-usb-gadget.sh`, including on a board
+Both are enabled unconditionally by `95-usb-gadget.sh`, including on a board
 whose wifi is on — where the fallback looks, sees a radio already up and exits.
 The moment either is needed is the moment nobody can enable it.
 
@@ -709,7 +709,7 @@ process, rather than forcing the unmount.
 
 `adbd` binds its *own* gadget to the first free UDC. With this installed there
 would be two gadgets racing for one controller, so the last thing
-`provision/60-usb-gadget.sh` does is hand the port over: `usb/handover.sh`
+`provision/95-usb-gadget.sh` does is hand the port over: `usb/handover.sh`
 stops and disables `adbd`, rebuilds the gadget definition, and binds it if a
 cable is already in.
 
@@ -745,7 +745,7 @@ journalctl -t unoq-usb-handover     # what the hand-over did, read over SSH afte
 
 Disabling `unoq-usb-gadget` alone is not enough: the udev rule would still
 start the bind unit at the next plug-in. This removes everything
-`provision/60-usb-gadget.sh` installed. It takes the USB network down at the
+`provision/95-usb-gadget.sh` installed. It takes the USB network down at the
 first line, so run it over wifi.
 
 ```bash

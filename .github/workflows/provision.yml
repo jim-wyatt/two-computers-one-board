@@ -22,7 +22,7 @@
 #
 # WHAT IT CANNOT COVER
 # --------------------
-# The root steps (provision/10, 20, 30, ...) remove Debian packages and manage
+# The root steps (provision/10, 15, 45, ... - the ones outside provision/user/) remove Debian packages and manage
 # services that exist only on the board's image, and flashing needs the board.
 # Those are still verified by hand, on hardware.
 #
@@ -87,10 +87,10 @@ jobs:
           mkdir -p "$fresh"
           env -i HOME="$fresh" PATH=/usr/bin:/bin TERM=dumb bash -c '
             set -e
-            bash provision/user/10-host-tools.sh
-            bash provision/user/20-zephyr-sdk.sh
+            bash provision/user/20-host-tools.sh
+            bash provision/user/25-zephyr-sdk.sh
             bash provision/user/30-zephyr-workspace.sh
-            bash provision/user/40-python-venv.sh
+            bash provision/user/35-python-venv.sh
           '
 
       - name: Run them again, and require that nothing changes
@@ -103,10 +103,10 @@ jobs:
           fresh="$RUNNER_TEMP/home"
           env -i HOME="$fresh" PATH=/usr/bin:/bin TERM=dumb bash -c '
             set -e
-            bash provision/user/10-host-tools.sh
-            bash provision/user/20-zephyr-sdk.sh
+            bash provision/user/20-host-tools.sh
+            bash provision/user/25-zephyr-sdk.sh
             bash provision/user/30-zephyr-workspace.sh
-            bash provision/user/40-python-venv.sh
+            bash provision/user/35-python-venv.sh
           ' | tee "$RUNNER_TEMP/second-run.log"
           summaries="$(grep -cE '^[0-9]+ changed, ' "$RUNNER_TEMP/second-run.log")"
           [ "$summaries" -eq 4 ] || { echo "expected 4 step summaries, saw $summaries" >&2; exit 1; }

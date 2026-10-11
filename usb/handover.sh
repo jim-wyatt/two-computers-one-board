@@ -5,7 +5,7 @@
 #
 #   sudo ~/two-computers-one-board/usb/handover.sh
 #
-# Run by provision/60-usb-gadget.sh as its last act, and not meant to be run
+# Run by provision/95-usb-gadget.sh as its last act, and not meant to be run
 # before that step has installed the units it starts.
 #
 # WHY THIS IS A SEPARATE SCRIPT

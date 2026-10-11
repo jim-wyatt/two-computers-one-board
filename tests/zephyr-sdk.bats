@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Jim Wyatt
 # SPDX-License-Identifier: MIT
 #
-# provision/user/20-zephyr-sdk.sh is the first slow step of bootstrap.sh, and
+# provision/user/25-zephyr-sdk.sh is the first slow step of bootstrap.sh, and
 # the first one a stranger's board ever stopped at (issue #69):
 #
 #     installing the arm-zephyr-eabi toolchain...
@@ -22,7 +22,7 @@ setup() {
   stub_setup
 
   PROJECT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
-  SDK_STEP="$PROJECT/provision/user/20-zephyr-sdk.sh"
+  SDK_STEP="$PROJECT/provision/user/25-zephyr-sdk.sh"
 
   export HOME="$BATS_TEST_TMPDIR/home"
   SDK_DIR="$HOME/zephyr-sdk-1.0.1"
@@ -91,7 +91,7 @@ fake_cmake_in_local_bin() {
   sdk_step
   [ "$status" -eq 1 ]
   [[ "$output" == *"cmake is not on PATH"* ]]
-  [[ "$output" == *"10-host-tools.sh"* ]]
+  [[ "$output" == *"20-host-tools.sh"* ]]
   never_ran curl
 }
 

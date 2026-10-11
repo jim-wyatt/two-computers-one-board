@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 # Optional: show host CPU load on the LED matrix at every boot.
 #
-#   sudo bash ~/two-computers-one-board/provision/50-cpu-bars.sh
+#   sudo bash ~/two-computers-one-board/provision/65-cpu-bars.sh
 #
 # Idempotent. Unlike 10..40 this one is a convenience, not a prerequisite -
 # nothing else in the project needs it, and it is the only unit here that holds
@@ -30,7 +30,7 @@ if [ -x "$PROJECT/.venv/bin/unoq-cpu-bars" ]; then
   skip "unoq-cpu-bars entry point present"
 else
   fail "$PROJECT/.venv/bin/unoq-cpu-bars missing.
-  Build the venv first:  bash $PROJECT/provision/user/40-python-venv.sh"
+  Build the venv first:  bash $PROJECT/provision/user/35-python-venv.sh"
 fi
 
 step "unoq-cpu-bars.service"

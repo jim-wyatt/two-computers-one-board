@@ -29,7 +29,7 @@ PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
 BOARD="${BOARD:-arduino_uno_q}"
 SDK="${ZEPHYR_SDK:-$HOME/zephyr-sdk-1.0.1}"
 
-# cmake and ninja are in ~/.local/bin, where provision/user/10-host-tools.sh
+# cmake and ninja are in ~/.local/bin, where provision/user/20-host-tools.sh
 # installs them, and west runs both by name. An interactive shell has that
 # directory on PATH because env.sh puts it there. Nothing else does: not
 # bootstrap.sh on its first run, not a VS Code task, not a systemd unit - and

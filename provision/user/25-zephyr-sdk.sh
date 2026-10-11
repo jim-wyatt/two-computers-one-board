@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 # The Zephyr SDK (arm-zephyr-eabi toolchain). Runs as YOU, not root.
 #
-#   bash ~/two-computers-one-board/provision/user/20-zephyr-sdk.sh
+#   bash ~/two-computers-one-board/provision/user/25-zephyr-sdk.sh
 #
 # Idempotent, and resumable: the SDK is ~0.8 GB unpacked, and the download
 # lands in a temp file that is only moved into place once it has been verified,
@@ -19,7 +19,7 @@ set -uo pipefail
 [ "$(id -u)" = 0 ] && fail "run this WITHOUT sudo - it installs into \$HOME"
 
 # The SDK's setup.sh refuses to start unless cmake is on PATH, and cmake is in
-# ~/.local/bin, where 10-host-tools.sh put it a minute ago. On a board that has
+# ~/.local/bin, where 20-host-tools.sh put it a minute ago. On a board that has
 # been logged into before, ~/.profile adds that directory. On a fresh one it did
 # not exist at login, so nothing added it - and this was the one user step that
 # did not add it itself. bootstrap.sh therefore died here on exactly the boards
@@ -75,10 +75,10 @@ else
   # Checked BEFORE the download, not discovered after it: setup.sh needs both,
   # and finding that out costs 100 MB and several minutes if it is left to it.
   command -v cmake >/dev/null 2>&1 ||
-    fail "cmake is not on PATH - run provision/user/10-host-tools.sh first"
+    fail "cmake is not on PATH - run provision/user/20-host-tools.sh first"
   command -v wget >/dev/null 2>&1 ||
     fail "wget is not installed - sudo apt-get install -y wget
-        (provision/20-dev-tools.sh does this; setup.sh downloads the toolchain with it)"
+        (provision/15-dev-tools.sh does this; setup.sh downloads the toolchain with it)"
 
   BASE="https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v$SDK_VERSION"
   TARBALL="zephyr-sdk-${SDK_VERSION}_linux-${SDK_ARCH}_minimal.tar.xz"

@@ -193,7 +193,7 @@ to answer until it finishes.
 Each stage prints a banner, then one line for everything it looked at:
 
 ```
-########## u20 Zephyr SDK ##########
+########## 25  Zephyr SDK (you) ##########
 
 == Zephyr SDK 1.0.1 (aarch64) ==
   changed  SDK unpacked to /home/arduino/zephyr-sdk-1.0.1
@@ -220,18 +220,22 @@ There are four words, and they are the whole vocabulary:
 | Stage | What it does |
 |---|---|
 | preflight | Checks the board, `sudo`, free space and the network. Copies the stock microcontroller firmware somewhere safe. |
-| `10`, `20` | Switches off the desktop and the Arduino services that hold the hardware, upgrades the installed packages, and installs a compiler. |
-| `u10`, `u20` | Installs the build tools and the Zephyr SDK, the cross-compiler for the microcontroller (~0.8 GB). |
-| `u30` | Downloads Zephyr itself (~2 GB). **This is the long download.** |
-| `u40`, `u50` | Sets up Python and the `unoq` package, and the shell shortcuts. |
-| `30`, `35` | Makes the two control lines to the microcontroller correct at every boot, and starts the status LEDs. |
-| MCU firmware | Builds this project's firmware and writes it to the microcontroller. |
-| `50` | With `--with-cpu-bars`: the demo, as a service that starts at boot. |
+| `10`, `15` | Switches off the desktop and the Arduino services that hold the hardware, upgrades the installed packages, and installs a compiler. |
+| `20`, `25` | Installs the build tools and the Zephyr SDK, the cross-compiler for the microcontroller (~0.8 GB). |
+| `30` | Downloads Zephyr itself (~2 GB). **This is the long download.** |
+| `35`, `40` | Sets up Python and the `unoq` package, and the shell shortcuts. |
+| `45`, `50` | Makes the two control lines to the microcontroller correct at every boot, and starts the status LEDs. |
+| `60` | Builds this project's firmware and writes it to the microcontroller. |
+| `65` | With `--with-cpu-bars`: the demo, as a service that starts at boot. |
 | `90` | Gives back the disk space the downloads borrowed, and says how much. |
 
-Stages starting with `u` run as you. The others run as root.
-[Provisioning](reference/provisioning.md) has what each one changes and how to
-undo it, and the stages the [optional extras](#the-optional-extras) add.
+The numbers are the order things run in, and each is the start of a file name:
+stage `25` is `provision/user/25-zephyr-sdk.sh`. The gaps are the
+[optional extras](#the-optional-extras), which have numbers of their own.
+Stages `20` to `40` run as you, and their banners say so. So does `60`, the
+firmware: it builds in your workspace, and must not be run with `sudo`. The
+others run as root. [Provisioning](reference/provisioning.md) has what each one changes and
+how to undo it.
 
 ### How long it takes
 
@@ -245,18 +249,18 @@ and that a quiet terminal is normal.
 |---|---|
 | The notice, and typing the password | 20 seconds |
 | `10` switching things off and upgrading 144 packages | 7 minutes 21 seconds |
-| `20` a compiler, and Arduino's services off | 1 minute 24 seconds |
-| `u10` build tools | 16 seconds |
-| `u20` Zephyr SDK | 42 seconds |
-| `u30` Zephyr | 2 minutes 21 seconds |
-| `u40`, `u50` Python and shell | 37 seconds |
-| `30`, `35` control lines and LEDs | 32 seconds |
-| Building and signing the firmware | 2 minutes 50 seconds |
-| Building the bootloader and flashing both | 2 minutes 28 seconds |
-| `50` the demo service | 5 seconds |
-| `65` the drive image | 37 seconds |
+| `15` a compiler, and Arduino's services off | 1 minute 24 seconds |
+| `20` build tools | 16 seconds |
+| `25` Zephyr SDK | 42 seconds |
+| `30` Zephyr | 2 minutes 21 seconds |
+| `35`, `40` Python and shell | 37 seconds |
+| `45`, `50` control lines and LEDs | 32 seconds |
+| `60` building and signing the firmware | 2 minutes 50 seconds |
+| `60` building the bootloader and flashing both | 2 minutes 28 seconds |
+| `65` the demo service | 5 seconds |
+| `70` the drive image | 37 seconds |
 | `90` giving disk space back | 5 seconds |
-| `60` the USB gadget | 47 seconds |
+| `95` the USB gadget | 47 seconds |
 | **All of it** | **20 minutes 25 seconds** |
 
 Then, with `--with-usb-gadget` from `adb shell`: the shell closed 24 seconds
@@ -320,11 +324,11 @@ try. Then:
 
     Two parts of the run are not, and report `changed` every time:
 
-    - **The firmware.** The `MCU firmware` section builds it and flashes it
+    - **The firmware.** Stage `60` builds it and flashes it
       again on every run, and says `changed` for each. That is deliberate: it
       is how a board ends up running the firmware in the checkout.
     - **The drive image**, if you asked for `--with-learning` or
-      `--with-usb-gadget`. Stage `65` renders the documentation onto it again
+      `--with-usb-gadget`. Stage `70` renders the documentation onto it again
       each time.
 
     For a run that is nothing but `ok`, leave the firmware out and do not ask
@@ -389,7 +393,7 @@ everything that finished and picks up at the step that did not.
 If the same step fails twice, the output tells you where to look:
 
 - The **banner** above the failure names the stage, and the stage is a script
-  you can read: `u20` is `provision/user/20-zephyr-sdk.sh`.
+  you can read: `25` is `provision/user/25-zephyr-sdk.sh`.
 - The line marked **`FAILED`** says what went wrong, and where the tool that
   failed had something to say, its own output is printed just above.
 - The firmware build and flash at the end keep their logs in
@@ -401,7 +405,7 @@ by symptom. If it is not there,
 with the output from the last banner down.
 
 > [!TIP]
-> You can run one stage by itself. `bash provision/user/20-zephyr-sdk.sh` runs
+> You can run one stage by itself. `bash provision/user/25-zephyr-sdk.sh` runs
 > just the SDK step; the root stages want `sudo bash`. Each is as safe to
 > re-run as the whole.
 

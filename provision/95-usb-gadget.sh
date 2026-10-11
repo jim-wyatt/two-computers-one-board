@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 # IP over USB, plus the fileshare drive, when the board is plugged into a PC.
 #
-#   sudo bash ~/two-computers-one-board/provision/60-usb-gadget.sh
+#   sudo bash ~/two-computers-one-board/provision/95-usb-gadget.sh
 #
 # Idempotent, and safe to run over SSH or from `adb shell` - see the last step
 # for what the second one takes. It does NOT change the USB role. On
@@ -186,7 +186,7 @@ install_unit "$PROJECT/usb/unoq-uplink-fallback.service"
 # The status LEDs are NOT installed here any more. They report on the whole
 # board, not just the USB link, and installing them from an optional feature
 # meant a board provisioned without `--with-usb-gadget` had no way to say
-# anything at all. See provision/35-status-leds.sh.
+# anything at all. See provision/50-status-leds.sh.
 # enable, but do not --now start it blindly: starting is harmless (no UDC
 # means it builds the definition and exits) and proves the scripts run.
 if systemctl is-enabled --quiet unoq-usb-gadget.service 2>/dev/null; then

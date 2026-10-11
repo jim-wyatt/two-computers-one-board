@@ -82,7 +82,7 @@ section() {
   # Only that one.
   [[ "$s" != *"usb/usb-route.sh"* ]]
   # And what to do about it: the step, with sudo, from this checkout.
-  [[ "$s" == *"sudo bash $SRC/provision/35-status-leds.sh"* ]]
+  [[ "$s" == *"sudo bash $SRC/provision/50-status-leds.sh"* ]]
 }
 
 @test "running that step makes them the same again" {

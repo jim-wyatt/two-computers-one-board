@@ -184,15 +184,15 @@ apt_install "python${PYVER}-dev"
 
 # --- Docker images: the Arduino App framework's container runtime. ~2 GB. ---
 # These are pulled by the stock image and nothing here uses them: the Arduino
-# app stack is what runs containers, and 20-dev-tools.sh disables it. On a
+# app stack is what runs containers, and 15-dev-tools.sh disables it. On a
 # stock board they are three images totalling ~2 GB with no containers, so all
 # of it is reclaimable - and it comes off /, which starts with about 3 GB free
 # and is the partition that runs out first.
 #
-# THIS HAS TO HAPPEN HERE, not in 40-purge-arduino.sh where it would sit more
+# THIS HAS TO HAPPEN HERE, not in 55-purge-arduino.sh where it would sit more
 # naturally next to the rest of the Arduino teardown. `docker image rm` needs
-# the daemon, and the very next script - 20-dev-tools.sh - does
-# `systemctl disable --now docker.service`. By the time 40 runs there is no
+# the daemon, and the very next script - 15-dev-tools.sh - does
+# `systemctl disable --now docker.service`. By the time 55 runs there is no
 # daemon to talk to and the images would be stranded on disk, still costing
 # 2 GB, with no obvious sign of why.
 #
@@ -206,7 +206,7 @@ if [ "${UNOQ_KEEP_DOCKER_IMAGES:-0}" = "1" ]; then
 elif ! command -v docker >/dev/null 2>&1; then
   skip "docker not installed"
 elif ! docker info >/dev/null 2>&1; then
-  # Already disabled by a previous run of 20-dev-tools.sh. Say so rather than
+  # Already disabled by a previous run of 15-dev-tools.sh. Say so rather than
   # printing docker's connection error, which reads like a fault.
   skip "docker daemon not running - nothing to reclaim from here"
 elif [ -z "$(docker images -q 2>/dev/null)" ]; then
@@ -256,7 +256,7 @@ if [ "${UNOQ_TIER2:-1}" = "1" ]; then
   # REVERT: systemctl enable --now udisks2
   disable_unit udisks2.service
   # NOTE: adbd is deliberately NOT disabled here. It only binds a USB gadget
-  # when one exists, and provision/60-usb-gadget.sh coordinates with it.
+  # when one exists, and provision/95-usb-gadget.sh coordinates with it.
 else
   step "TIER 2"
   skip "skipped (set UNOQ_TIER2=1 to drop Bluetooth and udisks2 as well)"

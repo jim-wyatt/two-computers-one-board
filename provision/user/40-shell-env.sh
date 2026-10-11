@@ -4,7 +4,7 @@
 # Wire env.sh into your shell, and install the git pre-commit hook.
 # Runs as YOU, not root.
 #
-#   bash ~/two-computers-one-board/provision/user/50-shell-env.sh
+#   bash ~/two-computers-one-board/provision/user/40-shell-env.sh
 #
 # Idempotent: the ~/.bashrc line is added once and matched on the marker, not
 # on the literal path, so a re-run after moving the checkout updates it rather

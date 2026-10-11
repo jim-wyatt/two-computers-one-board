@@ -29,8 +29,8 @@ Status as of the runs on 2026-08-08/09. Fixed items link to the commit.
 | 8 | No host C compiler on the image at all | `check.sh mcu` and `ztest.sh` could never have run | fixed |
 | 9 | Venv check tested 3 of the 5 packages it installs | `smbus2` and `spidev` absent, reported `0 changed, 5 already correct` | fixed |
 | 10 | VS Code machine settings lived only in `~/.vscode-server` | restore wiped them; nothing said so, the board just swapped sooner | fixed |
-| 11 | `70-learning-web.sh` printed only the first address per interface, and ignored link state | advertised `10.55.0.1` and a **down** `docker0`, hid the one address the host can reach | fixed |
-| 12 | `40-purge-arduino.sh` claimed the purge deletes `~/.arduino15` | it does not — apt removes packages, not `$HOME`. 621 MB still there after a real run | fixed |
+| 11 | `75-learning-web.sh` printed only the first address per interface, and ignored link state | advertised `10.55.0.1` and a **down** `docker0`, hid the one address the host can reach | fixed |
+| 12 | `55-purge-arduino.sh` claimed the purge deletes `~/.arduino15` | it does not — apt removes packages, not `$HOME`. 621 MB still there after a real run | fixed |
 | 13 | Attaching the fileshare after the gadget was built left the drive exported **read-write** | the read-only protection `usb.md` insists on was absent on every board following the documented order | fixed |
 | 14 | Nothing locked `/dev/ttyHS1`, so two openers interleaved | 6 of 8 reads correct, 2 failing with an error that blames a disconnected cable | fixed |
 | 15 | `fwupd.service` masked but `fwupd-refresh.timer` left enabled | a permanently failed unit on a board with nothing wrong — found by the new alarm LED, seconds after it was first enabled | fixed |
@@ -45,13 +45,13 @@ Status as of the runs on 2026-08-08/09. Fixed items link to the commit.
 
 Both are worse than a missed check, and in the same way.
 
-`20-zephyr-sdk.sh` used the wrong path in **two** places: the verify at the end,
+`25-zephyr-sdk.sh` used the wrong path in **two** places: the verify at the end,
 and the "already installed?" test before the download. The first is a loud
 failure. The second means the install branch runs every time, re-downloading
 ~1 GB, and *a run that re-downloads looks exactly like one that skipped, only
 slower*. Nobody would ever have reported it.
 
-`40-python-venv.sh` is the mirror image. It installs five packages and tests
+`35-python-venv.sh` is the mirror image. It installs five packages and tests
 three. Satisfy the three and the install branch never runs again — so the two
 missing ones are not merely undetected, they are **unreachable**. The board
 reported `0 changed, 5 already correct` while two libraries were absent.
@@ -85,7 +85,7 @@ watching ~4 GB of Zephyr checkout and toolchain, and project-wide search walked
 all of it. The board simply ran hotter and swapped sooner.
 
 It now lives in `provision/user/vscode-machine-settings.json` and is installed
-by `50-shell-env.sh` if absent. The general rule: **configuration that is not in
+by `40-shell-env.sh` if absent. The general rule: **configuration that is not in
 the repo does not survive a restore, and configuration whose absence is silent
 will not be noticed when it does not.**
 
@@ -174,7 +174,7 @@ whether the code can make X unnecessary or impossible to forget.**
 
 ### 12 — a warning that was worse than wrong
 
-`40-purge-arduino.sh` said the purge takes `~/.arduino15` with it, so the stock
+`55-purge-arduino.sh` said the purge takes `~/.arduino15` with it, so the stock
 image is gone forever. Measured after a real run: `~/.arduino15` is still there,
 **621 MB of it**, stock `.hex` included. apt removes packages, not files in
 `$HOME`.

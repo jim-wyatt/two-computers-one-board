@@ -6,7 +6,7 @@
 #   sudo ~/two-computers-one-board/usb/gadget-down.sh            # unbind, keep the definition
 #   sudo ~/two-computers-one-board/usb/gadget-down.sh --purge    # and delete it from configfs
 #
-# Idempotent. This is the revert path for provision/60-usb-gadget.sh, and the
+# Idempotent. This is the revert path for provision/95-usb-gadget.sh, and the
 # thing to run before rebuilding the fileshare image - the host must not be
 # holding the image open while share/build-image.sh remounts it read-write.
 #

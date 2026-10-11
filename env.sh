@@ -14,7 +14,7 @@
 # which is only right if you cloned to exactly that path. A `git clone` with no
 # destination puts the checkout wherever the repository is named, and then
 # zbuild, zflash, hpy and mcucon all point at a directory that does not exist,
-# while everything else keeps working. 50-shell-env.sh already points ~/.bashrc
+# while everything else keeps working. 40-shell-env.sh already points ~/.bashrc
 # at the real checkout; this makes the rest of the file agree with it.
 #
 # NO FALLBACK PATH. There used to be one - `${BASH_SOURCE[0]:-$HOME/<repo>/env.sh}`

@@ -37,7 +37,7 @@ has not been purged still has a copy:
 A find rather than a path, because the layout has moved: on core 0.55.2 the
 image is in firmwares/, not the variants/ directory this used to name.
 
-bootstrap.sh takes that copy during preflight, and 40-purge-arduino.sh refuses
+bootstrap.sh takes that copy during preflight, and 55-purge-arduino.sh refuses
 to run without one. If you have neither - purged an older checkout, or lost the
 backup - a factory restore puts the packages back, and with them the image.
 That is the only way back, and it is worth knowing it EXISTS: the copy is

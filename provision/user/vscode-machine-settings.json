@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 //
 // Board-wide VS Code Server settings, installed to
-// ~/.vscode-server/data/Machine/settings.json by 50-shell-env.sh.
+// ~/.vscode-server/data/Machine/settings.json by 40-shell-env.sh.
 //
 // These are the MACHINE-scoped ones: they are about this board having 3.6 GB of
 // RAM and a slow-ish disk, not about this project. The project's own settings

@@ -52,11 +52,11 @@ usage() {
   cat <<'EOF'
 
 Options:
-  --with-purge        also remove the Arduino Debian packages (40)
-  --with-cpu-bars     also run the LED-matrix demo at boot (50) - holds ttyHS1
-  --with-usb-gadget   also enable IP-over-USB + the fileshare (60)
+  --with-purge        also remove the Arduino Debian packages (55)
+  --with-cpu-bars     also run the LED-matrix demo at boot (65) - holds ttyHS1
+  --with-usb-gadget   also enable IP-over-USB + the fileshare (95)
                       WARNING: drops the USB host port and anything on it
-  --with-learning     also serve the learning content over HTTP (70)
+  --with-learning     also serve the learning content over HTTP (75)
   --everything        all of the above
 
 Each has been run on one board only, and is NOT part of --everything:
@@ -227,7 +227,7 @@ FREE_MB=$(df -Pm "$HOME" | awk 'NR==2 {print $4}')
 # directories and still has the downloading to do.
 INSTALLED_WS="${ZEPHYR_WORKSPACE:-$HOME/zephyrproject}"
 # The SDK that will be asked for, not any SDK: an older one lying about does
-# not save the download. Same default as provision/user/20-zephyr-sdk.sh.
+# not save the download. Same default as provision/user/25-zephyr-sdk.sh.
 INSTALLED_SDK="$HOME/zephyr-sdk-${ZEPHYR_SDK_VERSION:-1.0.1}"
 if [ -d "$INSTALLED_WS/modules/hal/stm32" ] &&
   { [ -x "$INSTALLED_SDK/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc" ] ||
@@ -246,7 +246,7 @@ skip "network reachable"
 # Take the stock MCU image now, while it is certainly still there.
 #
 # It ships in the arduino-* debs, so a factory-fresh board has one and a board
-# that has been purged or reflashed does not. 40-purge-arduino.sh also saves it,
+# that has been purged or reflashed does not. 55-purge-arduino.sh also saves it,
 # but that step is optional and most people never run it - so on most boards the
 # only copy sits in ~/.arduino15 until the day it is wanted, which is usually
 # the day after something removed it. It is 634 KB and it is not ours to redistribute,
@@ -273,22 +273,22 @@ run_step() {
 }
 
 run_step "10  board optimisation (root)" sudo "$PROJECT/provision/10-optimize-board.sh"
-run_step "20  dev tools (root)" sudo "$PROJECT/provision/20-dev-tools.sh"
+run_step "15  dev tools (root)" sudo "$PROJECT/provision/15-dev-tools.sh"
 
-run_step "u10 host tools: uv, cmake, ninja, west" user "$PROJECT/provision/user/10-host-tools.sh"
-run_step "u20 Zephyr SDK" user "$PROJECT/provision/user/20-zephyr-sdk.sh"
-run_step "u30 Zephyr workspace (the long download)" user "$PROJECT/provision/user/30-zephyr-workspace.sh"
-run_step "u40 python venv + unoq package" user "$PROJECT/provision/user/40-python-venv.sh"
-run_step "u50 shell env + git hook" user "$PROJECT/provision/user/50-shell-env.sh"
+run_step "20  host tools: uv, cmake, ninja, west (you)" user "$PROJECT/provision/user/20-host-tools.sh"
+run_step "25  Zephyr SDK (you)" user "$PROJECT/provision/user/25-zephyr-sdk.sh"
+run_step "30  Zephyr workspace, the long download (you)" user "$PROJECT/provision/user/30-zephyr-workspace.sh"
+run_step "35  python venv + unoq package (you)" user "$PROJECT/provision/user/35-python-venv.sh"
+run_step "40  shell env + git hook (you)" user "$PROJECT/provision/user/40-shell-env.sh"
 
-# 30 needs the venv from u40 to verify the GPIO lines, so it runs after it.
-run_step "30  MCU link GPIOs (root)" sudo "$PROJECT/provision/30-mcu-link.sh"
+# 45 needs the venv from 35 to verify the GPIO lines, so it runs after it.
+run_step "45  MCU link GPIOs (root)" sudo "$PROJECT/provision/45-mcu-link.sh"
 # Unconditional, deliberately: these are the board's only output when the
 # network is down and nobody can log in, so they must not depend on an extra.
-run_step "35  status LEDs (root)" sudo "$PROJECT/provision/35-status-leds.sh"
+run_step "50  status LEDs (root)" sudo "$PROJECT/provision/50-status-leds.sh"
 
 [ "$WITH_PURGE" = 1 ] &&
-  run_step "40  purge Arduino packages (root)" sudo "$PROJECT/provision/40-purge-arduino.sh"
+  run_step "55  purge Arduino packages (root)" sudo "$PROJECT/provision/55-purge-arduino.sh"
 
 # --- MCU firmware ----------------------------------------------------------
 
@@ -315,7 +315,7 @@ BUILD_LOG="${TMPDIR:-/tmp}/zbuild-bootstrap.log"
 FLASH_LOG="${TMPDIR:-/tmp}/zflash-bootstrap.log"
 
 if [ "$SKIP_MCU" = 0 ]; then
-  printf '\n%s########## MCU firmware ##########%s\n' "$P_BOLD" "$P_OFF"
+  printf '\n%s########## 60  MCU firmware ##########%s\n' "$P_BOLD" "$P_OFF"
   step "build"
   if bash "$PROJECT/mcu/zbuild.sh" "$PROJECT/mcu/app" >"$BUILD_LOG" 2>&1; then
     did "firmware built (log: $BUILD_LOG)"
@@ -333,7 +333,7 @@ fi
 # No copy of what is on the chip, so do not write over it.
 #
 # This used to be a warning that the flash then walked straight past, while
-# 40-purge-arduino.sh - which only deletes the file the copy is made from -
+# 55-purge-arduino.sh - which only deletes the file the copy is made from -
 # refuses outright in the same situation. The step that overwrites the firmware
 # itself was the one that did not check. A factory restore brings the stock
 # image back, so nothing here was unrecoverable; it was just not what anyone
@@ -372,7 +372,7 @@ fi
 # --- optional extras -------------------------------------------------------
 
 [ "$WITH_CPU_BARS" = 1 ] &&
-  run_step "50  CPU bars at boot (root)" sudo "$PROJECT/provision/50-cpu-bars.sh"
+  run_step "65  CPU bars at boot (root)" sudo "$PROJECT/provision/65-cpu-bars.sh"
 # Both of the next two hand out the same image: the web server serves from it
 # and the gadget exports it as the drive. Nothing used to build it here, so
 # --with-learning stopped at "has no content. Build the share first" on every
@@ -381,10 +381,10 @@ fi
 # documentation itself, so this is the whole of what they need. The VS Code
 # installers are a separate, deliberate download: share/fetch-vscode.sh.
 if [ "$WITH_LEARNING" = 1 ] || [ "$WITH_USB_GADGET" = 1 ]; then
-  run_step "65  the drive image, with this documentation on it (root)" sudo "$PROJECT/share/build-image.sh"
+  run_step "70  the drive image, with this documentation on it (root)" sudo "$PROJECT/share/build-image.sh"
 fi
 [ "$WITH_LEARNING" = 1 ] &&
-  run_step "70  learning content web server (root)" sudo "$PROJECT/provision/70-learning-web.sh"
+  run_step "75  learning content web server (root)" sudo "$PROJECT/provision/75-learning-web.sh"
 # The two that are asked for by name only (see the argument parsing). Down
 # here, after the firmware build and the image build, so the watchdog is never
 # armed for the first time with the longest jobs of the run still ahead of it,
@@ -398,7 +398,7 @@ fi
 run_step "90  disk space back (root)" sudo "$PROJECT/provision/90-cleanup.sh"
 # Last, always: it takes the USB host port down with it.
 [ "$WITH_USB_GADGET" = 1 ] &&
-  run_step "60  USB gadget (root)" sudo "$PROJECT/provision/60-usb-gadget.sh"
+  run_step "95  USB gadget (root)" sudo "$PROJECT/provision/95-usb-gadget.sh"
 
 # --- done ------------------------------------------------------------------
 
@@ -413,11 +413,11 @@ cat <<EOF
 
 EOF
 [ "$WITH_CPU_BARS" = 0 ] &&
-  echo "  LED matrix demo at boot:  sudo bash provision/50-cpu-bars.sh"
+  echo "  LED matrix demo at boot:  sudo bash provision/65-cpu-bars.sh"
 [ "$WITH_PURGE" = 0 ] &&
-  echo "  Reclaim the Arduino disk: sudo bash provision/40-purge-arduino.sh"
+  echo "  Reclaim the Arduino disk: sudo bash provision/55-purge-arduino.sh"
 [ "$WITH_USB_GADGET" = 0 ] &&
-  echo "  IP over USB + fileshare:  sudo bash provision/60-usb-gadget.sh"
+  echo "  IP over USB + fileshare:  sudo bash provision/95-usb-gadget.sh"
 echo
 
 # Once, after everything that was going to run has run. What is left here is
