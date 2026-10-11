@@ -68,10 +68,15 @@ gadget_iface() {
   fi
 }
 
-# process <pid> <comm> - a process the script can see, as /proc would show it.
+# process <pid> <comm> [argv...] - a process the script can see, as /proc would
+# show it: comm, and the command line with a NUL after every word.
 process() {
-  mkdir -p "$UNOQ_PROC/$1"
-  echo "$2" >"$UNOQ_PROC/$1/comm"
+  local pid="$1" comm="$2"
+  shift 2
+  mkdir -p "$UNOQ_PROC/$pid"
+  echo "$comm" >"$UNOQ_PROC/$pid/comm"
+  [ "$#" -gt 0 ] && printf '%s\0' "$@" >"$UNOQ_PROC/$pid/cmdline"
+  return 0
 }
 
 # --- the bridge ------------------------------------------------------------------
@@ -159,11 +164,37 @@ A
 }
 
 @test "a DHCP client that is already running is not started a second time" {
+  # As it really looks: started as `busybox udhcpc`, so comm is "busybox".
   echo 4321 >"$UNOQ_RUN_DIR/unoq-usb-udhcpc.pid"
-  process 4321 busybox
+  process 4321 busybox busybox udhcpc --interface=br-usb --background
   run "$NETUP"
   [ "$status" -eq 0 ]
   refute ran_like '^busybox udhcpc'
+}
+
+@test "nor is one started through a udhcpc symlink" {
+  echo 4321 >"$UNOQ_RUN_DIR/unoq-usb-udhcpc.pid"
+  process 4321 udhcpc /sbin/udhcpc -i br-usb
+  run "$NETUP"
+  [ "$status" -eq 0 ]
+  refute ran_like '^busybox udhcpc'
+}
+
+@test "another BusyBox applet with that pid is not mistaken for the DHCP client" {
+  # Every applet started as `busybox <name>` is called "busybox" by the kernel.
+  echo 4321 >"$UNOQ_RUN_DIR/unoq-usb-udhcpc.pid"
+  process 4321 busybox busybox syslogd -n
+  run "$NETUP"
+  [ "$status" -eq 0 ]
+  ran_like '^busybox udhcpc '
+}
+
+@test "an argument that merely mentions udhcpc does not count" {
+  echo 4321 >"$UNOQ_RUN_DIR/unoq-usb-udhcpc.pid"
+  process 4321 busybox busybox tail -f /var/log/udhcpc.log
+  run "$NETUP"
+  [ "$status" -eq 0 ]
+  ran_like '^busybox udhcpc '
 }
 
 @test "a pid file whose process has gone does not stop a new client starting" {
@@ -185,7 +216,7 @@ A
 
 @test "a pid file that does not hold a number is not trusted" {
   echo "4321; reboot" >"$UNOQ_RUN_DIR/unoq-usb-udhcpc.pid"
-  process 4321 busybox
+  process 4321 busybox busybox udhcpc
   run "$NETUP"
   [ "$status" -eq 0 ]
   ran_like '^busybox udhcpc '

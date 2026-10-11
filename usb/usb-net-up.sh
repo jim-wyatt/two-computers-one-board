@@ -106,6 +106,24 @@ pid_is() {
   return 1
 }
 
+# is_udhcpc <pidfile> - is the process in that file the DHCP client?
+#
+# comm alone cannot say. udhcpc is a BusyBox applet: started as
+# `busybox udhcpc`, the kernel calls the process "busybox", and so it calls
+# every other applet started that way. So the command line is read as well, and
+# one of its words has to be udhcpc. (Started through a `udhcpc` symlink, comm
+# is udhcpc and that is enough.)
+is_udhcpc() {
+  local pid arg
+  pid_is "$1" udhcpc && return 0
+  pid_is "$1" busybox || return 1
+  pid="$(cat "$1" 2>/dev/null)"
+  while IFS= read -r -d '' arg; do
+    case "$arg" in udhcpc | */udhcpc) return 0 ;; esac
+  done <"$PROC/$pid/cmdline" 2>/dev/null
+  return 1
+}
+
 # is_ipv4 <string> - four numbers, each 0 to 255, and nothing else.
 # What it guards is a command line: the last address is read from a file and
 # handed to udhcpc as --request=<it>. "Digits and dots" let through
@@ -209,7 +227,7 @@ fi
 # size of tool for the job - one interface, one lease, a handler script.
 command -v busybox >/dev/null 2>&1 || die "busybox not installed (needed for udhcpc)"
 
-if pid_is "$UDHCPC_PID" busybox udhcpc; then
+if is_udhcpc "$UDHCPC_PID"; then
   log "udhcpc already running (pid $(cat "$UDHCPC_PID"))"
 else
   rm -f "$UDHCPC_PID"
