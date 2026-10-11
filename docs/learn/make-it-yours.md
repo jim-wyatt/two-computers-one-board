@@ -15,7 +15,7 @@ Worth naming, because most of it is not about this board:
 
 - **Which half a job belongs on.** Timing determinism versus throughput and
   convenience. This is the transferable skill.
-- **Two computers with no shared memory** must serialise, frame, and tolerate
+- **Two computers with no shared memory** must serialize, frame, and tolerate
   failure — the same discipline as any distributed system, at 2 cm.
 - **Cross-compilation**: the machine you build on need not be the machine you run
   on, and the toolchain is named after its target.
@@ -43,7 +43,7 @@ heights. Do it as a second mode of the existing demo.
 [Four lights that tell the truth](four-lights.md) — but what each one reports is
 a decision, and you may want a different one. LED 1 and LED 2 are driven by
 `status/leds.sh`, LED 3 and LED 4 by `mcu/app/src/status_leds.c`. Pick a state
-you care about, decide which colour it deserves, and check your choice against
+you care about, decide which color it deserves, and check your choice against
 that chapter's rule: a change in the light must tell you something you did not
 already know.
 

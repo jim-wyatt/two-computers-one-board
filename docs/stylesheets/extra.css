@@ -2,7 +2,7 @@
  * Copyright (c) 2026 Jim Wyatt
  * SPDX-License-Identifier: MIT
  *
- * Everything here is either the project's colour, or a correction to a
+ * Everything here is either the project's color, or a correction to a
  * Material default that does not suit long technical prose. It is deliberately
  * short: a theme you have rewritten is a theme you now maintain.
  */
@@ -30,7 +30,7 @@
   --md-accent-bg-color--light: #ffffffb3;
 }
 
-/* In dark mode the header keeps the deep teal instead of going flat grey, and
+/* In dark mode the header keeps the deep teal instead of going flat gray, and
  * links lift to something readable against it. */
 [data-md-color-scheme="slate"] {
   --md-hue: 210;
@@ -46,7 +46,7 @@
 [data-md-color-scheme="slate"][data-md-color-accent="custom"] {
   --md-accent-fg-color: #3fc3b8;
   --md-accent-fg-color--transparent: #3fc3b81a;
-  /* The colour of text drawn ON the accent, which is what a hovered button
+  /* The color of text drawn ON the accent, which is what a hovered button
    * is. Left at white it works out at 2.1:1 against the light teal above. */
   --md-accent-bg-color: #082726;
 }
@@ -55,7 +55,7 @@
  * and Material paints buttons with the same variable it paints the header
  * with. Measured on the home page in the dark scheme: the two outlined
  * buttons were 1.45:1 against the page, and the filled one was the same
- * 1.45:1 as a shape. Links already had their own lifted colour; buttons now
+ * 1.45:1 as a shape. Links already had their own lifted color; buttons now
  * use it too, and the filled one takes the light scheme's teal, which carries
  * white text at 6.1:1. */
 [data-md-color-scheme="slate"] .md-typeset .md-button {
@@ -338,7 +338,7 @@
   background: var(--md-code-bg-color);
 }
 
-/* The link colour, not the primary. They are the same teal in the light
+/* The link color, not the primary. They are the same teal in the light
  * scheme; in the dark one the primary is the header's background, and these
  * two headings measured 1.11:1 against their box. */
 .split h3 {
@@ -430,7 +430,7 @@
   overflow-x: auto;
 }
 
-/* Centred with auto margins on a block, not with text-align on the parent.
+/* Centered with auto margins on a block, not with text-align on the parent.
  * Auto margins collapse to zero when the drawing is wider than the block, so
  * a wide diagram starts at the left edge and all of it can be scrolled to.
  * Centring an overflowing inline box can put its left end where no scrollbar

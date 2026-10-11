@@ -271,7 +271,7 @@ Windows host meant an elevated `route add 10.55.0.0 mask 255.255.255.0
 
 The address is still sticky, for anyone who prefers typing numbers: the last
 lease is remembered in `/var/lib/unoq/usb-dhcp-last` and re-requested next
-time, and ICS honours the request in practice.
+time, and ICS honors the request in practice.
 
 Move the cable to a different computer and that request is the wrong one to
 make - ICS shares from `192.168.137.0/24`, macOS Internet Sharing from
@@ -452,7 +452,7 @@ path to the board at all. Not slow: absent.
 The reachability check is ARP, not ping. **Windows blocks ICMP to its ICS
 adapter by default**, so the gateway that is routing your traffic perfectly well
 does not answer a ping, and refusing on that basis would refuse in the normal
-case. A resolved neighbour proves frames cross the wire and get answered, which
+case. A resolved neighbor proves frames cross the wire and get answered, which
 is the property "will I still be able to reach this board" actually depends on.
 
 **It looks in both address families, and the second one is not decoration.**
@@ -460,11 +460,11 @@ When nothing serves DHCP, the board autoconfigures a `169.254/16` address and
 the host does the same, but neither side ARPs for the other until something
 sends IPv4 traffic — whereas IPv6 link-local comes up unprompted and is what
 carries the ssh session. Asking only IPv4 therefore failed in exactly the
-no-DHCP case the neighbour fallback exists for: the v4 table held one `FAILED`
+no-DHCP case the neighbor fallback exists for: the v4 table held one `FAILED`
 entry with no `lladdr`, the v6 table held the host `REACHABLE`, and `check`
 reported *"no computer on br-usb"* to someone logged in over that very link. A
 gateway still wins when there is one — an address the host routes with beats one
-it merely answers on — then IPv4 neighbours, then IPv6. Multicast is never a
+it merely answers on — then IPv4 neighbors, then IPv6. Multicast is never a
 peer.
 
 `off` also kicks the DHCP client into renewing, because NetworkManager owns

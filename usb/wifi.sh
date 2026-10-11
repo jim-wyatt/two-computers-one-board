@@ -103,7 +103,7 @@ usb_gateway() {
 # A gateway is the good case. A link-local address is the other one worth
 # knowing about: it means the cable found a computer but nothing is serving
 # DHCP, so there is a peer to reach the board from and no route past it. Falling
-# back to the neighbour table rather than refusing outright keeps `off` usable
+# back to the neighbor table rather than refusing outright keeps `off` usable
 # for the "reach the board from this one machine" case, which is a legitimate
 # thing to want - preflight still warns that nothing else is reachable.
 #
@@ -116,7 +116,7 @@ usb_gateway() {
 # function reported "no computer on br-usb" to a person connected through it.
 #
 # v4 is still asked first: an address the host routes with is a better answer
-# than one it merely answers on. Multicast is excluded because a neighbour that
+# than one it merely answers on. Multicast is excluded because a neighbor that
 # is not a host is not a way back in.
 usb_peer() {
   local gw peer
@@ -139,7 +139,7 @@ usb_peer() {
 # and refusing on that basis would refuse in the normal case. The ping is worth
 # trying because it succeeds outright on macOS and Linux hosts - and when it
 # fails it has still forced ARP, which is the check that matters. A resolved
-# neighbour means frames cross the wire and get answered, which is exactly the
+# neighbor means frames cross the wire and get answered, which is exactly the
 # property "will I still be able to reach this board" depends on.
 #
 # The family is taken from the address rather than left to `ping` to guess,
@@ -187,7 +187,7 @@ preflight() {
     die "$BRIDGE does not exist - run usb/usb-net-up.sh first."
   peer="$(usb_peer)"
   [ -n "$peer" ] ||
-    die "no computer on $BRIDGE: no gateway, and no IPv4 or IPv6 neighbour either.
+    die "no computer on $BRIDGE: no gateway, and no IPv4 or IPv6 neighbor either.
        Plug the cable in and check usb/status.sh. If the host is meant to be
        sharing its connection, that is the thing to turn on - on Windows,
        Internet Connection Sharing on the adapter the board appears as."

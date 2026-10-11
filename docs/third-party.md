@@ -2,12 +2,12 @@
 
 Everything in this repository is MIT-licensed (see [LICENSE](../LICENSE)) **except**
 the files listed here, which belong to other projects and keep their own terms.
-Each one carries its original licence header — do not replace those with this
+Each one carries its original license header — do not replace those with this
 project's.
 
 ## Trademarks and affiliation
 
-**This is an independent project. It is not affiliated with, authorised by,
+**This is an independent project. It is not affiliated with, authorized by,
 sponsored by, or endorsed by any of the companies or projects named in it.**
 
 Arduino® and UNO®, Qualcomm® and Snapdragon®, STMicroelectronics® and STM32®,
@@ -23,7 +23,7 @@ They are used here **descriptively** — to say accurately what this software
 runs on, builds with and talks to. You cannot explain a Zephyr application that
 flashes an STM32 over SWD without naming Zephyr and STM32. That is descriptive
 use, not a claim on the names, and nothing here should be read as suggesting
-that any of these organisations produced, reviewed or endorsed this project.
+that any of these organizations produced, reviewed or endorsed this project.
 
 - The only third-party mark shown is GitHub's, as the link to this project's
   repository. No other vendor logo, icon or brand artwork is used or
@@ -31,26 +31,26 @@ that any of these organisations produced, reviewed or endorsed this project.
   drawn for this project and MIT-licensed like the rest of it.
 - No vendor binaries or firmware images are redistributed. See
   [Not included](#not-included) for what was deliberately removed and why.
-- Where third-party *files* are included, they keep their own licence headers
+- Where third-party *files* are included, they keep their own license headers
   and are listed below.
 
 If you own one of these marks and object to how it is used here, open an issue
 and it will be changed.
 
-## Licences, not trademarks
+## Licenses, not trademarks
 
 The rest of this page is about **copyright and licensing** — which files belong
 to whom, and under what terms. That is a separate question from the trademark
-notice above, and the two are easy to conflate: a permissive licence on a
+notice above, and the two are easy to conflate: a permissive license on a
 project's *code* grants nothing at all in respect of its *name*.
 
-| File | Owner | Licence |
+| File | Owner | License |
 |---|---|---|
 | `.vscode/STM32U585.svd` | STMicroelectronics | Apache-2.0 |
 | `.clang-format` | The Zephyr Project | Apache-2.0 |
 
 Both are copied unmodified, and both keep the notice they came with. The text of
-the Apache licence is in [`LICENSES/Apache-2.0.txt`](../LICENSES/Apache-2.0.txt).
+the Apache license is in [`LICENSES/Apache-2.0.txt`](../LICENSES/Apache-2.0.txt).
 
 ## Derived work
 
@@ -72,7 +72,7 @@ is six lines naming which GPIO lines carry SWD; the numbers are Arduino's.
 Not redistributed here — you install them yourself, and they are listed for
 completeness because the firmware links against them:
 
-| | Licence |
+| | License |
 |---|---|
 | [Zephyr RTOS](https://github.com/zephyrproject-rtos/zephyr) (+ MCUboot) | Apache-2.0 |
 | [OpenOCD](https://openocd.org/) — built by `tools/build-openocd.sh` | GPL-2.0-or-later |
@@ -95,14 +95,14 @@ This page is part of a site built by Material for MkDocs, and the build copies
 some of that project's work into the output. That output ships on the USB drive
 and is served over the network, so it is redistribution and belongs here.
 
-| In `share/learn/` | Owner | Licence |
+| In `share/learn/` | Owner | License |
 |---|---|---|
 | `assets/stylesheets/`, `assets/javascripts/bundle.*.js` | Martin Donath (squidfunk) and contributors — Material for MkDocs | MIT |
 | inside that bundle | RxJS; tslib; clipboard.js; escape-html; focus-visible | Apache-2.0; 0BSD; MIT; MIT; W3C |
 | `assets/javascripts/workers/search.*.js` | Oliver Nightingale — lunr.js | MIT |
 | `assets/javascripts/lunr/min/` | Mihai Valentin and others — lunr-languages, with the Snowball stemmers | MPL-1.1 |
 | `assets/javascripts/lunr/tinyseg.js`, `wordcut.js` | Taku Kudo — TinySegmenter; Vee Satayamas — wordcut | see each project |
-| `assets/external/unpkg.com/mermaid@11/` | The Mermaid authors. It bundles DOMPurify, d3, dagre, cytoscape, KaTeX, lodash and others, each under its own permissive licence | MIT |
+| `assets/external/unpkg.com/mermaid@11/` | The Mermaid authors. It bundles DOMPurify, d3, dagre, cytoscape, KaTeX, lodash and others, each under its own permissive license | MIT |
 | `assets/external/unpkg.com/iframe-worker/` | Martin Donath | MIT |
 | Icons, inlined as SVG | Pictogrammers — Material Design Icons; GitHub — Octicons; Fonticons — Font Awesome Free | Apache-2.0; MIT; CC BY 4.0 |
 
@@ -130,13 +130,13 @@ of its own — over the USB fileshare and over `unoq-learn`.
 
 | | Owner | Terms |
 |---|---|---|
-| VS Code installers (`.exe`, `.zip`, `.deb`, `.tar.gz`) | Microsoft | [Microsoft Software Licence Terms](https://code.visualstudio.com/license) |
+| VS Code installers (`.exe`, `.zip`, `.deb`, `.tar.gz`) | Microsoft | [Microsoft Software License Terms](https://code.visualstudio.com/license) |
 
 They are **not** in this repository and are not published by this project. They
 are fetched from `update.code.visualstudio.com` at the moment you run that
 script, onto your own hardware, and land inside `unoq-share.img` which is
 likewise not tracked here. Handing them on to other people is redistribution
-and is governed by Microsoft's terms, not by this project's MIT licence.
+and is governed by Microsoft's terms, not by this project's MIT license.
 
 Note that the official builds are not the MIT-licensed `vscode` source — they
 add Microsoft-proprietary components. If you would rather ship something freely
@@ -147,7 +147,7 @@ instead.
 
 Earlier revisions of this project kept a `backup/` directory holding Arduino's
 stock MCU firmware image, Arduino's `remoteocd` helper binary, and OpenOCD
-target configuration files. Those are other people's build artefacts and are
+target configuration files. Those are other people's build artifacts and are
 not this project's to redistribute, so they are not published here and have
 been removed from the git history.
 

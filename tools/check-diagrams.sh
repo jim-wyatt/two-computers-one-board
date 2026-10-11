@@ -10,7 +10,7 @@
 # Because they did not, and nothing noticed. Twelve diagrams were added to the
 # course, the build was clean, `--strict` was happy, the markup was right, the
 # library was vendored and served with a 200 - and every one of them came out as
-# a block of grey text, on every page, for hours.
+# a block of gray text, on every page, for hours.
 #
 # Nothing in a static-site build can catch that. The failure is in the browser,
 # after the page loads, and the page is perfectly valid either way. The only
@@ -196,7 +196,7 @@ GOOD='graph LR
 fixture _selftest-ok.html "$GOOD" yes
 # Must NOT pass, in the two ways a diagram has actually failed here: the source
 # does not parse and mermaid draws its error graphic instead, and nothing calls
-# mermaid.run() so the source sits there as grey text. A gate that cannot fail
+# mermaid.run() so the source sits there as gray text. A gate that cannot fail
 # these two is not checking anything, however green it is.
 fixture _selftest-syntax.html 'graph LR
   A[in] --&gt;' yes

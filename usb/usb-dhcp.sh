@@ -51,10 +51,10 @@
 # There is a host that deserves better than that, and it is not rare - it is a
 # Windows box whose ICS is NAT-ing perfectly while its DHCP half answers
 # nothing. The gateway is up, it forwards, and the only thing missing is the
-# address. usb-profile.sh recognises that host by ARP, takes an address on its
+# address. usb-profile.sh recognizes that host by ARP, takes an address on its
 # subnet, and keeps it only if a packet actually reaches the internet.
 #
-# So the order on leasefail is: a recognised host that routes, else link-local.
+# So the order on leasefail is: a recognized host that routes, else link-local.
 # Still exactly one address on the bridge, whichever it is.
 set -uo pipefail
 
@@ -91,7 +91,7 @@ DNS_PROBE_NAME="${UNOQ_USB_DNS_PROBE_NAME:-example.com}"
 # returns. Long enough for a cold answer over a NAT, short enough to bound that.
 DNS_TIMEOUT="${UNOQ_USB_DNS_TIMEOUT:-5}"
 # Overridable for the same reason as UNOQ_AUTOIPD above: a name is not a seam,
-# and "what happens on a board that has no nslookup" is a behaviour worth being
+# and "what happens on a board that has no nslookup" is a behavior worth being
 # able to test rather than reason about.
 NSLOOKUP="${UNOQ_NSLOOKUP:-nslookup}"
 # udhcpc exports this; default it once here rather than at every use, because
@@ -204,7 +204,7 @@ choose_resolvers() {
   local candidates="$1" answering="" public="" s
   RESOLVERS="$candidates"
   DNS_NOTE=""
-  # No nslookup - no verification, and the old behaviour rather than a guess.
+  # No nslookup - no verification, and the old behavior rather than a guess.
   # A board that cannot ask the question has not learned that the answer is no.
   command -v "$NSLOOKUP" >/dev/null 2>&1 || return 0
   for s in $candidates; do
@@ -371,7 +371,7 @@ case "${1:-}" in
       # guessing is worse than taking the common case and saying so.
       *)
         plen=24
-        log "unrecognised netmask '$mask' - assuming /24"
+        log "unrecognized netmask '$mask' - assuming /24"
         ;;
     esac
 
@@ -419,7 +419,7 @@ case "${1:-}" in
     #
     # Forgetting costs nothing when the NAK was not a swap: the address is a
     # request, not a claim, and a host that refused it once was not going to
-    # honour it the second time either.
+    # honor it the second time either.
     log "DHCP NAK from the host - the lease was refused"
     if [ -e "$LAST" ]; then
       refused=""
@@ -447,7 +447,7 @@ case "${1:-}" in
     # A known host is the better fallback, because it comes with a GATEWAY.
     # Link-local never can: RFC 3927 forbids using a 169.254 next hop for
     # off-link traffic, so a board on link-local can reach the one computer it
-    # is plugged into and nothing beyond it. If usb-profile.sh recognises what
+    # is plugged into and nothing beyond it. If usb-profile.sh recognizes what
     # is on the other end and can prove traffic gets out through it, that is
     # worth strictly more than an address nobody can route.
     #

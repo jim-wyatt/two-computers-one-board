@@ -7,7 +7,7 @@ Host CPU load on the LED matrix - the whole hybrid loop in one command.
     python -m unoq.cpubars --interval 0.25
 
 The MPU samples /proc/stat (cpu.py), sends whole percentages over the serial
-link (mcu.py), and the MCU rasterises them onto the panel from a timer ISR
+link (mcu.py), and the MCU rasterizes them onto the panel from a timer ISR
 (mcu/app/src/bars.c). Nothing here knows how a bar is drawn, and nothing on the
 MCU knows what a core is.
 """

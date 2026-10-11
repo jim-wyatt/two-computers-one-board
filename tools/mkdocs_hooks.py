@@ -12,7 +12,7 @@ places: on GitHub, and on the rendered site the board serves.
                     +--> this hook --> python-markdown --> Material --> site
 
 Neither transformation is allowed to make the source worse to read. That rules
-out the usual approach of writing site-flavoured markdown and accepting that
+out the usual approach of writing site-flavored markdown and accepting that
 GitHub shows the syntax as literal text.
 """
 
@@ -66,7 +66,7 @@ def _rewrite_target(target: str, page_dir: str, repo_blob: str) -> str:
 # 2. GitHub alerts -> Material admonitions
 # --------------------------------------------------------------------------
 #
-# GitHub renders this as a coloured callout:
+# GitHub renders this as a colored callout:
 #
 #     > [!TIP]
 #     > **Go deeper** - the reference pages have the exact detail.

@@ -36,7 +36,7 @@ Seven entries. This project's first attempt read that as seven indicators, lit
 them independently, and produced a board showing two solid blue lights and no
 information whatsoever.
 
-They are not seven LEDs. They are **two RGB packages** — three colour channels
+They are not seven LEDs. They are **two RGB packages** — three color channels
 each — plus one kernel entry (`mmc0::`) for a light that is not on this board at
 all. `user-red1`, `user-green1` and `user-blue1` are the red, green and blue
 elements of a single physical LED. Drive all three and you get white, which is
@@ -70,13 +70,13 @@ part is what got rejected.
 | **slow blink** | blue | a computer is on the USB cable, but nothing beyond it |
 | **fast blink** | red | no uplink at all |
 
-Each state has a rhythm as well as a colour. Take the rhythm on trust for now;
-[why it is there](#colour-alone-was-not-enough) comes after the design it
+Each state has a rhythm as well as a color. Take the rhythm on trust for now;
+[why it is there](#color-alone-was-not-enough) comes after the design it
 rescued.
 
 Blue is the one that earns its keep. "Cable plugged in but the host is not
 sharing its connection" and "nothing there at all" are completely different
-problems with completely different fixes, and without a third colour they look
+problems with completely different fixes, and without a third color they look
 identical.
 
 ### LED 2 — does anything need a human?
@@ -104,7 +104,7 @@ way of never saying that something is wrong.
 
 A dark LED cannot distinguish "nothing is wrong" from "the thing that checks
 whether anything is wrong is not running". Those need very different responses,
-so healthy is a *colour*, not an absence: a lit, steady light. The service that
+so healthy is a *color*, not an absence: a lit, steady light. The service that
 drives these has `Restart=always` and an `ExecStopPost` that turns them off —
 so if the checker dies, the board goes dark rather than staying confidently
 green.
@@ -175,22 +175,22 @@ chip's health, and it is on the correct chip to say it.
 > while that service runs and blinking red a few seconds after it stops, and it
 > starts out blinking red at every MCU reset until the first command arrives.
 
-## Colour alone was not enough
+## Color alone was not enough
 
-Everything above was first built with colour as the only channel, and mostly
-with one pair of colours: red against green. That is the one pair that roughly
+Everything above was first built with color as the only channel, and mostly
+with one pair of colors: red against green. That is the one pair that roughly
 one man in twelve cannot reliably tell apart. To them LED 2 and LED 4 each had
 a single state, and LED 3's green, yellow and red were three shades of much the
 same thing. The board said "everything is fine" and "this needs a human" with
 the same light.
 
 The mistake is worth looking at, because it came straight out of an argument
-that was right. Healthy has to be a colour rather than an unlit LED — so every
-state became a colour — so colour was carrying *all* of the information, and
+that was right. Healthy has to be a color rather than an unlit LED — so every
+state became a color — so color was carrying *all* of the information, and
 nobody had asked whether it could be read. A great deal of care went into what
 the lights say and none into whether they can be seen saying it.
 
-The fix is a second channel that does not pass through colour at all: time.
+The fix is a second channel that does not pass through color at all: time.
 
 | | means | looks like |
 |---|---|---|
@@ -199,8 +199,8 @@ The fix is a second channel that does not pass through colour at all: time.
 | **fast blink** | a fault that needs a human | twice a second |
 | **dark** | nothing is driving this LED | the checker is not running |
 
-Colour still says what it said. But no LED uses one rhythm for two states, so
-the rhythm identifies the state by itself, and colour has become the second
+Color still says what it said. But no LED uses one rhythm for two states, so
+the rhythm identifies the state by itself, and color has become the second
 witness instead of the only one. It cost a timer, not a wire.
 
 Three things about it are deliberate.
@@ -232,11 +232,11 @@ decision — lit on this beat, or not — drives every channel of the LED.
 This is not the blink that got thrown away. Blinking on every message was
 rejected because its period belonged to somebody else's timer, so it told you
 only that the timer was running. Here the rhythm is a property of the *state*,
-exactly as the colour is, and it changes only when the state does. The rule at
+exactly as the color is, and it changes only when the state does. The rule at
 the top of the page is intact: the news is still the change.
 
 > [!NOTE]
-> If a kernel offers no `timer` trigger, `leds.sh` shows the colour steady
+> If a kernel offers no `timer` trigger, `leds.sh` shows the color steady
 > and says so, once, in its log. Half the information is better than a dark
 > LED. Check what yours offers with
 > `cat /sys/class/leds/unoq:user-red1/trigger`.
@@ -248,7 +248,7 @@ after confirming an image by hand, LED 3 stayed yellow — reporting a state tha
 had been true at boot and was no longer true.
 
 The fix is a one-second work item that re-reads `boot_is_img_confirmed()` while
-the image is unconfirmed. The lesson generalises: **an indicator that samples
+the image is unconfirmed. The lesson generalizes: **an indicator that samples
 once is a memory, not an instrument.** Everything here re-samples — Linux every
 five seconds, reachability every sixty, the MCU every one — so the lights
 correct themselves instead of remembering something that stopped being true.
@@ -304,7 +304,7 @@ sudo systemctl start unoq-cpu-bars    # steady green within a second or two
 
 Last, read the board the way one reader in twelve has to. Look at it through
 your phone's camera with a black-and-white filter on, or simply from far enough
-away that the colours wash out, and repeat the two experiments above. You
+away that the colors wash out, and repeat the two experiments above. You
 should be able to say which state each LED is in from its rhythm alone.
 
 > [!TIP]
@@ -318,7 +318,7 @@ should be able to say which state each LED is in from its rhythm alone.
 ## Check yourself
 
 1. Seven entries in `/sys/class/leds/`, four physical LEDs. Explain.
-2. Why is "healthy" a colour here rather than an unlit LED?
+2. Why is "healthy" a color here rather than an unlit LED?
 3. LED 4 is driven by the MCU and reports on Linux. Why can that not be done the
    other way round?
 4. You want to add a fifth indicator for "the storage is nearly full". Argue
@@ -329,7 +329,7 @@ should be able to say which state each LED is in from its rhythm alone.
 <details markdown="1">
 <summary>Answers — try each one first</summary>
 
-1. **The entries are colour channels, not LEDs.** Six of the seven are the red,
+1. **The entries are color channels, not LEDs.** Six of the seven are the red,
    green and blue elements of two RGB packages, and `mmc0::` is a kernel entry
    for a light that is not on this board at all. That makes two physical LEDs
    for Linux; the other two belong to the STM32, which sees them as `led3_*`
@@ -349,7 +349,7 @@ should be able to say which state each LED is in from its rhythm alone.
    "nearly" means, whether anything else already tells you, and whether it is
    worth a glance every time you look at the board. A good answer also makes
    it re-sample, makes "not full" a lit, steady light rather than an unlit
-   LED, and gives "nearly full" a rhythm as well as a colour.
+   LED, and gives "nearly full" a rhythm as well as a color.
 5. **Because the rhythm belongs to the state, not to the traffic.** The
    rejected blink happened once per message, so its period was somebody else's
    timer and it reported only that the timer was running. These blink at a

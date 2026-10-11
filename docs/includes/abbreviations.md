@@ -41,7 +41,7 @@ This file is NOT in the nav and renders as nothing on its own.
 *[SBL]: Secondary Boot Loader — the boot stage after the mask ROM
 *[SMP]: Simple Management Protocol — the protocol MCUboot and mcumgr speak for firmware updates
 *[SoC]: System on Chip — processor, memory controller and peripherals on one piece of silicon
-*[SPDX]: Software Package Data Exchange — the standard one-line licence identifier at the top of each file
+*[SPDX]: Software Package Data Exchange — the standard one-line license identifier at the top of each file
 *[SPI]: Serial Peripheral Interface — a fast four-wire bus for talking to nearby chips
 *[SVD]: System View Description — a machine-readable map of a chip's registers, used by debuggers
 *[SWD]: Serial Wire Debug — Arm's two-wire interface for flashing and debugging a chip

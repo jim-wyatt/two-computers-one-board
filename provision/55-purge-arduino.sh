@@ -6,7 +6,7 @@
 #   sudo bash ~/two-computers-one-board/provision/55-purge-arduino.sh
 #
 # Their services are already disabled by 15-dev-tools.sh, so this only reclaims
-# disk - it does not change behaviour. Run it when you are confident you will
+# disk - it does not change behavior. Run it when you are confident you will
 # not go back. Idempotent: a second run finds nothing to remove.
 #
 # SAFETY: /opt/openocd is owned by NO package (`dpkg -S /opt/openocd` finds

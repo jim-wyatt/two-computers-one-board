@@ -91,7 +91,7 @@ cannot: *where exactly* is it stuck.
 
 ## Failure modes that look like nothing
 
-Embedded failures are often silent. A catalogue of the ones this board actually
+Embedded failures are often silent. A catalog of the ones this board actually
 produces:
 
 | Symptom | Very likely cause |
@@ -176,7 +176,7 @@ with MCU() as mcu: print(mcu.status())
 sudo systemctl start unoq-cpu-bars
 ```
 
-You have just practised the whole method: observe the failure, form a specific
+You have just practiced the whole method: observe the failure, form a specific
 hypothesis, test *it* rather than changing code, confirm.
 
 ### Why that error message is worth having

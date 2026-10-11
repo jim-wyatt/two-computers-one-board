@@ -186,7 +186,7 @@ step "preflight"
 # `compatible` is a list of NUL-separated strings, most-specific first. It has
 # to be split ON the NULs, not stripped OF them: `tr -d` concatenated the three
 # tokens into "arduino,imolaqcom,qrb2210qcom,qcm2290", which matches neither
-# board, so this check warned "unrecognised board" on every UNO Q and every
+# board, so this check warned "unrecognized board" on every UNO Q and every
 # VENTUNO Q it ever ran on - an identity check that had never once identified
 # anything.
 BOARD="$(tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | head -1)"
@@ -194,7 +194,7 @@ case "$BOARD" in
   arduino,imola) skip "board: Arduino UNO Q ($BOARD)" ;;
   arduino,monza) skip "board: Arduino VENTUNO Q ($BOARD)" ;;
   "") warn "cannot read the devicetree - this may not be an UNO Q. Continuing." ;;
-  *) warn "unrecognised board '$BOARD' - written for arduino,imola. Continuing." ;;
+  *) warn "unrecognized board '$BOARD' - written for arduino,imola. Continuing." ;;
 esac
 
 # SUDO, ONCE, AND THEN KEPT
@@ -303,7 +303,7 @@ run_step() {
   fi
 }
 
-run_step "10  board optimisation (root)" sudo "$PROJECT/provision/10-optimize-board.sh"
+run_step "10  board optimization (root)" sudo "$PROJECT/provision/10-optimize-board.sh"
 run_step "15  dev tools (root)" sudo "$PROJECT/provision/15-dev-tools.sh"
 
 run_step "20  host tools: uv, cmake, ninja, west (you)" user "$PROJECT/provision/user/20-host-tools.sh"

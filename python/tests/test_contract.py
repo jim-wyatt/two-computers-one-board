@@ -124,7 +124,7 @@ def test_the_fake_shell_uses_the_prompt_the_firmware_prints() -> None:
     )
 
 
-def test_the_parser_recognises_the_real_prompt() -> None:
+def test_the_parser_recognizes_the_real_prompt() -> None:
     """Both places mcu.py looks for it: _clean() drops the prompt line, and
     cmd() uses it to decide a response has finished arriving."""
     assert mcu._PROMPT.match(firmware_prompt().strip())
@@ -185,7 +185,7 @@ def test_the_failure_line_is_not_a_reading() -> None:
 def test_the_firmware_marks_a_refusal_the_way_python_looks_for_it() -> None:
     """A refused command has to look like one from both ends.
 
-    Zephyr's shell_error() only colours a line, and the colour is stripped
+    Zephyr's shell_error() only colors a line, and the color is stripped
     before MCU.cmd() reads it. The handlers used to print a bare message, so a
     refused command came back as an ordinary reply and nothing was raised. The
     prefix is now a macro the handlers share, and this pins it to the one

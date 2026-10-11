@@ -18,7 +18,7 @@
 # happens to overwrite it.
 #
 # Three tests, because "a NAK deletes a file" is satisfiable by deleting the
-# file at every opportunity. What makes it a behaviour is that `bound` writes
+# file at every opportunity. What makes it a behavior is that `bound` writes
 # it and `deconfig` - which runs on every stop and every start - leaves it
 # alone.
 #

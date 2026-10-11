@@ -12,7 +12,7 @@
 #include <zephyr/kernel.h>
 
 /* Node labels rather than the led0/led1 aliases: the aliases cover only two of
- * the six channels (led3_green and led3_red), and colour is the whole point.
+ * the six channels (led3_green and led3_red), and color is the whole point.
  */
 #define LED_SPEC(node) GPIO_DT_SPEC_GET_OR(DT_NODELABEL(node), gpios, {0})
 
@@ -64,13 +64,13 @@ static void set_rgb(const struct gpio_dt_spec *led, int r, int g, int b)
 }
 
 /* The one place a look becomes pins. `lit` is worked out once and gates every
- * channel, so a two-channel colour cannot blink out of step with itself.
+ * channel, so a two-channel color cannot blink out of step with itself.
  */
 static void show(const struct gpio_dt_spec *led, struct status_look look)
 {
 	bool lit = status_rhythm_lit(look.rhythm, tick);
-	bool red = look.colour == STATUS_RED || look.colour == STATUS_YELLOW;
-	bool green = look.colour == STATUS_GREEN || look.colour == STATUS_YELLOW;
+	bool red = look.color == STATUS_RED || look.color == STATUS_YELLOW;
+	bool green = look.color == STATUS_GREEN || look.color == STATUS_YELLOW;
 
 	set_rgb(led, lit && red, lit && green, 0);
 }
@@ -176,7 +176,7 @@ void status_leds_set_image_confirmed(bool confirmed)
 	confirmed_seen = confirmed;
 	/* Yellow is red+green together. The only place in this project where two
 	 * channels are lit at once, and it earns it: "on probation" is neither
-	 * healthy nor broken, and it gets a colour and a rhythm of its own to
+	 * healthy nor broken, and it gets a color and a rhythm of its own to
 	 * say so. Shown now rather than on the next beat, as the fault below is.
 	 */
 	look3 = status_led3_look(false, confirmed);

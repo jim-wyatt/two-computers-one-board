@@ -123,7 +123,7 @@ def _resolving_to(*addrs: str) -> Any:
 def test_addresses_drops_the_loopback_answer(monkeypatch: pytest.MonkeyPatch) -> None:
     # THE bug this filter exists for. With no external address configured,
     # nss-myhostname answers the local hostname with 127.0.0.2 - documented
-    # behaviour - and it used to be printed as the address to browse to.
+    # behavior - and it used to be printed as the address to browse to.
     monkeypatch.setattr("unoq.learn.socket.getaddrinfo", _resolving_to("127.0.0.2"))
     assert learn.addresses(8080) == []
 

@@ -24,7 +24,7 @@
 # These tests also killed a check that could never fire. install_unit briefly
 # asserted "no placeholder remains after substitution", which sounds sensible
 # and is impossible - sed replaces it wherever it appears. Test 6 is what is
-# left of that: it pins the actual behaviour instead.
+# left of that: it pins the actual behavior instead.
 
 # The literal that provision/lib.sh substitutes. These must agree: when the
 # repository was renamed, this file was (deliberately) left out of the sweep
@@ -280,7 +280,7 @@ unit() {
 
 # lib.sh's own write_file, aimed at the temp root. load_lib replaces it with a
 # stub that always writes, which is right for every test above and useless
-# here: whether an existing unit is recognised as out of date IS the test.
+# here: whether an existing unit is recognized as out of date IS the test.
 # shellcheck disable=SC2329  # the three functions are called by install_unit
 real_write_file() {
   eval "$(

@@ -43,7 +43,7 @@ quality gate, and the conventions.
 - **No secrets, and nothing that is somebody else's to distribute.** See
   [third-party.md](docs/third-party.md).
 
-## Licence
+## License
 
 By contributing you agree that your contribution is released under the
-project's [MIT licence](LICENSE).
+project's [MIT license](LICENSE).

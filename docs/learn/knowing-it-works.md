@@ -39,7 +39,7 @@ minute). A `--fast` run that passes ends like this:
   PASS  pytest + coverage
   PASS  shellcheck
   PASS  shfmt
-  PASS  bats (shell behaviour)
+  PASS  bats (shell behavior)
   PASS  units and udev rules (systemd)
   PASS  zephyr version pin
   PASS  clang-format
@@ -57,9 +57,9 @@ What each one looks for:
 |---|---|
 | `ruff lint`, `ruff format` | Python mistakes, and Python layout |
 | `mypy (strict)` | Python type errors |
-| `pytest + coverage` | Python behaviour, with every branch run by a test |
+| `pytest + coverage` | Python behavior, with every branch run by a test |
 | `shellcheck`, `shfmt` | shell mistakes, and shell layout |
-| `bats (shell behaviour)` | what the shell scripts do, with no board involved |
+| `bats (shell behavior)` | what the shell scripts do, with no board involved |
 | `units and udev rules (systemd)` | a unit file or udev rule systemd would reject |
 | `zephyr version pin` | the two places the Zephyr version is written disagreeing |
 | `clang-format` | C layout |
@@ -113,7 +113,7 @@ mcu/ztest.sh          # what `tools/check.sh mcu` runs
 
 This project tests two things that way:
 
-- **`bars/`** — the rasteriser: given four CPU percentages, which of the 104
+- **`bars/`** — the rasterizer: given four CPU percentages, which of the 104
   pixels light up, and at what brightness. Pure arithmetic, no hardware, and
   exactly the kind of code that is embarrassing to get wrong.
 - **`link_protocol/`** — framing and parsing of the messages coming from Linux.
@@ -126,7 +126,7 @@ part is as small and as dumb as possible.
 
 ```mermaid
 flowchart TB
-  A["CPU percentages"] --> B["bars.c<br/><small>rasteriser</small>"]
+  A["CPU percentages"] --> B["bars.c<br/><small>rasterizer</small>"]
   B --> C["104 brightness values"]
   C --> D["matrix.c<br/><small>registers, interrupt handler</small>"]
   D --> E["the panel"]
@@ -180,13 +180,13 @@ shell tests. The numbers have moved since; the shape has not:
 | Python | 807 | 104 tests, 100% of branches |
 | C | 965 | ztest on `native_sim` |
 
-The largest component by a factor of five had **no behavioural tests at all**.
+The largest component by a factor of five had **no behavioral tests at all**.
 And nearly every finding in
 [the log](../reference/clean-board-findings.md) was in shell or in a `systemd`
 unit — hardly any were in the Python or the C that all the testing effort went
 into.
 
-That is a very common shape, and it is worth recognising in your own projects:
+That is a very common shape, and it is worth recognizing in your own projects:
 **the tested part is usually the part that was easy to test**, not the part most
 likely to hurt you.
 
@@ -353,7 +353,7 @@ this gate existed, and nothing noticed for months.
 
 > [!TIP]
 > **Go deeper** — [pytest](https://docs.pytest.org/),
-> [Ruff](https://docs.astral.sh/ruff/) (its rule index is a readable catalogue
+> [Ruff](https://docs.astral.sh/ruff/) (its rule index is a readable catalog
 > of mistakes worth not making) and
 > [ztest](https://docs.zephyrproject.org/latest/develop/test/ztest.html) with
 > [twister](https://docs.zephyrproject.org/latest/develop/test/twister.html) for
@@ -378,7 +378,7 @@ this gate existed, and nothing noticed for months.
    `pytest`, having type-checked nothing and run no tests at all. That is
    worse than no gate.
 2. **`bars.c` is pure arithmetic; `matrix.c` touches registers.** The
-   rasteriser needs no hardware, so it runs under `native_sim`. The
+   rasterizer needs no hardware, so it runs under `native_sim`. The
    charlieplexing driver writes `MODER` and `BSRR` directly, and there is no
    such register on a laptop. The design made it true by splitting the code:
    the interesting logic sits on the testable side, and the untestable part is
@@ -387,7 +387,7 @@ this gate existed, and nothing noticed for months.
    result will do: coverage measures which lines ran, not whether the
    assertion was any good, and a test that calls every function and asserts
    nothing scores 100%. A good example names a specific wrong value — say, the
-   rasteriser lighting the wrong pixel in a test that never looks at the
+   rasterizer lighting the wrong pixel in a test that never looks at the
    pixels.
 4. **No single answer.** A good answer puts the fault in what only the board
    exercises. CI proves the logic and the build, never the board, and

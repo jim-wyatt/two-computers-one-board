@@ -66,7 +66,7 @@ _PROMPT = re.compile(r"^\s*\S*:~\$\s*$")
 
 
 class MCUError(RuntimeError):
-    """The MCU reported an error, or returned something unparseable."""
+    """The MCU reported an error, or returned something unparsable."""
 
 
 class PortBusy(MCUError):

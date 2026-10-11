@@ -71,10 +71,10 @@
 # Hooking bind-guard.sh and wifi.sh would light the LEDs at the moment things
 # change, and be wrong forever afterwards if anything changed underneath. A
 # stale LED is worse than a dark one, because it is confidently wrong. Sampling
-# is self-correcting: pull the cable and within one interval the colours tell
+# is self-correcting: pull the cable and within one interval the colors tell
 # the truth again, whatever caused it.
 #
-# COLOUR ALONE WAS NOT ENOUGH
+# COLOR ALONE WAS NOT ENOUGH
 # ---------------------------
 # The first scheme said everything in hue, and mostly in red against green -
 # the one pair that about one man in twelve cannot tell apart. To them LED 2
@@ -89,7 +89,7 @@
 #                than three: that is the ceiling for anything that flashes)
 #   dark         nothing is driving the LED: the checker is not running
 #
-# Colour still means what it meant; it is now the second witness rather than
+# Color still means what it meant; it is now the second witness rather than
 # the only one. The blinking is done by the kernel's `timer` trigger, not by
 # this script's loop: a loop that wakes every five seconds cannot blink at four
 # hertz, and the kernel's timer keeps time between passes at no cost.
@@ -120,12 +120,12 @@ LEDS="${UNOQ_LED_DIR:-/sys/class/leds}"
 # and would have broken silently the moment either moved.
 GUARD="${UNOQ_BIND_GUARD:-$HERE/../usb/bind-guard.sh}"
 
-# LED 1, driven from here as one colour at a time. Order: red, green, blue.
+# LED 1, driven from here as one color at a time. Order: red, green, blue.
 # Reached by name through a nameref in set_led, which shellcheck cannot follow.
 # shellcheck disable=SC2034
 LED1=(unoq:user-red1 unoq:user-green1 unoq:user-blue1)
 
-# LED 2 - is anything wrong? Same one-colour-at-a-time treatment as LED 1.
+# LED 2 - is anything wrong? Same one-color-at-a-time treatment as LED 1.
 # shellcheck disable=SC2034
 LED2=(unoq:panic-red2 unoq:wlan-green2 unoq:bt-blue2)
 
@@ -201,7 +201,7 @@ declare -A NO_TIMER_SAID=()
 # then waits. See set_led.
 SETTLE=0.05
 
-# set_led <array-name> <colour> [steady|slow|fast]
+# set_led <array-name> <color> [steady|slow|fast]
 #
 # TWO THINGS THIS IS CAREFUL ABOUT
 #
@@ -230,9 +230,9 @@ SETTLE=0.05
 #   4. delay_off on each, back to back         each restarts, so comes ON, a
 #                                              few microseconds apart
 #
-# A single-channel colour has nobody to keep step with and skips the waiting.
+# A single-channel color has nobody to keep step with and skips the waiting.
 # Linux's own states are all single-channel today; the two-channel path is
-# there because set_led offers yellow and white, and offering a colour that
+# there because set_led offers yellow and white, and offering a color that
 # blinks wrongly would be a trap. It is reasoned from the kernel source and has
 # not yet been watched on the board - `show 1 yellow slow` is how to watch it.
 set_led() {
@@ -256,14 +256,14 @@ set_led() {
     [ "${on[$i]}" = 1 ] && chan_ours "${chans[$i]}" && lit+=("${chans[$i]}")
   done
 
-  # No timer trigger, no rhythm. The colour is still true, so show that, and
+  # No timer trigger, no rhythm. The color is still true, so show that, and
   # say once what has been lost rather than once every pass.
   if [ "$ms" != 0 ]; then
     for c in "${lit[@]}"; do
       grep -qw timer "$LEDS/$c/trigger" 2>/dev/null && continue
       if [ -z "${NO_TIMER_SAID[$1]:-}" ]; then
         echo "leds: $1 cannot blink - $c offers no 'timer' trigger." \
-          "Showing colour only, steady; fine and faulty now differ by hue alone." >&2
+          "Showing color only, steady; fine and faulty now differ by hue alone." >&2
         NO_TIMER_SAID[$1]=1
       fi
       ms=0
@@ -399,7 +399,7 @@ case "${1:-}" in
     # Three seconds each: long enough to count a slow blink three times.
     for look in "green steady" "blue slow" "red fast"; do
       echo "  LED 1  ${look#* }, ${look% *}"
-      # shellcheck disable=SC2086 # two words on purpose: colour, rhythm
+      # shellcheck disable=SC2086 # two words on purpose: color, rhythm
       set_led LED1 $look
       sleep 3
     done
@@ -431,7 +431,7 @@ Four RGB LEDs in a row, at the end of the board opposite the USB-C port. From
 the board's edge inwards: LED 4, LED 3, LED 2, LED 1. Linux drives LED 1 and
 LED 2, the two furthest from the edge; LED 3 and LED 4 belong to the STM32.
 
-Each state has a rhythm as well as a colour, and the rhythm is enough by
+Each state has a rhythm as well as a color, and the rhythm is enough by
 itself - you do not need to tell red from green to read these:
 
   steady       fine

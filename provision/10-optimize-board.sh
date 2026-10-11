@@ -185,7 +185,7 @@ apt_install "python${PYVER}-dev"
 # --- Docker images: the Arduino App framework's container runtime. ~2 GB. ---
 # These are pulled by the stock image and nothing here uses them: the Arduino
 # app stack is what runs containers, and 15-dev-tools.sh disables it. On a
-# stock board they are three images totalling ~2 GB with no containers, so all
+# stock board they are three images totaling ~2 GB with no containers, so all
 # of it is reclaimable - and it comes off /, which starts with about 3 GB free
 # and is the partition that runs out first.
 #

@@ -209,7 +209,7 @@ Three suites run. `ztest.sh` ends by saying how many cases passed; the number
 is not repeated here, where it would be wrong the next time one was added.
 
 - **`bars`** compiles [`mcu/app/src/bars.c`](../../mcu/app/src/bars.c) — the
-  firmware's own rasteriser, not a copy — and checks the drawing rules on the
+  firmware's own rasterizer, not a copy — and checks the drawing rules on the
   host, because a charlieplexed panel cannot be read back on the board. These
   are the only place the drawing rules are checked at all, so they assert
   properties (bars stay in their columns, height never falls as load rises,
@@ -219,7 +219,7 @@ is not repeated here, where it would be wrong the next time one was added.
   that `main.c`, these tests and `unoq/mcu.py` all depend on agreeing.
 - **`status_leds`** tests the three functions in
   [`mcu/app/include/status_leds.h`](../../mcu/app/include/status_leds.h) that
-  decide what LED 3 and LED 4 show: which colour and which rhythm each state
+  decide what LED 3 and LED 4 show: which color and which rhythm each state
   gets, and that no two states of one LED share a rhythm. They touch no
   hardware, which is why they can run on the host. One of them holds the fast
   blink under three flashes a second.

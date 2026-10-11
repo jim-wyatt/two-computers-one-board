@@ -2,7 +2,7 @@
  * Copyright (c) 2026 Jim Wyatt
  * SPDX-License-Identifier: MIT
  *
- * Host-runnable tests for the bar rasteriser the firmware ships.
+ * Host-runnable tests for the bar rasterizer the firmware ships.
  *
  * A charlieplexed panel is invisible to software: nothing the MCU can read
  * back tells you what is lit. That makes these tests the only place the
@@ -66,7 +66,7 @@ ZTEST(bars, test_layout_keeps_a_gap_between_bars)
 	}
 }
 
-ZTEST(bars, test_layout_is_centred)
+ZTEST(bars, test_layout_is_centered)
 {
 	/* Leftover columns are margin, split as evenly as an integer allows -
 	 * never handed to one bar, which would make it look busier. */
@@ -214,7 +214,7 @@ ZTEST(bars, test_height_never_falls_as_load_rises)
 
 ZTEST(bars, test_partial_rows_use_grayscale)
 {
-	/* Eight rows alone would quantise to 12.5% steps. Somewhere below one
+	/* Eight rows alone would quantize to 12.5% steps. Somewhere below one
 	 * whole row there has to be a dimmed pixel, or the vernier is not
 	 * working and small differences in load are invisible. */
 	const uint8_t pct[] = {6};

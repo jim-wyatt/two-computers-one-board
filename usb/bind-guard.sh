@@ -116,7 +116,7 @@ read_state() {
   raw="$(cat "$COUNTER" 2>/dev/null)"
   STATE_BOOT="${raw%% *}"
   STATE_COUNT="${raw##* }"
-  # Anything unparseable is a clean slate rather than an error: a file
+  # Anything unparsable is a clean slate rather than an error: a file
   # truncated by a reset mid-write must not be able to wedge the guard
   # permanently in either direction. This also migrates the older bare-number
   # format, which carries no boot id, by treating it as some previous boot.

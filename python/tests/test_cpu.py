@@ -59,7 +59,7 @@ def test_iowait_counts_as_idle(tmp_path: Path) -> None:
 
 def test_guest_columns_are_not_double_counted(tmp_path: Path) -> None:
     """proc(5) already includes guest time inside user, and guest_nice inside
-    nice. Summing all ten columns would count virtualised time twice and
+    nice. Summing all ten columns would count virtualized time twice and
     inflate the total, quietly shrinking every reading."""
     stat = "cpu0 100 0 100 800 0 0 0 0 70 30\n"
     assert read_cpu_times(write(tmp_path, stat))[0] == (200, 1000)

@@ -3,8 +3,8 @@
 """Tests for the Zephyr shell protocol and the parsing built on top of it.
 
 The parsing is the fragile part of this package: it consumes text produced by
-firmware that can change, over a UART that injects echo, ANSI colour and a
-prompt. Each test below pins one of those behaviours.
+firmware that can change, over a UART that injects echo, ANSI color and a
+prompt. Each test below pins one of those behaviors.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ def test_cmd_sends_crlf_and_strips_the_echo(mcu_factory: Any) -> None:
     assert mcu._s.written == ["app status"]
 
 
-def test_cmd_survives_ansi_colouring(mcu_factory: Any) -> None:
+def test_cmd_survives_ansi_coloring(mcu_factory: Any) -> None:
     mcu = mcu_factory({"device list": ["- gpio@1 (READY)"]}, ansi=True)
     assert mcu.cmd("device list") == ["- gpio@1 (READY)"]
 
@@ -101,7 +101,7 @@ def test_status_parses_the_firmware_status_line(mcu_factory: Any) -> None:
     assert mcu.status() == {"uptime_ms": 12216, "flip": 0, "sweeps": 1043712}
 
 
-def test_status_keeps_unparseable_values_as_strings(mcu_factory: Any) -> None:
+def test_status_keeps_unparsable_values_as_strings(mcu_factory: Any) -> None:
     # A firmware change should surface as an odd value, not a missing key.
     mcu = mcu_factory({"app status": ["uptime_ms=25 mode=fast"]})
     assert mcu.status() == {"uptime_ms": 25, "mode": "fast"}
@@ -147,14 +147,14 @@ def test_die_temp_keeps_the_sign_below_freezing(mcu_factory: Any) -> None:
     assert mcu.die_temp() == -1.5
 
 
-def test_die_temp_survives_colour_and_a_dribbling_uart(mcu_factory: Any) -> None:
+def test_die_temp_survives_color_and_a_dribbling_uart(mcu_factory: Any) -> None:
     mcu = mcu_factory({"app temp": ["temp_mc=40000"]}, ansi=True, chunk_size=3)
     assert mcu.die_temp() == 40.0
 
 
 def test_die_temp_reports_a_sensor_the_firmware_could_not_read(mcu_factory: Any) -> None:
     # shell_error() prints in red and adds no "Error:" prefix, so cmd() lets
-    # this line through; die_temp() has to recognise it for itself.
+    # this line through; die_temp() has to recognize it for itself.
     mcu = mcu_factory({"app temp": ["temp_err=-19"]}, ansi=True)
     with pytest.raises(MCUError, match=r"could not read its die temperature.*temp_err=-19"):
         mcu.die_temp()
@@ -174,7 +174,7 @@ def test_die_temp_says_so_when_the_firmware_predates_the_command(mcu_factory: An
         mcu.die_temp()
 
 
-def test_die_temp_raises_on_an_unparseable_reply(mcu_factory: Any) -> None:
+def test_die_temp_raises_on_an_unparsable_reply(mcu_factory: Any) -> None:
     mcu = mcu_factory({"app temp": ["temp_mc=warm"]})
     with pytest.raises(MCUError, match="could not parse app temp"):
         mcu.die_temp()
@@ -248,7 +248,7 @@ def test_matrix_flip_reports_being_flipped_back(mcu_factory: Any) -> None:
     assert mcu.matrix_flip() is False
 
 
-def test_matrix_flip_raises_on_an_unparseable_reply(mcu_factory: Any) -> None:
+def test_matrix_flip_raises_on_an_unparsable_reply(mcu_factory: Any) -> None:
     mcu = mcu_factory({"app matrix flip": ["what"]})
     with pytest.raises(MCUError, match="could not parse matrix flip"):
         mcu.matrix_flip()

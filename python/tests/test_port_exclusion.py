@@ -3,7 +3,7 @@
 """The port-exclusion path: who gets /dev/ttyHS1, and what you are told if not.
 
 Nothing here opens a real tty. `open_port` is a thin wrapper over
-`serial.Serial` plus one ioctl, so the interesting behaviour is entirely in
+`serial.Serial` plus one ioctl, so the interesting behavior is entirely in
 which exception comes out and what it says - and that is exactly the part that
 has never been covered.
 

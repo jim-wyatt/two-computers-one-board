@@ -99,9 +99,9 @@ Both are true, and the gap between a nominal constant and a measured value is
 worth being suspicious about in general — here it is benign, but the only reason
 we know that is that somebody measured.
 
-## Grey, from a panel that has no grey
+## Gray, from a panel that has no gray
 
-The LEDs are single-colour blue and can only be on or off. Yet the bars fade.
+The LEDs are single-color blue and can only be on or off. Yet the bars fade.
 
 The trick is the same one again, applied to brightness: an LED that should be
 at level 3 of 7 is lit on three sweeps out of every seven, and left dark on the
@@ -130,7 +130,7 @@ Linux measures and sends percentages; the microcontroller decides the pixels.
 ```mermaid
 flowchart TB
   A["/proc/stat<br/><small>counters</small>"] --> B["cpu.py<br/><small>percentages</small>"]
-  B -->|"4 numbers,<br/>twice a second"| C["bars.c<br/><small>rasteriser</small>"]
+  B -->|"4 numbers,<br/>twice a second"| C["bars.c<br/><small>rasterizer</small>"]
   C --> D["104 brightness<br/>values"]
   D --> E["matrix.c<br/><small>interrupt handler, every 10 µs</small>"]
   E --> F(["the panel"])
@@ -140,7 +140,7 @@ The message between them is tiny: four percentages, one per core. The measuring
 happens on Linux; the drawing, and everything time-critical, happens on the
 microcontroller; the wire between carries almost nothing.
 
-The rasteriser — the code that turns "core 2 is at 47%" into which pixels are
+The rasterizer — the code that turns "core 2 is at 47%" into which pixels are
 lit — lives in `mcu/app/src/bars.c`. It is **pure arithmetic with no hardware in
 it at all**, which is why it can be tested without the microcontroller: on the
 board's Linux side, as an ordinary program.
@@ -150,7 +150,7 @@ board's Linux side, as an ordinary program.
 ```
 
 Those tests build for `native_sim` — a fake Zephyr "board" that is really just a
-Linux program. The rasteriser cannot tell the difference, because it never
+Linux program. The rasterizer cannot tell the difference, because it never
 touches a pin. **Separating the calculation from the hardware is what made it
 testable**, and that is a habit worth taking to every embedded project you
 touch.
@@ -186,7 +186,7 @@ background, `sleep 6` waits, and `kill %1` stops the background job.
 > **Go deeper.** Which pin pair lights which LED, and how long each gets, are
 > facts read out of Arduino's own core for this panel. No code or table was
 > copied; they are credited in [Credits](../third-party.md#derived-work).
-> The driver is `mcu/app/src/matrix.c`; the rasteriser is `bars.c`.
+> The driver is `mcu/app/src/matrix.c`; the rasterizer is `bars.c`.
 
 ## Check yourself
 

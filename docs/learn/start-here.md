@@ -78,7 +78,7 @@ The chapters are meant to be read in order — each one assumes the one before
 it, and each ends with a link to the next. The full list is at the bottom of
 this page.
 
-Any term you do not recognise is in the [glossary](../glossary.md).
+Any term you do not recognize is in the [glossary](../glossary.md).
 
 Three kinds of thing appear on every page:
 

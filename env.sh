@@ -44,7 +44,7 @@ west() { "$HOME/zephyrproject/.venv/bin/west" "$@"; }
 
 # The three aliases below are double-quoted on purpose, so $UNOQ_PROJECT is
 # resolved once here rather than left to expand when you run them. That is what
-# SC2139 warns about, and it is the behaviour we want: the alias should keep
+# SC2139 warns about, and it is the behavior we want: the alias should keep
 # pointing at the checkout it was sourced from even if $HOME or the working
 # directory changes underneath it. Disabled per line, not per file, so a future
 # alias that genuinely wants late expansion still gets flagged.

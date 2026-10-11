@@ -115,7 +115,7 @@ else
   val "dhcp" "<udhcpc is not running>"
 fi
 # The host profile, when DHCP gave up but the computer on the other end was
-# recognised anyway. Worth a line of its own because the address on the bridge
+# recognized anyway. Worth a line of its own because the address on the bridge
 # then looks exactly like a leased one - same subnet, same gateway - and the
 # difference matters when something goes wrong: this address was claimed by the
 # board, not handed to it, so the host has no idea it exists.

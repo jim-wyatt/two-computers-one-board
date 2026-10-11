@@ -119,7 +119,7 @@ def test_a_temp_that_is_not_an_integer_is_left_out(tmp_path: Path, garbage: str)
 
 
 def test_a_zone_with_no_type_is_left_out(tmp_path: Path) -> None:
-    """A temperature with no name cannot be told apart from its neighbours,
+    """A temperature with no name cannot be told apart from its neighbors,
     and inventing one from the directory would make it look like a real zone."""
     add_zone(tmp_path, 0, None, "35800")
     add_zone(tmp_path, 1, "gpu-thermal", "33900")
