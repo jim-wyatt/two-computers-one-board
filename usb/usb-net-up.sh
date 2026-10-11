@@ -87,10 +87,11 @@ PROC="${UNOQ_PROC:-/proc}"
 # something with its number?
 #
 # This used to be `kill -0 "$(cat pidfile)"`, which asks whether any process
-# has the pid. A pid file outlives its process across a reboot, and pids are
-# reused: with a stale file naming a pid that now belongs to something else,
-# this script decided udhcpc was already running and did not start it, and the
-# link sat there with no address. The other use was worse - it KILLED whatever
+# has the pid. A daemon that dies without tidying up leaves its pid file
+# behind, and pids are reused: with a stale file naming a pid that now belongs
+# to something else, this script decided udhcpc was already running and did not
+# start it, and the link sat there with no address. (/run is emptied at boot,
+# so it takes a daemon dying, not a reboot. Rare, and silent when it happens.) The other use was worse - it KILLED whatever
 # held the pid in dnsmasq's old file. Same check as usb/wifi.sh and
 # usb/status.sh, for the same reason.
 pid_is() {

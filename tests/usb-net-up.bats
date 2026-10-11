@@ -174,7 +174,7 @@ A
 }
 
 @test "a pid file whose number now belongs to something else does not either" {
-  # After a reboot the file is still there and the pid is somebody else's.
+  # udhcpc died without removing its file, and the pid is somebody else's now.
   # Taking that for udhcpc leaves the link with no address and no client.
   echo 4321 >"$UNOQ_RUN_DIR/unoq-usb-udhcpc.pid"
   process 4321 sshd
@@ -250,8 +250,8 @@ A
 }
 
 @test "whatever now has dnsmasq's old pid is NOT killed" {
-  # The pid file survives a reboot; the number in it is reused. This script
-  # runs as root at every boot, and used to kill whoever held it.
+  # A stale pid file, and its number reused. This script runs as root at
+  # every boot and every plug-in, and used to kill whoever held it.
   sleep 30 &
   bystander=$!
   echo "$bystander" >"$UNOQ_RUN_DIR/unoq-usb-dnsmasq.pid"
