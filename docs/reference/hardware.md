@@ -305,7 +305,10 @@ people up, because only half of them are visible from Linux.
 | **LED 3** | **STM32** | `led3_red` / `led3_green` / `led3_blue` |
 | **LED 4** | **STM32** | `led4_red` / `led4_green` / `led4_blue` |
 
-They sit above the matrix, opposite the USB-C port.
+They sit in a row at the end of the board opposite the USB-C port, where the long
+header ends. From the board's edge inwards they are LED 4, LED 3, LED 2 and
+LED 1. So the two nearest the edge are the
+microcontroller's, and the two further in are Linux's.
 
 ### Six sysfs entries are two LEDs
 

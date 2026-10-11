@@ -427,8 +427,9 @@ case "${1:-}" in
     ;;
   explain)
     cat <<EOF
-Two RGB LEDs, above the matrix, opposite the USB-C port. Linux drives these
-two; LED 3 and LED 4 belong to the STM32.
+Four RGB LEDs in a row, at the end of the board opposite the USB-C port. From
+the board's edge inwards: LED 4, LED 3, LED 2, LED 1. Linux drives LED 1 and
+LED 2, the two furthest from the edge; LED 3 and LED 4 belong to the STM32.
 
 Each state has a rhythm as well as a colour, and the rhythm is enough by
 itself - you do not need to tell red from green to read these:

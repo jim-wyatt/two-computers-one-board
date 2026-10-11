@@ -56,7 +56,9 @@ says what you are trusting when you run it.
 
 ## Before you start
 
-- **An Arduino UNO Q** running the Debian image it shipped with.
+- **An Arduino UNO Q** running the Debian image it shipped with. This has been
+  run on the model with 4 GB of memory and 32 GB of storage.
+  [The smaller model](#the-2-gb-model) is untested.
 - **A computer** to type on: Windows, macOS or Linux.
 - **A USB-C cable that carries data**, between the two. Charge-only cables look
   identical and are common. If the board powers up and your computer never
@@ -64,9 +66,8 @@ says what you are trusting when you run it.
 - **The name and password of a wifi network** the board can use. The script
   downloads about 3 GB.
 - **About 6 GB of free space** in the board's home directory. A factory-fresh
-  board has about 7 GB, and the script checks.
-- **About 25 minutes**, most of which needs no attention. That is one timed
-  run, made before the download got smaller, so it should be an upper figure.
+  board has about 7 GB, and the script checks. It ends up using 3.3 GB.
+- **About 20 minutes**, most of which needs no attention.
   [How long each part took](#how-long-it-takes) is below.
 
 You do not need a screen, a keyboard or a network cable for the board, and you
@@ -154,9 +155,10 @@ That is the whole of step 0. The board has a password, it is online, and you
 have a terminal on it.
 
 > [!NOTE]
-> **What has been checked.** These four steps and the setup that follows were
-> run on a board freshly restored to the factory image, from a Windows
-> computer. The macOS and Linux install commands for `adb` are the standard
+> **What has been checked.** These four steps and the whole setup that follows
+> were run on a board freshly restored to the factory image, from a Windows 11
+> computer, through to the board reappearing on the cable as a network adapter
+> and a drive. The macOS and Linux install commands for `adb` are the standard
 > ones and were not run as part of that. If you already use SSH or a screen
 > and keyboard, any terminal logged in as `arduino` works just as well;
 > Arduino's [user manual](https://docs.arduino.cc/tutorials/uno-q/user-manual/)
@@ -233,38 +235,72 @@ undo it, and the stages the [optional extras](#the-optional-extras) add.
 
 ### How long it takes
 
-One run, timed: a factory-restored board, on wifi to a home broadband
-connection, with `--with-cpu-bars --with-usb-gadget`. Yours will differ with
-your connection; use it to know which parts are slow and that a quiet terminal
-is normal.
+One run, timed from start to finish: a board just restored to the factory
+image, on wifi to a home broadband connection, set up from `adb shell` with
+`--with-cpu-bars --with-usb-gadget`. The board was sampled every five seconds.
+Yours will differ with your connection; use this to know which parts are slow
+and that a quiet terminal is normal.
 
 | Stage | Took |
 |---|---|
-| The notice, and typing the password | under 1 minute |
-| `10` switching things off and upgrading every package | 7½ minutes |
-| `20` installing a compiler | 1 minute |
-| `u10` build tools | 20 seconds |
-| `u20` Zephyr SDK | 35 seconds |
-| `u30` Zephyr | 6½ minutes |
-| `u40`, `u50` Python and shell | 30 seconds |
-| `30`, `35` control lines and LEDs | 30 seconds |
-| Building the firmware | 3 minutes |
-| Building the bootloader and flashing both | 2½ minutes |
-| `50` the demo service | 10 seconds |
-| `65` the drive image | 40 seconds |
-| `90` giving disk space back | not timed: added after this run |
-| `60` the USB hand-over | not timed: it did not finish in this run |
-| **All of it, without the last two** | **about 24 minutes** |
+| The notice, and typing the password | 20 seconds |
+| `10` switching things off and upgrading 144 packages | 7 minutes 21 seconds |
+| `20` a compiler, and Arduino's services off | 1 minute 24 seconds |
+| `u10` build tools | 16 seconds |
+| `u20` Zephyr SDK | 42 seconds |
+| `u30` Zephyr | 2 minutes 21 seconds |
+| `u40`, `u50` Python and shell | 37 seconds |
+| `30`, `35` control lines and LEDs | 32 seconds |
+| Building and signing the firmware | 2 minutes 50 seconds |
+| Building the bootloader and flashing both | 2 minutes 28 seconds |
+| `50` the demo service | 5 seconds |
+| `65` the drive image | 42 seconds |
+| `90` giving disk space back | 5 seconds |
+| `60` the USB gadget | 47 seconds |
+| **All of it** | **20 minutes 25 seconds** |
 
-Three honest notes on those numbers. They were read by watching the board
-every fifteen seconds, so each is good to about that. `u30` has got shorter
-since: that run downloaded about 3.4 GB for it and the same step now downloads
-about 2 GB, which has not been timed on a board yet. And the last step of that
-run, `60`, is where it found a fault that has since been fixed; a run of it
-from start to finish is still to be made.
+Then, with `--with-usb-gadget` from `adb shell`: the shell closed 24 seconds
+after the run ended, and 21 seconds after that the board was back on the same
+cable as a network adapter and a drive.
 
-The two long silences are `10`, while packages upgrade, and `u30`, while Zephyr
-downloads. Neither prints much. Both are working.
+The two long silences are `10`, while packages upgrade, and the firmware
+build. Neither prints much. Both are working.
+
+A second run, when there is nothing left to install, took 90 seconds. Nearly
+all of that is the firmware being built and flashed again.
+
+### What it uses
+
+Measured during the same run, on the 4 GB board:
+
+| | |
+|---|---|
+| Most memory in use at once | 1.4 GB, while the firmware compiles. Every other stage stayed under 0.8 GB. |
+| Swap used | 3 MB |
+| Home directory when it finished | 3.9 GB used of 8 GB: 3.3 GB more than the factory image |
+| `/` when it finished | 1.6 GB *less* than the factory image, because Arduino's container images go |
+
+### The 2 GB model
+
+The UNO Q is also sold with 2 GB of memory and 16 GB of storage. **Nobody has
+run this on one**, so here is what the numbers above say and do not say.
+
+Memory is probably not the obstacle: the peak was 1.4 GB, for the few minutes
+the firmware compiles, and the board has compressed swap behind that. Expect
+that stage to be slower.
+
+Storage is the unknown. The setup needs 3.3 GB in the home directory, and on
+the 32 GB model that directory has an 8 GB partition to itself. How the 16 GB
+model is divided has not been looked at. Before you start, check:
+
+```bash
+df -h /home/arduino
+```
+
+If it shows less than 6 GB available, the script will warn and carry on. Below
+about 4 GB it is unlikely to finish. If you try it, an
+[issue](https://github.com/jim-wyatt/two-computers-one-board/issues) saying
+what happened, either way, would settle the question for everyone after you.
 
 ## How to tell it worked
 
@@ -298,9 +334,19 @@ try. Then:
     ./bootstrap.sh --skip-mcu
     ```
 
-2. **Look at the four small LEDs**, in a row on the board. Steady green on
-   all of them is a healthy board: it can reach the internet, nothing has
-   failed, the new firmware is running, and the two halves are talking. One
+2. **Look at the four small LEDs**, in a row at the end of the board opposite
+   the USB-C port. Steady green on all four is a healthy board. From the edge
+   inwards:
+
+    | | Steady green means |
+    |---|---|
+    | LED 4, nearest the edge | the microcontroller is hearing from Linux |
+    | LED 3 | the new firmware is running, and has confirmed itself |
+    | LED 2 | nothing on the Linux side has failed |
+    | LED 1 | the board can reach the internet |
+
+    LED 4 is green only with `--with-cpu-bars`, because that demo is what talks
+    to the microcontroller; without it LED 4 blinks red, which is correct. One
    that blinks red is telling you something specific;
    [Four lights](learn/four-lights.md) says what, or run
    `~/two-computers-one-board/status/leds.sh explain`.

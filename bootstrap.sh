@@ -27,9 +27,10 @@
 #     board, through reboots, and that is all: one can reset the board and the
 #     other edits the fstab entry it boots from, so --everything leaves both out
 #
-# TIME AND SPACE: about 25 minutes on a stock board over home broadband,
-# measured once, and before the download was cut by about 1.4 GB. The Zephyr
-# workspace (~2 GB) and SDK (~0.8 GB) are most of what is left. Make sure you have ~6 GB free: the builds and the drive image need
+# TIME AND SPACE: 20 minutes 25 seconds on a factory-restored board over home
+# broadband, timed once, with --with-cpu-bars --with-usb-gadget. The Zephyr
+# workspace (~2 GB) and SDK (~0.8 GB) are most of the download; 3.3 GB ends up
+# in the home directory. Make sure you have ~6 GB free: the builds and the drive image need
 # room as well.
 set -uo pipefail
 
@@ -216,7 +217,12 @@ SUDO_KEEPALIVE=$!
 trap "kill $SUDO_KEEPALIVE 2>/dev/null" EXIT
 
 FREE_MB=$(df -Pm "$HOME" | awk 'NR==2 {print $4}')
-if [ "$FREE_MB" -lt 6000 ]; then
+# Asked only of a board that still has the downloading ahead of it. On a second
+# run the SDK and the workspace are already there, about 3 GB of them, and this
+# warned that there was not room for what was sitting on the disk.
+if [ -d "$HOME/zephyrproject/zephyr" ] && [ -n "$(ls -d "$HOME"/zephyr-sdk-* 2>/dev/null)" ]; then
+  skip "${FREE_MB} MB free in $HOME (the SDK and workspace are already installed)"
+elif [ "$FREE_MB" -lt 6000 ]; then
   warn "only ${FREE_MB} MB free in $HOME - the SDK and workspace need ~3 GB, and the builds more"
 else
   skip "${FREE_MB} MB free in $HOME"

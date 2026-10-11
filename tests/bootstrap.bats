@@ -254,3 +254,33 @@ SH
   [[ "$output" == *"sudo is required"* ]]
   refute ran_like '^bash .*/provision/'
 }
+
+# --- free space ---------------------------------------------------------------
+
+tight_disk() {
+  stub df 0 "Filesystem 1048576-blocks Used Available Capacity Mounted on
+/dev/x 8206 3910 3943 50% /home/arduino"
+}
+
+@test "a board with little room and everything still to download is warned" {
+  tight_disk
+  bootstrap
+  [[ "$output" == *"only 3943 MB free"* ]]
+}
+
+@test "a second run is not warned about room for what is already installed" {
+  # 3.9 GB free on a board that has just been set up is the workspace and the
+  # SDK being there, not a shortage. It warned, on every later run.
+  tight_disk
+  mkdir -p "$HOME/zephyrproject/zephyr" "$HOME/zephyr-sdk-1.0.1"
+  bootstrap
+  [[ "$output" != *"only 3943 MB free"* ]]
+  [[ "$output" == *"already installed"* ]]
+}
+
+@test "a workspace with no SDK is not taken for a finished install" {
+  tight_disk
+  mkdir -p "$HOME/zephyrproject/zephyr"
+  bootstrap
+  [[ "$output" == *"only 3943 MB free"* ]]
+}

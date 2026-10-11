@@ -4,8 +4,9 @@ SPDX-License-Identifier: MIT
 -->
 # Four lights that tell the truth
 
-There are four RGB LEDs on this board, above the matrix and opposite the USB-C
-port. Out of the factory they do almost nothing useful. This chapter is about
+There are four RGB LEDs on this board, in a row at the end of the board opposite the USB-C port, where the long
+header ends. From the board's edge inwards they are LED 4, LED 3, LED 2 and
+LED 1. Out of the factory they do almost nothing useful. This chapter is about
 turning them into instruments — and it is really a chapter about **designing an
 indicator**, which is a harder problem than it sounds and one you will meet
 again on anything that has to report on itself.
