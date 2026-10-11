@@ -198,6 +198,9 @@ if grep -q "^CONFIG_BOOTLOADER_MCUBOOT=y" "$BUILD/zephyr/.config" 2>/dev/null; t
   # accept: signed with the key it holds, or it does not boot.
   "$IMGTOOL" verify -k "$KEY" "$BUILD/zephyr/zephyr.signed.bin" >/dev/null || {
     echo "the signed image does not verify against $KEY" >&2
+    # And not left behind: flash.sh only asks whether zephyr.signed.hex
+    # exists, and would flash an image this build has just rejected.
+    rm -f "$BUILD/zephyr/zephyr.signed.bin" "$BUILD/zephyr/zephyr.signed.hex"
     exit 1
   }
   echo "  -> $(basename "$BUILD")/zephyr/zephyr.signed.bin  (upload with unoq.fota)"

@@ -24,7 +24,8 @@ file, so the image is the same one - checked by signing one build both ways and
 comparing the digest imgtool reports.
 
     --align       the flash's write-block-size
-    --slot-size   the size of the partition labelled slot0_partition
+    --slot-size   the size of slot1_partition, or of slot0_partition if there
+                  is no slot1 (see the comment in params)
 
 The third number imgtool needs, the header size, is CONFIG_ROM_START_OFFSET in
 the build's .config, and zbuild.sh reads that itself.
@@ -60,15 +61,26 @@ def params(build: Path, zephyr_base: Path) -> tuple[int, int]:
     if not align:
         raise SystemExit("the flash's write-block-size is 0")
 
+    # slot1's size when there is a slot1, slot0's otherwise - which is west
+    # sign's rule, and not an accident. An update is written to slot1, and some
+    # layouts make it a sector smaller than slot0; an image signed to fit
+    # slot0 would then build, flash, run, and fail to fit the first time it was
+    # sent as an update. On this board the two are the same size, so signing
+    # for slot0 gave the same image, and would have gone on doing so until
+    # somebody changed the partition table.
     partitions = flash.children.get("partitions")
-    slot0 = None
+    slots = {}
     if partitions:
         for node in partitions.children.values():
-            if "slot0_partition" in node.labels:
-                slot0 = node
-    if slot0 is None or not slot0.regs:
+            for label in ("slot0_partition", "slot1_partition"):
+                if label in node.labels:
+                    slots[label] = node
+    if "slot0_partition" not in slots:
         raise SystemExit("the zephyr,flash node has no slot0_partition")
-    return int(align), int(slot0.regs[0].size)
+    slot = slots.get("slot1_partition", slots["slot0_partition"])
+    if not slot.regs or not slot.regs[0].size:
+        raise SystemExit("the slot the image must fit has no size in the devicetree")
+    return int(align), int(slot.regs[0].size)
 
 
 def main(argv: list[str]) -> int:

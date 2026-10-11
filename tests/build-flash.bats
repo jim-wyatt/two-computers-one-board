@@ -216,6 +216,21 @@ SH
   [[ "$output" == *"does not verify"* ]]
 }
 
+@test "an image that does not verify is not left where flash.sh would find it" {
+  on_a_runner
+  # An imgtool that writes its output, as the real one does, and then fails
+  # to verify it.
+  stub_body imgtool <<'SH'
+[ "$1" = verify ] && exit 1
+[ "$1" = sign ] && : >"${@: -1}"
+exit 0
+SH
+  run "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -ne 0 ]
+  [ ! -e "$ZEPHYR_WORKSPACE/build/zephyr/zephyr.signed.hex" ]
+  [ ! -e "$ZEPHYR_WORKSPACE/build/zephyr/zephyr.signed.bin" ]
+}
+
 @test "a signing that fails does not leave the last build's signed image behind" {
   # Otherwise flash.sh, which takes zephyr.signed.hex by default, would flash
   # the PREVIOUS firmware and report success.
