@@ -68,8 +68,10 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BRIDGE="${UNOQ_USB_BRIDGE:-br-usb}"
-UDHCPC_PID=/run/unoq-usb-udhcpc.pid
-DNSMASQ_PID=/run/unoq-usb-dnsmasq.pid
+RUN_DIR="${UNOQ_RUN_DIR:-/run}"
+NET_SYSFS="${UNOQ_NET_SYSFS:-/sys/class/net}"
+UDHCPC_PID="$RUN_DIR/unoq-usb-udhcpc.pid"
+DNSMASQ_PID="$RUN_DIR/unoq-usb-dnsmasq.pid"
 
 log() { echo "unoq-usb-net: $*"; }
 die() {
@@ -79,7 +81,68 @@ die() {
 
 [ "$(id -u)" = 0 ] || die "must run as root"
 
-pid_alive() { [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null; }
+PROC="${UNOQ_PROC:-/proc}"
+
+# pid_is <pidfile> <acceptable comm>... - is THAT daemon running, not just
+# something with its number?
+#
+# This used to be `kill -0 "$(cat pidfile)"`, which asks whether any process
+# has the pid. A daemon that dies without tidying up leaves its pid file
+# behind, and pids are reused: with a stale file naming a pid that now belongs
+# to something else, this script decided udhcpc was already running and did not
+# start it, and the link sat there with no address. (/run is emptied at boot,
+# so it takes a daemon dying, not a reboot. Rare, and silent when it happens.) The other use was worse - it KILLED whatever
+# held the pid in dnsmasq's old file. Same check as usb/wifi.sh and
+# usb/status.sh, for the same reason.
+pid_is() {
+  local pidfile="$1" pid comm want
+  shift
+  pid="$(cat "$pidfile" 2>/dev/null)"
+  case "$pid" in '' | *[!0-9]*) return 1 ;; esac
+  comm="$(cat "$PROC/$pid/comm" 2>/dev/null)" || return 1
+  for want in "$@"; do
+    [ "$comm" = "$want" ] && return 0
+  done
+  return 1
+}
+
+# is_udhcpc <pidfile> - is the process in that file the DHCP client?
+#
+# comm alone cannot say. udhcpc is a BusyBox applet: started as
+# `busybox udhcpc`, the kernel calls the process "busybox", and so it calls
+# every other applet started that way. So the command line is read as well, and
+# one of its words has to be udhcpc. (Started through a `udhcpc` symlink, comm
+# is udhcpc and that is enough.)
+is_udhcpc() {
+  local pid arg
+  pid_is "$1" udhcpc && return 0
+  pid_is "$1" busybox || return 1
+  pid="$(cat "$1" 2>/dev/null)"
+  while IFS= read -r -d '' arg; do
+    case "$arg" in udhcpc | */udhcpc) return 0 ;; esac
+  done <"$PROC/$pid/cmdline" 2>/dev/null
+  return 1
+}
+
+# is_ipv4 <string> - four numbers, each 0 to 255, and nothing else.
+# What it guards is a command line: the last address is read from a file and
+# handed to udhcpc as --request=<it>. "Digits and dots" let through
+# 999.999.999.999, 1.2.3.4.5 and "...", none of which is an address, and any of
+# which makes udhcpc refuse to start on a link that would otherwise have come
+# up without one.
+is_ipv4() {
+  local o
+  local -a parts
+  case "$1" in '' | *[!0-9.]* | .* | *. | *..*) return 1 ;; esac
+  IFS=. read -r -a parts <<<"$1"
+  [ "${#parts[@]}" -eq 4 ] || return 1
+  for o in "${parts[@]}"; do
+    # No leading zeros: inet_aton reads 010 as octal, so "010.0.0.1" is a
+    # different address to different programs.
+    case "$o" in 0 | [1-9] | [1-9][0-9] | [1-9][0-9][0-9]) ;; *) return 1 ;; esac
+    [ "$o" -le 255 ] || return 1
+  done
+}
 
 # --- migration: no dnsmasq on this link any more ----------------------------
 #
@@ -89,11 +152,13 @@ pid_alive() { [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null; }
 # board taking whichever reply arrives first. Left alone that is an intermittent
 # fault, and on a host that is NOT sharing its connection it is a rogue DHCP
 # server handing out leases on a subnet that no longer exists.
-if pid_alive "$DNSMASQ_PID"; then
+if pid_is "$DNSMASQ_PID" dnsmasq; then
   kill "$(cat "$DNSMASQ_PID")" 2>/dev/null
-  rm -f "$DNSMASQ_PID"
   log "stopped the dnsmasq left over from server mode - this link is client-only now"
 fi
+# The file goes either way: a pid file with no dnsmasq behind it is only ever
+# a number waiting to be mistaken for one.
+rm -f "$DNSMASQ_PID"
 
 # --- bridge ----------------------------------------------------------------
 
@@ -131,7 +196,7 @@ done < <(ip -4 -o addr show dev "$BRIDGE" 2>/dev/null |
 # numbers them differently - and enslaving a netdev that never passes a frame
 # costs nothing.
 enslaved=0
-for iface in /sys/class/net/usb*; do
+for iface in "$NET_SYSFS"/usb*; do
   [ -e "$iface" ] || continue
   name="$(basename "$iface")"
   master="$(basename "$(readlink -f "$iface/master" 2>/dev/null || echo none)")"
@@ -162,7 +227,7 @@ fi
 # size of tool for the job - one interface, one lease, a handler script.
 command -v busybox >/dev/null 2>&1 || die "busybox not installed (needed for udhcpc)"
 
-if pid_alive "$UDHCPC_PID"; then
+if is_udhcpc "$UDHCPC_PID"; then
   log "udhcpc already running (pid $(cat "$UDHCPC_PID"))"
 else
   rm -f "$UDHCPC_PID"
@@ -180,13 +245,10 @@ else
   LAST="${UNOQ_STATE_DIR:-/var/lib/unoq}/usb-dhcp-last"
   if [ -r "$LAST" ]; then
     read -r last_ip <"$LAST"
-    case "$last_ip" in
-      '' | *[!0-9.]*) ;;
-      *.*.*.*)
-        REQUEST=(--request="$last_ip")
-        log "asking for $last_ip again (last address on this link)"
-        ;;
-    esac
+    if is_ipv4 "$last_ip"; then
+      REQUEST=(--request="$last_ip")
+      log "asking for $last_ip again (last address on this link)"
+    fi
   fi
   # -b: go to the background and keep trying rather than exiting, because at
   #     boot the host's shared adapter is usually not up yet. There is no
