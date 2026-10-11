@@ -401,6 +401,8 @@ echo
 # what this invocation did not reach - typically the USB units, on a board that
 # has the gadget and was not asked for it again.
 warn_stale_root_units
+# And what the red light, if there is one, is about.
+warn_failed_units
 
 if [ -n "$FIRMWARE_PROBLEM" ]; then
   fail "everything above is in place, but $FIRMWARE_PROBLEM.

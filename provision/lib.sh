@@ -153,6 +153,12 @@ disable_unit() {
       warn "  why:  systemctl disable $u"
       rc=1
     else
+      # A unit stopped on purpose is not a failure, but systemd may record it
+      # as one: socat, which is all arduino-router-serial is, exits 143 when
+      # told to stop. LED 2 blinks red for any failed unit, so without this a
+      # run that went perfectly ended with a red light for the thing it had
+      # just been asked to switch off.
+      systemctl reset-failed "$u" >/dev/null 2>&1 || true
       did "$u stopped and disabled"
     fi
   done
@@ -355,6 +361,25 @@ unit_runs_as_root() {
     "" | root | 0) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+# warn_failed_units - say which systemd units have failed, if any.
+#
+# LED 2 blinks red when any unit is in the failed state, and a light cannot
+# say which. The end of a run is when somebody is looking at both the board
+# and the terminal, so this is where the two are joined up: the names, and what
+# to do about them. Silent when nothing has failed, which is the usual case.
+warn_failed_units() {
+  local failed
+  failed="$(systemctl list-units --state=failed --no-legend --plain 2>/dev/null | awk '{print $1}')"
+  [ -n "$failed" ] || return 0
+  warn "systemd reports failed units, and LED 2 blinks red while it does:"
+  local u
+  for u in $failed; do
+    warn "    $u"
+  done
+  warn "  why:    systemctl status <unit>"
+  warn "  clear:  sudo systemctl reset-failed <unit>    (once you know why)"
 }
 
 # warn_stale_root_units - name them, and say what fixes each.

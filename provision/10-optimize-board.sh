@@ -64,6 +64,13 @@ mask_unit fwupd.service
 # enabled for the first time, and this was why.
 # REVERT: systemctl unmask fwupd && systemctl enable --now fwupd-refresh.timer
 disable_unit fwupd-refresh.timer
+# Stopped as well, and before it is asked whether it failed. On a board that
+# has just got its clock from the network the timer has usually fired already,
+# so the service is RUNNING at this point: it was seen to start ten seconds
+# before this line, pass the check below as "not failed", and fail fifteen
+# seconds later because the daemon it talks to had just been masked. Asking a
+# unit that is still running whether it failed gets the answer "not yet".
+systemctl stop fwupd-refresh.service >/dev/null 2>&1 || true
 if systemctl is-failed --quiet fwupd-refresh.service 2>/dev/null; then
   systemctl reset-failed fwupd-refresh.service >/dev/null 2>&1
   did "cleared the failed state fwupd-refresh.service was left in"

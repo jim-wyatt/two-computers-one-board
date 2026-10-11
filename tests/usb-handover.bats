@@ -31,7 +31,7 @@ setup() {
 
   FLAGS="$BATS_TEST_TMPDIR/flags"
   mkdir -p "$FLAGS/active" "$FLAGS/enabled" "$FLAGS/sticky" "$FLAGS/missing" \
-    "$FLAGS/broken" "$FLAGS/dies" "$FLAGS/clings"
+    "$FLAGS/broken" "$FLAGS/dies" "$FLAGS/clings" "$FLAGS/failed"
 
   # Root's copy of the hand-over, as 60-usb-gadget.sh would have installed it.
   # A fake: what is being tested from this side is whether it gets called.
@@ -66,6 +66,7 @@ SH
   # touching files. Two more directories describe the awkward cases:
   #   missing/<unit>  the unit does not exist on this board
   #   sticky/<unit>   stopping it does not work - something starts it again
+  #   failed/<unit>   systemd has it down as failed
   #   clings/<unit>   disabling it does not work - it stays enabled
   #   broken/<unit>   starting it fails, and systemctl says so
   #   dies/<unit>     starting it "works", and it is not running afterwards
@@ -96,6 +97,11 @@ case "$verb" in
       [ -e "$FLAGS/dies/$u" ] || touch "$FLAGS/active/$u"
     done ;;
   stop) for u in "${args[@]}"; do rm -f "$FLAGS/active/$u"; done ;;
+  reset-failed) for u in "${args[@]}"; do rm -f "$FLAGS/failed/$u"; done ;;
+  list-units)
+    for f in "$FLAGS"/failed/*; do
+      [ -e "$f" ] && echo "$(basename "$f") loaded failed failed Something"
+    done ;;
 esac
 exit 0
 SH
@@ -123,6 +129,60 @@ load_lib() {
   run disable_unit arduino-app-cli.service
   [ "$status" -eq 0 ]
   [[ "$output" == *"arduino-app-cli.service stopped and disabled"* ]]
+}
+
+@test "a unit stopped on purpose is not left marked as failed" {
+  # socat exits 143 when told to stop, systemd calls that a failure, and LED 2
+  # blinks red for any failed unit: a perfect run ended with a red light.
+  running arduino-router-serial.service
+  touch "$FLAGS/failed/arduino-router-serial.service"
+  load_lib
+  run disable_unit arduino-router-serial.service
+  [ "$status" -eq 0 ]
+  ran "systemctl reset-failed arduino-router-serial.service"
+  [ ! -e "$FLAGS/failed/arduino-router-serial.service" ]
+}
+
+@test "a unit that would not stop keeps its failed mark, because that is a real one" {
+  running arduino-router.service
+  touch "$FLAGS/sticky/arduino-router.service" "$FLAGS/failed/arduino-router.service"
+  load_lib
+  run disable_unit arduino-router.service
+  [ "$status" -ne 0 ]
+  refute ran "systemctl reset-failed arduino-router.service"
+}
+
+# --- warn_failed_units -----------------------------------------------------------
+
+@test "failed units are named at the end of a run, with what LED 2 is doing about them" {
+  touch "$FLAGS/failed/fwupd-refresh.service" "$FLAGS/failed/something-else.service"
+  load_lib
+  run warn_failed_units
+  [[ "$output" == *"fwupd-refresh.service"* ]]
+  [[ "$output" == *"something-else.service"* ]]
+  [[ "$output" == *"LED 2"* ]]
+  [[ "$output" == *"reset-failed"* ]]
+}
+
+@test "with nothing failed, nothing is said" {
+  load_lib
+  run warn_failed_units
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "the firmware-update check is stopped before it is asked whether it failed" {
+  # It was caught running: "not failed" at the check, failed fifteen seconds
+  # later. Order in a file, because the race itself needs a board and a clock.
+  F="$PROJECT/provision/10-optimize-board.sh"
+  stop="$(grep -n '^systemctl stop fwupd-refresh.service' "$F" | cut -d: -f1)"
+  ask="$(grep -n '^if systemctl is-failed --quiet fwupd-refresh.service' "$F" | cut -d: -f1)"
+  [ -n "$stop" ] && [ -n "$ask" ]
+  [ "$stop" -lt "$ask" ]
+}
+
+@test "bootstrap reports failed units at its end" {
+  grep -q '^warn_failed_units$' "$PROJECT/bootstrap.sh"
 }
 
 @test "a unit that something starts again is not reported as stopped" {
