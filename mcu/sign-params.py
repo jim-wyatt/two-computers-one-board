@@ -44,7 +44,10 @@ from pathlib import Path
 
 
 def params(build: Path, zephyr_base: Path) -> tuple[int, int]:
-    """(write alignment, slot0 size in bytes) for the build in `build`."""
+    """(write alignment, size of the slot the image must fit) for the build in `build`.
+
+    The slot is slot1 when the devicetree has one, and slot0 otherwise.
+    """
     sys.path.insert(0, str(zephyr_base / "scripts" / "dts" / "python-devicetree" / "src"))
     edt_file = build / "zephyr" / "edt.pickle"
     if not edt_file.is_file():

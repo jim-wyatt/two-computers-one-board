@@ -247,6 +247,22 @@ SH
   [ ! -e "$ZEPHYR_WORKSPACE/build/zephyr/zephyr.signed.bin" ]
 }
 
+@test "a signing that writes its output and then fails leaves nothing to flash" {
+  # imgtool opens its output before it has finished deciding whether it can
+  # sign. The .bin succeeds here and the .hex is written, then refused.
+  on_a_runner
+  stub_body imgtool <<'SH'
+[ "$1" = sign ] || exit 0
+: >"${@: -1}"
+case "${@: -1}" in *.hex) exit 1 ;; esac
+exit 0
+SH
+  run "$PROJECT/mcu/zbuild.sh"
+  [ "$status" -ne 0 ]
+  [ ! -e "$ZEPHYR_WORKSPACE/build/zephyr/zephyr.signed.hex" ]
+  [ ! -e "$ZEPHYR_WORKSPACE/build/zephyr/zephyr.signed.bin" ]
+}
+
 @test "a devicetree that gives no numbers stops the build before imgtool is asked to guess" {
   on_a_runner
   stub python3 1

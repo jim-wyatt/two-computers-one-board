@@ -191,6 +191,9 @@ if grep -q "^CONFIG_BOOTLOADER_MCUBOOT=y" "$BUILD/zephyr/.config" 2>/dev/null; t
       "${FLASH_ARGS[@]}" --key "$KEY" \
       "$BUILD/zephyr/zephyr.$ext" "$BUILD/zephyr/zephyr.signed.$ext" >/dev/null || {
       echo "imgtool could not sign zephyr.$ext" >&2
+      # imgtool may have written part of its output before failing, and the
+      # other format may already be done. Neither is left for flash.sh.
+      rm -f "$BUILD/zephyr/zephyr.signed.bin" "$BUILD/zephyr/zephyr.signed.hex"
       exit 1
     }
   done
