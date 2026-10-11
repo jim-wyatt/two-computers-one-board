@@ -15,23 +15,37 @@
 # "already correct", so a run that died halfway is fixed by running it again,
 # not by unpicking what it did.
 #
-# WHAT IT DOES NOT DO
-# -------------------
-#   - purge the Arduino stack (--with-purge; it is the one step you cannot
+# WHAT IT SETS UP, WITH NO OPTIONS
+# --------------------------------
+# The board the course is taught on, whole: the toolchain, this project's
+# firmware, and the three things that make it a board you can use from the
+# computer next to it.
+#
+#   - the CPU-bars demo on the LED matrix, from boot      (--no-cpu-bars)
+#   - the course, served by the board on port 8080        (--no-learning)
+#   - network and a drive over the USB cable               (--no-usb-gadget)
+#
+# They were options once. Someone following the setup page then had to know to
+# ask for the demo the exercises are built on, and found out about the web page
+# by wondering where it was. Each costs something - the demo holds the MCU's
+# serial port, the web server has no password, the USB link takes the port from
+# adb and switches SSH on - and the notice printed before anything happens says
+# so, with the option that leaves it out. --minimal leaves out all three.
+#
+# WHAT IT STILL DOES NOT DO, UNLESS ASKED
+# ---------------------------------------
+#   - purge the Arduino packages (--with-purge; it is the one step you cannot
 #     casually undo, and the stock MCU firmware is not ours to redistribute)
-#   - claim /dev/ttyHS1 for the LED matrix demo (--with-cpu-bars)
-#   - switch the USB port to peripheral mode (--with-usb-gadget; it drops the
-#     USB host port and every device on it, including a network dongle)
 #   - arm the hardware watchdog (--with-watchdog) or tighten the EFI
 #     partition's permissions (--with-esp-lockdown). Each has been run on one
 #     board, through reboots, and that is all: one can reset the board and the
-#     other edits the fstab entry it boots from, so --everything leaves both out
+#     other edits the fstab entry it boots from
 #
 # TIME AND SPACE: 20 minutes 25 seconds on a factory-restored board over home
-# broadband, timed once, with --with-cpu-bars --with-usb-gadget. The Zephyr
-# workspace (~2 GB) and SDK (~0.8 GB) are most of the download; 3.3 GB ends up
-# in the home directory. Make sure you have ~6 GB free: the builds and the drive image need
-# room as well.
+# broadband, timed once (before the web server joined the default; it adds a
+# few seconds). The Zephyr workspace (~2 GB) and SDK (~0.8 GB) are most of the
+# download, and 3.3 GB ends up in the home directory. Make sure you have ~6 GB
+# free: the builds and the drive image need room as well.
 set -uo pipefail
 
 PROJECT="$(cd "$(dirname "$0")" && pwd)"
@@ -40,26 +54,26 @@ cd "$PROJECT" || exit 1
 . "$PROJECT/provision/lib.sh"
 
 WITH_PURGE=0
-WITH_CPU_BARS=0
-WITH_USB_GADGET=0
-WITH_LEARNING=0
+WITH_CPU_BARS=1
+WITH_USB_GADGET=1
+WITH_LEARNING=1
 WITH_WATCHDOG=0
 WITH_ESP_LOCKDOWN=0
 SKIP_MCU=0
 
 usage() {
-  sed -n '2,31p' "$0"
+  sed -n '2,/^set -uo pipefail$/p' "$0" | sed '$d'
   cat <<'EOF'
 
-Options:
-  --with-purge        also remove the Arduino Debian packages (55)
-  --with-cpu-bars     also run the LED-matrix demo at boot (65) - holds ttyHS1
-  --with-usb-gadget   also enable IP-over-USB + the fileshare (95)
-                      WARNING: drops the USB host port and anything on it
-  --with-learning     also serve the learning content over HTTP (75)
-  --everything        all of the above
+Leave out something that is on by default:
+  --no-cpu-bars       no LED-matrix demo at boot (65). It holds /dev/ttyHS1.
+  --no-learning       no web server for the course on port 8080 (75)
+  --no-usb-gadget     no network and drive over USB (95). Keeps adb on the
+                      USB port, and leaves SSH as it was.
+  --minimal           none of those three
 
-Each has been run on one board only, and is NOT part of --everything:
+Add something that is not:
+  --with-purge        also remove the Arduino Debian packages (55)
   --with-watchdog     also arm the hardware watchdog (80): the board resets if
                       systemd stops for 30s. It came through one firmware build
                       under heavy swap without firing; it has never been made
@@ -67,26 +81,40 @@ Each has been run on one board only, and is NOT part of --everything:
   --with-esp-lockdown also make the EFI partition root-only (85). Edits the
                       /etc/fstab entry the board boots from, backed up first.
 
-  --skip-mcu          do not build or flash the MCU firmware at the end
+  --skip-mcu          do not build or flash the MCU firmware
   -h, --help          this
+
+--with-cpu-bars, --with-learning, --with-usb-gadget and --everything are still
+accepted: the first three ask for what now happens anyway, and --everything
+adds --with-purge.
 EOF
 }
 
 for arg in "$@"; do
   case "$arg" in
     --with-purge) WITH_PURGE=1 ;;
+    --no-cpu-bars) WITH_CPU_BARS=0 ;;
+    --no-usb-gadget) WITH_USB_GADGET=0 ;;
+    --no-learning) WITH_LEARNING=0 ;;
+    --minimal)
+      WITH_CPU_BARS=0
+      WITH_USB_GADGET=0
+      WITH_LEARNING=0
+      ;;
+    # Once the way to ask for these. They are the default now, and a command
+    # copied from an older page must go on meaning what it meant.
     --with-cpu-bars) WITH_CPU_BARS=1 ;;
     --with-usb-gadget) WITH_USB_GADGET=1 ;;
     --with-learning) WITH_LEARNING=1 ;;
     --with-watchdog) WITH_WATCHDOG=1 ;;
     --with-esp-lockdown) WITH_ESP_LOCKDOWN=1 ;;
-    # --everything does NOT set the two above, on purpose. It means "every
-    # extra this project stands behind", and for those two the evidence is one
-    # board: each ran there and came back from reboots, the watchdog through a
-    # firmware build with swap nearly full. That is a board it works on, not a
-    # reason to switch it on for everybody - one can reset the board mid-build,
-    # the other edits the fstab entry it boots from. Each has to be asked for
-    # by name until it has been seen on more than one.
+    # The watchdog and the EFI lockdown are in neither the default nor
+    # --everything, on purpose. For those two the evidence is one board: each
+    # ran there and came back from reboots, the watchdog through a firmware
+    # build with swap nearly full. That is a board it works on, not a reason to
+    # switch it on for everybody - one can reset the board mid-build, the other
+    # edits the fstab entry it boots from. Each has to be asked for by name
+    # until it has been seen on more than one.
     --everything)
       WITH_PURGE=1
       WITH_CPU_BARS=1
@@ -135,8 +163,12 @@ echo "  - install the Zephyr SDK and workspace into $HOME (~3 GB)"
   echo "  - REPLACE THE FIRMWARE ON THE MICROCONTROLLER (the stock image is saved first)"
 [ "$WITH_PURGE" = 1 ] &&
   echo "  - REMOVE THE ARDUINO PACKAGES (--with-purge; hard to undo)"
+[ "$WITH_CPU_BARS" = 1 ] &&
+  echo "  - run the CPU-bars demo from boot, which holds the serial port to the microcontroller (--no-cpu-bars to leave it out)"
+[ "$WITH_LEARNING" = 1 ] &&
+  echo "  - serve the course on port 8080, with no password, to anything that can reach the board (--no-learning)"
 [ "$WITH_USB_GADGET" = 1 ] &&
-  echo "  - give up the USB host port and everything plugged into it (--with-usb-gadget)"
+  echo "  - make the USB port a network link and a drive: adb stops working, SSH is switched on, and the port can no longer host devices (--no-usb-gadget)"
 [ "$WITH_WATCHDOG" = 1 ] &&
   echo "  - arm the hardware watchdog: the board RESETS ITSELF if systemd stalls (--with-watchdog; held through one loaded build, on one board)"
 [ "$WITH_ESP_LOCKDOWN" = 1 ] &&

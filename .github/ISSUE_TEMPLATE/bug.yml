@@ -20,7 +20,7 @@ body:
     id: command
     attributes:
       label: The command you ran
-      placeholder: ./bootstrap.sh --with-usb-gadget
+      placeholder: ./bootstrap.sh --no-learning
     validations:
       required: true
   - type: dropdown

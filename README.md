@@ -73,14 +73,20 @@ second run picks up where the first one died rather than starting over. That is
 the recovery path, by design. [Set up a board](docs/setup.md) covers what each
 stage does, what success looks like, and what to do when a step fails.
 
-Four extras are opt-in, because each one costs you something. **If you are
-here for the course, add `--with-cpu-bars`:** the exercises use it.
+A plain run sets up the whole board the course is taught on, including three
+things that each cost you something. Leave any of them out by name:
 
 ```bash
-./bootstrap.sh --with-cpu-bars     # the LED matrix demo at boot  (holds the MCU's serial port)
-./bootstrap.sh --with-usb-gadget   # network + a drive over USB   (gives up the USB host port)
-./bootstrap.sh --with-learning     # serve the course on :8080    (no password, on every network)
-./bootstrap.sh --with-purge        # remove the Arduino packages  (hard to undo)
+./bootstrap.sh --no-cpu-bars       # no LED matrix demo at boot    (it holds the MCU's serial port)
+./bootstrap.sh --no-learning       # no course served on :8080     (it has no password, on every network)
+./bootstrap.sh --no-usb-gadget     # no network + drive over USB   (it takes the port from adb, and switches SSH on)
+./bootstrap.sh --minimal           # none of the three
+```
+
+One more is opt-in, because it is hard to undo:
+
+```bash
+./bootstrap.sh --with-purge        # remove the Arduino packages
 ```
 
 ## The first five minutes afterwards
@@ -113,8 +119,8 @@ And run the demo:
 hpy -m unoq.cpubars                # your CPU load, one bar per core (Ctrl-C to stop)
 ```
 
-Only one program can hold the serial line to the microcontroller at a time. If
-you installed `--with-cpu-bars`, the demo is already running and has it; stop
+Only one program can hold the serial line to the microcontroller at a time. The
+demo is already running and has it, unless you set up with `--no-cpu-bars`; stop
 it before any of the above with `sudo systemctl stop unoq-cpu-bars`.
 
 ## The one thing that will bite you

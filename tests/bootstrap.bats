@@ -339,3 +339,96 @@ installed() {
   bootstrap
   [[ "$output" != *"sudo reboot"* ]]
 }
+
+# --- what a run with no options sets up ------------------------------------------
+#
+# The demo, the web server and the USB link were options. They are what the
+# course and the setup page assume, so a plain run now includes them, and
+# leaving one out is what takes a flag.
+
+ran_step() { ran_like "^sudo -E bash $PROJECT/$1\$"; }
+line_of() { grep -nE "$1" "$STUB_LOG" | head -1 | cut -d: -f1; }
+
+@test "with no options, the demo, the drive, the web server and the USB link are all set up" {
+  bootstrap
+  [ "$status" -eq 0 ]
+  ran_step provision/65-cpu-bars.sh
+  ran_step share/build-image.sh
+  ran_step provision/75-learning-web.sh
+  ran_step provision/95-usb-gadget.sh
+}
+
+@test "with no options, nothing that has to be asked for by name is run" {
+  bootstrap
+  [ "$status" -eq 0 ]
+  refute ran_step provision/55-purge-arduino.sh
+  refute ran_step provision/80-watchdog.sh
+  refute ran_step provision/85-esp-permissions.sh
+}
+
+@test "--minimal leaves out all three, and the drive image with them" {
+  bootstrap --minimal
+  [ "$status" -eq 0 ]
+  refute ran_step provision/65-cpu-bars.sh
+  refute ran_step provision/75-learning-web.sh
+  refute ran_step provision/95-usb-gadget.sh
+  refute ran_step share/build-image.sh
+  # and is still a whole board: firmware built, space given back
+  ran_like 'mcu/zbuild\.sh'
+  ran_step provision/90-cleanup.sh
+}
+
+@test "each --no- leaves out its own and only its own" {
+  bootstrap --no-usb-gadget
+  refute ran_step provision/95-usb-gadget.sh
+  ran_step provision/65-cpu-bars.sh
+  ran_step provision/75-learning-web.sh
+  : >"$STUB_LOG"
+  bootstrap --no-learning
+  refute ran_step provision/75-learning-web.sh
+  ran_step provision/95-usb-gadget.sh
+  ran_step share/build-image.sh
+  : >"$STUB_LOG"
+  bootstrap --no-cpu-bars
+  refute ran_step provision/65-cpu-bars.sh
+  ran_step provision/95-usb-gadget.sh
+}
+
+@test "the old --with- options are still accepted, and mean what they meant" {
+  bootstrap --with-cpu-bars --with-usb-gadget --with-learning
+  [ "$status" -eq 0 ]
+  ran_step provision/95-usb-gadget.sh
+  bootstrap --everything
+  [ "$status" -eq 0 ]
+  ran_step provision/55-purge-arduino.sh
+}
+
+@test "an option given after --minimal puts that one thing back" {
+  bootstrap --minimal --with-learning
+  ran_step provision/75-learning-web.sh
+  refute ran_step provision/95-usb-gadget.sh
+}
+
+@test "the notice names each default with the option that leaves it out" {
+  bootstrap
+  [[ "$output" == *"--no-cpu-bars"* ]]
+  [[ "$output" == *"--no-learning"* ]]
+  [[ "$output" == *"--no-usb-gadget"* ]]
+  [[ "$output" == *"no password"* ]]
+  [[ "$output" == *"adb stops working"* ]]
+}
+
+@test "the notice does not mention what a --minimal run will not do" {
+  bootstrap --minimal
+  [[ "$output" != *"port 8080"* ]]
+  [[ "$output" != *"adb stops working"* ]]
+}
+
+@test "the USB link is still the last step, after the clean-up" {
+  bootstrap
+  usb="$(line_of "^sudo -E bash $PROJECT/provision/95-usb-gadget\.sh\$")"
+  clean="$(line_of "^sudo -E bash $PROJECT/provision/90-cleanup\.sh\$")"
+  web="$(line_of "^sudo -E bash $PROJECT/provision/75-learning-web\.sh\$")"
+  [ "$web" -lt "$clean" ]
+  [ "$clean" -lt "$usb" ]
+}

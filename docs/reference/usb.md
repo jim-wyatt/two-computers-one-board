@@ -28,8 +28,8 @@ Then plug it in. Nothing to configure on the computer.
 
 The web page on port 8080 in the picture is a separate extra, and serves the
 same image. Add it at any point after the image is built, with
-`sudo bash ~/two-computers-one-board/provision/75-learning-web.sh` (or
-`./bootstrap.sh --with-learning`). Without it you still have the network link
+`sudo bash ~/two-computers-one-board/provision/75-learning-web.sh` (a plain
+`./bootstrap.sh` includes it). Without it you still have the network link
 and the drive.
 
 ---
