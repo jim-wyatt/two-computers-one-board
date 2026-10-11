@@ -50,9 +50,9 @@ SH
   [ "$status" -eq 0 ]
   # Each at the version the lock file gives it.
   L="$PROJECT/mcu/requirements-zephyr-lock.txt"
-  ran "uv tool install -c $L cmake"
-  ran "uv tool install -c $L ninja"
-  ran "uv tool install -c $L west"
+  ran "uv tool install -c $L -b $L cmake"
+  ran "uv tool install -c $L -b $L ninja"
+  ran "uv tool install -c $L -b $L west"
 }
 
 @test "when uv cannot install a tool, what uv said is shown" {

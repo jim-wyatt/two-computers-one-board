@@ -20,7 +20,9 @@ export PATH="$HOME/.local/bin:$PATH"
 VENV="${UNOQ_VENV:-$PROJECT/.venv}"
 # Every install below takes its versions from here, so that a board set up next
 # month gets what a board set up today got. tools/update-constraints.sh
-# rewrites it; see there for why it is a constraints file and not a list.
+# rewrites it; see there for why it is a constraints file and not a list. It is
+# passed twice: -c for what is installed, and -b for what BUILDS what is
+# installed, which happens in an isolated environment -c does not reach.
 LOCK="$PROJECT/python/requirements-lock.txt"
 
 command -v uv >/dev/null 2>&1 || fail "uv missing - run provision/user/20-host-tools.sh first"
@@ -75,7 +77,7 @@ else
   # Everything, not just what is missing: uv resolves the set together, and a
   # re-run costs nothing when they are already there.
   # shellcheck disable=SC2086  # deliberate word splitting of the package list
-  uv pip install --python "$VENV/bin/python" -q -c "$LOCK" $HW_PKGS ||
+  uv pip install --python "$VENV/bin/python" -q -c "$LOCK" -b "$LOCK" $HW_PKGS ||
     fail "could not install the hardware libraries (missing:$MISSING)
         spidev is a C extension - if it failed to build, the board is missing
         gcc or python3-dev. provision/15-dev-tools.sh installs both."
@@ -92,7 +94,7 @@ if "$VENV/bin/python" -c 'import unoq' 2>/dev/null && [ -x "$VENV/bin/unoq-cpu-b
   [ -x "$VENV/bin/mkdocs" ]; then
   skip "unoq importable, unoq-cpu-bars and mkdocs on PATH"
 else
-  uv pip install --python "$VENV/bin/python" -q -c "$LOCK" -e "$PROJECT/python[docs]" ||
+  uv pip install --python "$VENV/bin/python" -q -c "$LOCK" -b "$LOCK" -e "$PROJECT/python[docs]" ||
     fail "could not install the unoq package"
   did "unoq installed editable from $PROJECT/python (with the docs extra)"
 fi

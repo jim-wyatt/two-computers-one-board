@@ -48,16 +48,31 @@ for f in "$PY_LOCK" "$Z_LOCK"; do
   }
 done
 
-# 1. Every name in a dependency list of pyproject.toml. The lists are the
-# quoted strings on the `dependencies = [...]` line and under
-# [project.optional-dependencies]; a name ends at the first character that
-# cannot be part of one.
-names="$(awk '
-  /^dependencies *=/ { print; next }
-  /^\[project.optional-dependencies\]/ { on = 1; next }
-  /^\[/ { on = 0 }
-  on && /^[a-z]+ *=/ { print }
-' "$PYPROJECT" | grep -oE '"[A-Za-z0-9._-]+' | tr -d '"' | sort -u)"
+# 1. Every name in a dependency list of pyproject.toml: [project].dependencies
+# and every group under [project.optional-dependencies].
+#
+# Read as TOML, by a TOML parser. The first version of this picked the lists
+# out with awk, one line at a time, and a dependency on the second line of an
+# array - which is how most people write a long one - was never seen. The gate
+# passed, and would have gone on passing over exactly the mistake it exists
+# to catch.
+names="$(
+  python3 - "$PYPROJECT" <<'PY'
+import re
+import sys
+import tomllib
+
+with open(sys.argv[1], "rb") as f:
+    project = tomllib.load(f).get("project", {})
+reqs = list(project.get("dependencies", []))
+for group in project.get("optional-dependencies", {}).values():
+    reqs.extend(group)
+for req in reqs:
+    # The name is everything before a version, an extra, a marker or a space.
+    print(re.split(r"[\s<>=!~;\[(]", req.strip(), maxsplit=1)[0])
+PY
+)" || bad "could not read $PYPROJECT as TOML"
+names="$(sort -u <<<"$names")"
 [ -n "$names" ] || bad "found no dependencies in $PYPROJECT - has its layout changed?"
 for n in $names; do
   pinned "$PY_LOCK" "$n" ||
@@ -65,6 +80,7 @@ for n in $names; do
 done
 
 # 2. The Zephyr lock: for the pinned version, and holding what is installed by name.
+# shellcheck disable=SC2016  # a literal ${...} in the file being read, not ours
 want_z="$(sed -n 's/^ZEPHYR_VERSION="\${ZEPHYR_VERSION:-\(v[0-9.]*\)}"$/\1/p' "$WORKSPACE_STEP")"
 [ -n "$want_z" ] || bad "could not read the pinned Zephyr version from $WORKSPACE_STEP"
 grep -q "(Zephyr $want_z)" "$Z_LOCK" ||

@@ -164,9 +164,15 @@ are doing or reproduce them somewhere else. The scripts are the source of
 truth; if this and they disagree, they are right.
 
 ```bash
+# Versions come from the two lock files; -c pins what is installed and -b
+# what builds it. P is this checkout.
+P=~/two-computers-one-board
+ZL=$P/mcu/requirements-zephyr-lock.txt
+PL=$P/python/requirements-lock.txt
+
 # 1. uv, then the host tools
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uv tool install cmake && uv tool install ninja && uv tool install west
+for t in cmake ninja west; do uv tool install -c $ZL -b $ZL $t; done
 
 # 2. The Zephyr SDK (arm-zephyr-eabi only), into ~/zephyr-sdk-<version>.
 #    Unpack the "minimal" archive from the sdk-ng releases page, then, with
@@ -177,17 +183,18 @@ uv tool install cmake && uv tool install ninja && uv tool install west
 #    provision/user/30-zephyr-workspace.sh and west-project-filter.
 mkdir -p ~/zephyrproject && cd ~/zephyrproject
 uv venv --python 3.13 .venv
-uv pip install --python .venv/bin/python west imgtool
-.venv/bin/west init -m https://github.com/zephyrproject-rtos/zephyr --mr <version> .
+uv pip install --python .venv/bin/python -c $ZL -b $ZL west imgtool
+.venv/bin/west init -m https://github.com/zephyrproject-rtos/zephyr --mr <version> --clone-opt=--depth=1 .
 .venv/bin/west config manifest.project-filter -- "<the line in west-project-filter>"
 .venv/bin/west update --narrow -o=--depth=1
 .venv/bin/west zephyr-export
-uv pip install --python .venv/bin/python -r zephyr/scripts/requirements.txt
+uv pip install --python .venv/bin/python -c $ZL -b $ZL natsort \
+  -r zephyr/scripts/requirements-base.txt -r zephyr/scripts/requirements-build-test.txt
 
 # 4. The Linux-side Python
-#    (plus the hardware libraries named in provision/user/35-python-venv.sh)
-cd ~/two-computers-one-board && uv venv .venv
-uv pip install --python .venv/bin/python -e python
+cd $P && uv venv .venv
+uv pip install --python .venv/bin/python -c $PL -b $PL gpiod smbus2 pyserial spidev smpclient
+uv pip install --python .venv/bin/python -c $PL -b $PL -e 'python[docs]'
 
 # 5. The shell shortcuts
 echo 'source ~/two-computers-one-board/env.sh' >> ~/.bashrc

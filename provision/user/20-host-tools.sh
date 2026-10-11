@@ -40,7 +40,8 @@ for tool in cmake ninja west; do
     # had been.
     # At the version in the lock file, like every other Python package this
     # project installs: see tools/update-constraints.sh.
-    if out="$(uv tool install -c "$PROJECT/mcu/requirements-zephyr-lock.txt" "$tool" 2>&1)"; then
+    if out="$(uv tool install -c "$PROJECT/mcu/requirements-zephyr-lock.txt" \
+      -b "$PROJECT/mcu/requirements-zephyr-lock.txt" "$tool" 2>&1)"; then
       did "$tool installed"
     else
       printf '%s\n' "$out" | tail -15 >&2

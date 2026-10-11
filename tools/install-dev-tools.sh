@@ -68,6 +68,7 @@ echo "=== Python tooling -> $VENV ==="
 # build is a quality gate (tools/check.sh docs) - a broken link should fail for
 # whoever is editing, not only on the board.
 uv pip install --python "$VENV/bin/python" -q -c "$PROJECT/python/requirements-lock.txt" \
+  -b "$PROJECT/python/requirements-lock.txt" \
   -e "$PROJECT/python[dev,docs]"
 echo "  ruff $("$VENV"/bin/ruff --version | awk '{print $2}'), mypy $("$VENV"/bin/mypy --version | awk '{print $2}'), mkdocs $("$VENV"/bin/mkdocs --version | awk '{print $3}')"
 

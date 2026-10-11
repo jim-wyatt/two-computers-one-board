@@ -31,6 +31,8 @@ ghp-import==2.1.0
     # via mkdocs
 gpiod==2.5.0
     # via unoq (pyproject.toml)
+hatchling==1.32.4
+    # via -r build-tools.in
 idna==3.20
     # via requests
 iniconfig==2.3.1
@@ -72,18 +74,22 @@ mypy-extensions==1.1.0
     # via mypy
 packaging==26.3
     # via
+    #   hatchling
     #   mkdocs
     #   pytest
+    #   wheel
 paginate==0.5.7
     # via mkdocs-material
 pathspec==1.1.1
     # via
+    #   hatchling
     #   mkdocs
     #   mypy
 platformdirs==4.13.0
     # via mkdocs-get-deps
 pluggy==1.6.0
     # via
+    #   hatchling
     #   pytest
     #   pytest-cov
 pydantic==2.14.0
@@ -118,6 +124,8 @@ requests==2.34.2
     # via mkdocs-material
 ruff==0.17.0
     # via unoq (pyproject.toml)
+setuptools==84.0.0
+    # via -r build-tools.in
 six==1.17.0
     # via python-dateutil
 smbus2==0.6.1
@@ -130,6 +138,10 @@ spidev==3.8
     # via unoq (pyproject.toml)
 tomli==2.5.0 ; python_full_version <= '3.11'
     # via coverage
+tomlkit==0.15.1
+    # via hatchling
+trove-classifiers==2026.9.21.13
+    # via hatchling
 typing-extensions==4.16.0
     # via
     #   mypy
@@ -142,3 +154,5 @@ urllib3==2.8.0
     # via requests
 watchdog==6.0.0
     # via mkdocs
+wheel==0.48.0
+    # via -r build-tools.in

@@ -40,8 +40,18 @@ command -v uv >/dev/null 2>&1 || {
 }
 
 echo "== python/requirements-lock.txt =="
+# The build tools are in the lock too. An editable install of `unoq` is built
+# by hatchling, and spidev is compiled from source by setuptools, each in an
+# isolated environment of its own that an ordinary constraint does not reach.
+# So the lock is also passed as BUILD constraints (-b), and it has to name
+# what those builds ask for or they would still fetch whatever is newest.
+# A fixed name beside pyproject.toml while it runs, so the "# via" comments uv
+# writes into the lock say the same thing on every machine.
+BUILD_IN="$PROJECT/python/build-tools.in"
+printf '%s\n' hatchling setuptools wheel >"$BUILD_IN"
+trap 'rm -f "$BUILD_IN"' EXIT
 (cd "$PROJECT/python" && uv pip compile -q --universal --python-version 3.11 \
-  --extra dev --extra docs --extra board pyproject.toml \
+  --extra dev --extra docs --extra board pyproject.toml build-tools.in \
   --custom-compile-command "tools/update-constraints.sh" \
   -o requirements-lock.txt)
 echo "  $(grep -cE '^[a-zA-Z0-9]' "$PROJECT/python/requirements-lock.txt") packages pinned"
@@ -49,6 +59,7 @@ echo "  $(grep -cE '^[a-zA-Z0-9]' "$PROJECT/python/requirements-lock.txt") packa
 # Zephyr's own lists, at the version this project pins. Read from the
 # workspace if there is one, and fetched if not, so that this runs on a
 # machine that has never built the firmware.
+# shellcheck disable=SC2016  # a literal ${...} in the file being read, not ours
 ZEPHYR_VERSION="$(sed -n 's/^ZEPHYR_VERSION="\${ZEPHYR_VERSION:-\(v[0-9.]*\)}"$/\1/p' \
   "$PROJECT/provision/user/30-zephyr-workspace.sh")"
 [ -n "$ZEPHYR_VERSION" ] || {
@@ -57,7 +68,7 @@ ZEPHYR_VERSION="$(sed -n 's/^ZEPHYR_VERSION="\${ZEPHYR_VERSION:-\(v[0-9.]*\)}"$/
 }
 echo "== mcu/requirements-zephyr-lock.txt (Zephyr $ZEPHYR_VERSION) =="
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
+trap 'rm -rf "$TMP"; rm -f "$BUILD_IN"' EXIT
 WS="${ZEPHYR_WORKSPACE:-$HOME/zephyrproject}"
 for f in requirements-base.txt requirements-build-test.txt; do
   if [ -r "$WS/zephyr/scripts/$f" ] &&
@@ -70,7 +81,9 @@ for f in requirements-base.txt requirements-build-test.txt; do
 done
 # What 30-zephyr-workspace.sh installs beyond Zephyr's two lists, and the
 # build tools 20-host-tools.sh installs with `uv tool install`.
-printf '%s\n' west imgtool natsort cmake ninja >"$TMP/extra.txt"
+# setuptools and wheel for the same reason as in the lock above: anything
+# here that is built from source is built with them.
+printf '%s\n' west imgtool natsort cmake ninja setuptools wheel >"$TMP/extra.txt"
 (cd "$TMP" && uv pip compile -q --universal --python-version 3.11 \
   requirements-base.txt requirements-build-test.txt extra.txt \
   --custom-compile-command "tools/update-constraints.sh  (Zephyr $ZEPHYR_VERSION)" \

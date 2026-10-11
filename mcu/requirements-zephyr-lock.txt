@@ -86,6 +86,7 @@ packaging==26.3
     #   pytest
     #   python-can
     #   west
+    #   wheel
 pathspec==1.1.1
     # via mypy
 patool==4.0.7 ; python_full_version < '3.12'
@@ -149,6 +150,8 @@ ruamel-yaml==0.19.1
     # via pykwalify
 semver==3.1.0
     # via -r requirements-base.txt
+setuptools==84.0.0
+    # via -r extra.txt
 six==1.17.0
     # via
     #   pylink-square
@@ -168,6 +171,8 @@ west==1.5.0
     # via
     #   -r extra.txt
     #   -r requirements-base.txt
+wheel==0.48.0
+    # via -r extra.txt
 windows-curses==2.4.2 ; sys_platform == 'win32'
     # via -r requirements-base.txt
 wrapt==1.17.3

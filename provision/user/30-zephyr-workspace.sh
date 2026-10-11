@@ -56,7 +56,8 @@ if [ -x "$WS/.venv/bin/west" ] && [ -x "$WS/.venv/bin/imgtool" ]; then
 else
   # imgtool signs the MCUboot image; zbuild.sh calls it by this path.
   uv pip install --python "$WS/.venv/bin/python" -q \
-    -c "$PROJECT/mcu/requirements-zephyr-lock.txt" west imgtool ||
+    -c "$PROJECT/mcu/requirements-zephyr-lock.txt" \
+    -b "$PROJECT/mcu/requirements-zephyr-lock.txt" west imgtool ||
     fail "could not install west/imgtool"
   did "west + imgtool installed"
 fi
@@ -146,6 +147,7 @@ else
   # pinned Zephyr version (tools/update-constraints.sh).
   uv pip install --python "$WS/.venv/bin/python" -q \
     -c "$PROJECT/mcu/requirements-zephyr-lock.txt" \
+    -b "$PROJECT/mcu/requirements-zephyr-lock.txt" \
     -r "$WS/zephyr/scripts/requirements-base.txt" \
     -r "$WS/zephyr/scripts/requirements-build-test.txt" \
     natsort ||

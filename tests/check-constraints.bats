@@ -42,6 +42,28 @@ setup() {
   [[ "$output" == *"another-tool"* ]]
 }
 
+@test "one added on a later line of a multi-line array is caught" {
+  # The usual way to write a long list, and the way the first version of this
+  # gate could not read.
+  python3 - "$UNOQ_PYPROJECT" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+old = 'dependencies = ["pyserial", "gpiod", "smpclient"]'
+assert old in s
+open(p, "w").write(s.replace(old, 'dependencies = [\n  "pyserial",\n  "gpiod",\n  "smpclient",\n  "hidden-on-line-five>=1.0",\n]'))
+PY
+  run "$CHECK"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"hidden-on-line-five is in python/pyproject.toml"* ]]
+}
+
+@test "a pyproject.toml that is not valid TOML fails the gate, not passes it" {
+  echo 'dependencies = [unterminated' >>"$UNOQ_PYPROJECT"
+  run "$CHECK"
+  [ "$status" -ne 0 ]
+}
+
 @test "a package pinned under a different spelling of its name still counts" {
   # PyPI treats -, _ and . as the same, and ignores case. uv writes one form;
   # pyproject.toml may use another.
@@ -91,8 +113,14 @@ setup() {
     provision/user/35-python-venv.sh tools/install-dev-tools.sh; do
     while IFS= read -r line; do
       # join the continuation lines of this command before judging it
-      [[ "$line" == *"-c "* ]] || {
+      [[ "$line" == *" -c "* ]] || {
         echo "no lock file on: $f: $line"
+        false
+      }
+      # ...and as build constraints: what builds a package runs in an
+      # isolated environment that -c alone does not reach.
+      [[ "$line" == *" -b "* ]] || {
+        echo "no build constraints on: $f: $line"
         false
       }
     done < <(awk '/^[^#]*uv (pip|tool) install/ && !/(fail|warn|echo|did|skip) "/ { cmd=$0; while (cmd ~ /\\$/) { getline nxt; cmd = cmd " " nxt }; print cmd }' "$PROJECT/$f")
