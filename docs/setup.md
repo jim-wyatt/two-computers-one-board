@@ -25,7 +25,7 @@ when you have the vocabulary.
 >
 > It has been tested on one kind of board in one state: an UNO Q freshly
 > restored to the factory image. There is no warranty of any kind — the
-> [licence](https://github.com/jim-wyatt/two-computers-one-board/blob/main/LICENSE)
+> [license](https://github.com/jim-wyatt/two-computers-one-board/blob/main/LICENSE)
 > says so in full — and nobody who made your board has reviewed any of this.
 >
 > What makes that a reasonable thing to do anyway: every change is written down

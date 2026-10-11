@@ -16,7 +16,7 @@ PROC_STAT = "/proc/stat"
 
 # proc(5) gives each cpu line ten counters, but only the first eight are
 # independent: `guest` and `guest_nice` are already included in `user` and
-# `nice`, so summing all ten double-counts virtualised time. Taking eight
+# `nice`, so summing all ten double-counts virtualized time. Taking eight
 # sidesteps that entirely.
 _COUNTERS = 8
 # Of those eight, `idle` and `iowait` are the not-working ones. iowait counts as

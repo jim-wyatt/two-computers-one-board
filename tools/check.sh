@@ -121,13 +121,13 @@ if wanted shell; then
       fi
     fi
   fi
-  # Behaviour, not style. shellcheck and shfmt are linters: they will tell you
+  # Behavior, not style. shellcheck and shfmt are linters: they will tell you
   # a variable is unquoted and never that the bind guard counts wrong. Shell is
   # the largest thing in this project by a factor of five and every finding in
   # docs/reference/clean-board-findings.md was in it or in a unit file, so it
   # is the last place that should have been checked for syntax only.
-  need bats "bats (shell behaviour)" &&
-    run "bats (shell behaviour)" bats "$PROJECT/tests"
+  need bats "bats (shell behavior)" &&
+    run "bats (shell behavior)" bats "$PROJECT/tests"
   # The unit files and udev rules are what start all of that shell on a board,
   # and systemd will say whether it accepts them without one.
   run "units and udev rules (systemd)" "$PROJECT/tools/check-units.sh"
@@ -174,7 +174,14 @@ fi
 if wanted docs; then
   cd "$PROJECT" || exit 1
   # --strict, so a link to a page that moved fails here instead of 404ing for
-  # a reader. This gate is the reason the docs tree can be reorganised at all.
+  # a reader. This gate is the reason the docs tree can be reorganized at all.
+  # Which English, as well as whether it is spelled right: .codespellrc says
+  # why American, and what is deliberately not a misspelling. Over every
+  # tracked file, because the British spellings were in comments and messages
+  # as much as in the prose.
+  if have codespell "spelling (en_US)"; then
+    run "spelling (en_US)" "$PROJECT/tools/check-spelling.sh"
+  fi
   if have mkdocs "docs (mkdocs --strict)"; then
     run "docs (mkdocs --strict)" "$PROJECT/tools/build-docs.sh"
     # Deliberately not chained onto the build with &&: `run` always succeeds
@@ -215,7 +222,7 @@ if wanted diagrams; then
     printf '%s>>> diagrams (skipped: --fast)%s\n\n' "$DIM" "$OFF"
   else
     # The only gate that opens a browser, and the only one that can catch a
-    # diagram silently coming out as grey text - which is exactly what twelve of
+    # diagram silently coming out as gray text - which is exactly what twelve of
     # them did, through a clean --strict build, for hours. It drives ONE browser
     # over every page, so it is seconds plus a site build rather than the minute
     # it used to be; it stays out of --fast because it still needs a browser,

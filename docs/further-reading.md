@@ -231,7 +231,7 @@ becomes four named messages.
 **[pytest](https://docs.pytest.org/)**, **[Ruff](https://docs.astral.sh/ruff/)**
 and **[mypy](https://mypy.readthedocs.io/)** — the three gates the Python side
 of this project has to pass. Ruff's rule index in particular is a readable
-catalogue of mistakes worth not making.
+catalog of mistakes worth not making.
 
 **[Zephyr's ztest](https://docs.zephyrproject.org/latest/develop/test/ztest.html)**
 and **[twister](https://docs.zephyrproject.org/latest/develop/test/twister.html)**
@@ -260,7 +260,7 @@ deliberately works underneath rather than through.
 
 **[ArduinoCore-zephyr](https://github.com/arduino/ArduinoCore-zephyr)** — the
 source of the Arduino layer that runs on the STM32. When the documentation and
-the behaviour disagree, this repository is the tiebreaker.
+the behavior disagree, this repository is the tiebreaker.
 
 **[Arduino_RouterBridge](https://github.com/arduino-libraries/Arduino_RouterBridge)**
 — the RPC library Arduino's own examples use across the two chips. This project
@@ -286,7 +286,7 @@ if you want to change how it looks.
 
 **[SPDX](https://spdx.dev/)** and **[Choose a
 License](https://choosealicense.com/)** — why every file here starts with a
-one-line licence identifier, and how to pick one for whatever you build next.
+one-line license identifier, and how to pick one for whatever you build next.
 
 ---
 

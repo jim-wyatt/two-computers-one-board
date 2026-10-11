@@ -134,7 +134,7 @@ SH
 }
 
 @test "without the env file, root's copy looks in root's home - which is the bug" {
-  # Not behaviour anyone wants: this is what the env file prevents, pinned so
+  # Not behavior anyone wants: this is what the env file prevents, pinned so
   # that the two tests above cannot pass for some other reason. Delete the
   # file and the old answer comes back, and it is loud about the missing image.
   root_copies "$OWNER"

@@ -87,7 +87,7 @@ built and flashed again on every run, and says `changed` each time.)
 
 ```mermaid
 flowchart TD
-  P["preflight<br/><small>refuse early, not halfway</small>"] --> R1["10 board optimisation<br/>15 dev tools"]
+  P["preflight<br/><small>refuse early, not halfway</small>"] --> R1["10 board optimization<br/>15 dev tools"]
   R1 --> U["as YOU, not root:<br/>20 build tools · 25 Zephyr SDK<br/>30 Zephyr workspace<br/>35 venv · 40 shell env"]
   U --> R3["45 MCU link GPIOs<br/>50 status LEDs"]
   R3 --> E4["55 purge Arduino packages<br/><small>only with --with-purge</small>"]
@@ -186,13 +186,13 @@ a board and running the scripts on it. It did not work.
 
 [The findings log](../reference/clean-board-findings.md) is the unedited record —
 seventeen separate things wrong, each with the symptom, the cause and the fix
-that went back into the scripts. A sample of the flavour:
+that went back into the scripts. A sample of the flavor:
 
 - A `systemd` unit left behind in a failed state, so a board that was working
   reported as unhealthy forever.
 - A preflight check that passed on a developed board and failed on a clean one,
   because it tested for something an earlier run had created.
-- A tier of optimisations enabled by default that nothing in this project needs.
+- A tier of optimizations enabled by default that nothing in this project needs.
 
 None of these are interesting individually. Collectively they are the point:
 **"it works on my board" is not a claim about the board, it is a claim about
@@ -232,7 +232,7 @@ idempotence, working.
 > the full list. [ShellCheck](https://www.shellcheck.net/) is what keeps these
 > scripts honest, and
 > [systemd for Administrators](https://0pointer.de/blog/projects/systemd-for-admins-1.html)
-> explains the unit behaviour several of the findings turned on.
+> explains the unit behavior several of the findings turned on.
 
 ## Check yourself
 

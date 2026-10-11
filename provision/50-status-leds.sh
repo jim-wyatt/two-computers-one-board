@@ -95,7 +95,7 @@ fi
 summary
 cat <<EOF
 
-What the colours mean:  $PROJECT/status/leds.sh explain
+What the colors mean:  $PROJECT/status/leds.sh explain
 Learn them by watching: sudo $RUNTIME_DIR/status/leds.sh test
 
 The service runs the copy in $RUNTIME_DIR, not the one in the checkout.

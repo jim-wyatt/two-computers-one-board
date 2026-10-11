@@ -103,7 +103,7 @@ lease() { run "$ROUTE" "$1" "${2-}"; }
 
 # --- events and inputs that must be ignored ---------------------------------
 
-@test "actions we do not recognise are ignored" {
+@test "actions we do not recognize are ignored" {
   # These were dnsmasq's - it called the same script for tftp and arp-* events.
   # The allowlist stays now that it has one caller, because the failure it
   # prevents is running ip(8) with an argument that is not an address at all.
@@ -232,7 +232,7 @@ SH
   ran "ip route replace default via 192.168.137.1 dev br-usb metric 550"
 }
 
-@test "UNOQ_USB_PREFER_OVER_WIFI=0 keeps the old fallback-only behaviour" {
+@test "UNOQ_USB_PREFER_OVER_WIFI=0 keeps the old fallback-only behavior" {
   # The route is left exactly as `add` installed it. `ip link show` still runs -
   # that is the "is the bridge there" probe every action does first - so this
   # asserts on the routing table rather than on ip(8) being untouched.

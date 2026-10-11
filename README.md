@@ -160,7 +160,7 @@ the quality gates, and the conventions.
 ## Getting help
 
 Start with [Troubleshooting](docs/reference/troubleshooting.md), which is
-organised by symptom. If `bootstrap.sh` fails and running it again does not
+organized by symptom. If `bootstrap.sh` fails and running it again does not
 help, [open an issue](https://github.com/jim-wyatt/two-computers-one-board/issues)
 and paste the output from the last `==` heading down. The step name and the
 line marked `FAILED` are usually enough to find it.
@@ -168,12 +168,14 @@ line marked `FAILED` are usually enough to find it.
 This was built and tested on the UNO Q (`arduino,imola`). Nothing here has been
 tested on any other board.
 
-## Licence
+<a id="licence"></a> <!-- the heading's address before the spelling changed; links to it still land here. codespell:ignore licence -->
+
+## License
 
 MIT — see [LICENSE](LICENSE). A few files belong to other projects and keep
 their own terms; they are listed in [third-party.md](docs/third-party.md).
 
-The software is provided as is, with no warranty of any kind; the licence says
+The software is provided as is, with no warranty of any kind; the license says
 so in full. Product and company names appear only to say accurately what this
 software runs on, builds with and talks to, and each belongs to its owner:
 [trademarks and affiliation](docs/third-party.md#trademarks-and-affiliation).

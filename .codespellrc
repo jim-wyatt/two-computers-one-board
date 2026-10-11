@@ -1,0 +1,26 @@
+# American spelling, checked by tools/check.sh (the docs area).
+#
+# The project was written in a mix of British and American English, which a
+# reader notices long before they can say what is bothering them. en_US was
+# chosen because it is what the toolchains, the kernel and the upstream
+# documentation this course points at are written in.
+#
+# clear + rare are codespell's ordinary typo lists; en-GB_to_en-US is what
+# makes this a check on WHICH English. tools/spelling-extra.txt adds the few
+# British forms that list does not know.
+[codespell]
+builtin = clear,rare,en-GB_to_en-US
+dictionary = tools/spelling-extra.txt,-
+# tools/check-spelling.sh, which is what the gate runs, takes other people's
+# text out of the file list itself. These are for running codespell by hand
+# on the whole tree, where it walks directories and `skip` does apply.
+skip = ./.git,./.venv,./share/learn,./LICENSE,./LICENSES,./docs/assets/javascripts/lunr,*.svd,*.svg,*.png,*.ico,*.pem,./python/requirements-lock.txt,./mcu/requirements-zephyr-lock.txt,./mcu/requirements-zephyr.in
+# A word that only looks like a misspelling, in one place: end that line with
+# a comment containing  codespell:ignore <the word>  (the old anchors beside
+# five renamed headings are marked that way). Everywhere:
+# Not misspellings here:
+#   abl    a partition on this board (abl_a, abl_b)
+#   te ue  fragments of messages quoted from tools, in troubleshooting.md
+#   ans    a shell variable holding an answer
+#   get's  "GET's", the HTTP method, in a comment
+ignore-words-list = abl,te,ue,ans,get's

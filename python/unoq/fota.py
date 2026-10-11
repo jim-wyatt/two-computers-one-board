@@ -8,7 +8,7 @@ Firmware update over the serial link, via MCUboot + SMP. No SWD needed.
     fota.test()      # mark pending, then reset - MCUboot swaps slot1 -> slot0
     fota.confirm()   # keep it; without this the next reset reverts
 
-The revert-on-failure behaviour is the point: an image that boots but cannot
+The revert-on-failure behavior is the point: an image that boots but cannot
 be confirmed (because it crashed, or you never called confirm) is rolled back
 automatically. That is what makes remote updates safe.
 

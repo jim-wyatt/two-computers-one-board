@@ -248,7 +248,7 @@ the idea gets explained, this is where you come to be reminded.
 
 ## R
 
-**Rasteriser**
+**Rasterizer**
 :   The code that turns "core 2 is at 47%" into which pixels are lit at what
     brightness. Pure arithmetic with no hardware in it, which is exactly why it
     can be tested without the chip.

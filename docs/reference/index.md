@@ -123,7 +123,7 @@ with MCU() as mcu:
 
 ```bash
 ~/two-computers-one-board/usb/status.sh                   # the whole USB picture in one read
-~/two-computers-one-board/status/leds.sh explain             # what the LED colours mean
+~/two-computers-one-board/status/leds.sh explain             # what the LED colors mean
 systemctl --failed                       # what needs a human
 journalctl -u unoq-cpu-bars -n 50        # or any other unit
 ```
@@ -148,7 +148,7 @@ tools/check.sh --fix                     # reformat in place, then check
 
 | | |
 |---|---|
-| `mcu/app/` | The firmware — `main.c`, `matrix.c` (charlieplex driver), `bars.c` (rasteriser) |
+| `mcu/app/` | The firmware — `main.c`, `matrix.c` (charlieplex driver), `bars.c` (rasterizer) |
 | `python/unoq/` | The Linux-side package — `link.py`, `mcu.py`, `fota.py`, `cpu.py` |
 | `usb/` | The composite gadget, the bridge, the bind guard |
 | `status/` | The status LEDs |

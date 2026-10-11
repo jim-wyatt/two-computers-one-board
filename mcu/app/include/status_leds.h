@@ -47,9 +47,9 @@
  * has stopped talking cannot report that it stopped talking. This is the only
  * indicator on the board that says something about the other chip's health.
  *
- * RHYTHM AS WELL AS COLOUR
+ * RHYTHM AS WELL AS COLOR
  * ------------------------
- * Colour alone was the first design, and it was mostly red against green - the
+ * Color alone was the first design, and it was mostly red against green - the
  * one pair that about one man in twelve cannot tell apart. To them LED 4 had a
  * single state. So every state has a rhythm too, the same three that
  * status/leds.sh uses for LED 1 and LED 2, and the rhythm alone identifies it:
@@ -94,7 +94,7 @@
 #define STATUS_SLOW_TICKS      4 /* lit for this many, then dark for as many */
 #define STATUS_FAST_TICKS      1
 
-enum status_colour {
+enum status_color {
 	STATUS_OFF,
 	STATUS_GREEN,
 	STATUS_YELLOW,
@@ -108,7 +108,7 @@ enum status_rhythm {
 };
 
 struct status_look {
-	enum status_colour colour;
+	enum status_color color;
 	enum status_rhythm rhythm;
 };
 

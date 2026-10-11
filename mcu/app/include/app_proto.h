@@ -34,7 +34,7 @@
  * What a rejected command starts with. Shared with unoq.MCU.cmd(), which raises
  * on any line that begins with it.
  *
- * shell_error() does not add this. It only colours the line red, and the colour
+ * shell_error() does not add this. It only colors the line red, and the color
  * is exactly what the Python side strips before it looks. So for as long as the
  * handlers printed a bare message, a command the firmware refused came back to
  * Python looking like a reply, and nothing was raised.

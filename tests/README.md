@@ -64,7 +64,7 @@ without touching `/var/lib`.
 | [`usb-dhcp.bats`](usb-dhcp.bats) | The address the board remembers between boots, and what it does when the computer on the other end will not give it back. |
 | [`usb-profile.bats`](usb-profile.bats) | The only thing here that takes an address on somebody else's subnet without being asked. Most of what is tested is refusal. |
 | [`wifi.bats`](wifi.bats) | Whether it is safe to turn off the radio you are probably connected over. It got that wrong once, by asking only IPv4. |
-| [`leds.bats`](leds.bats) | The board's only output when everything else is down. A wrong colour is worse than a dark board. |
+| [`leds.bats`](leds.bats) | The board's only output when everything else is down. A wrong color is worse than a dark board. |
 | [`install-unit.bats`](install-unit.bats) | Every unit is rewritten on its way into `/etc/systemd/system`. Get it wrong and a unit installs happily, then fails at boot with a status that does not name the path. It also decides *where* a unit runs from: a unit that runs as root must name root's copies, never the checkout. |
 | [`install-runtime.bats`](install-runtime.bats) | The root-owned copies of the scripts that the root services run. A stale or writable file there is something root executes at the next boot; a missing one is a service that does not start. |
 | [`gadget-up.bats`](gadget-up.bats) | Which file the host is handed as the drive. Run as root's copy, a script that asks who owns it gets the answer `root`, and the drive comes up empty. |
@@ -79,6 +79,7 @@ without touching `/var/lib`.
 | [`uplink-fallback.bats`](uplink-fallback.bats) | The last automatic way back onto a network when wifi is off. Wrong one way it strands the board; wrong the other way the radio comes back on every boot. |
 | [`check-links.bats`](check-links.bats) | The monthly link check files an issue with whatever it prints. If it cannot tell "no network" from "every link is dead", one bad night on a runner becomes an issue listing every link in the docs. |
 | [`check-constraints.bats`](check-constraints.bats) | The gate that notices a lock file going stale. A dependency added and never pinned installs without complaint, so the gate is the only thing that would say. |
+| [`check-spelling.bats`](check-spelling.bats) | Which files the spelling gate looks at. Other people's text checked for American spelling, or the project's own files quietly left out. |
 | [`lock.bats`](lock.bats) | An environment that remembers which lock file it was built to. Without it a pin moves, the board is provisioned again, every line says `ok`, and it is still running the old versions. |
 | [`bootstrap.bats`](bootstrap.bats) | What `bootstrap.sh` says about the microcontroller when the firmware did not go on. Telling someone their chip is as it was, after a flash that stopped half-way, sends them looking in the wrong place. |
 | [`build-image.bats`](build-image.bats) | The web server is stopped for a remount and always started again, on every exit path, and a busy mount is never forced. |

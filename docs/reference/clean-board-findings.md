@@ -21,7 +21,7 @@ Status as of the runs on 2026-08-08/09. Fixed items link to the commit.
 |---|---|---|---|
 | 1 | Stock firmware backup globbed `variants/`, image is in `firmwares/` | `warn`, then carried on into the purge having saved nothing — see #12 for what that does and does not cost | fixed |
 | 2 | SDK 1.0.1 nests toolchains under `gnu/` | verify failed on a good install; **and** the idempotency check never matched, so every re-run re-downloaded ~1 GB | fixed |
-| 3 | `tr -d '\0'` on the devicetree `compatible` | `unrecognised board` on every UNO Q and VENTUNO Q ever | fixed |
+| 3 | `tr -d '\0'` on the devicetree `compatible` | `unrecognized board` on every UNO Q and VENTUNO Q ever | fixed |
 | 4 | avahi advertises *both* bridge addresses | `<host>.local` resolved to the unreachable `10.55.0.1` half the time | fixed |
 | 5 | `flash-all.sh` ran `west build` outside the workspace | `unknown command "build"` at the last step of a 45-minute run | fixed |
 | 6 | `env.sh` hardcoded `$HOME/hybrid` | `zbuild`/`zflash`/`hpy`/`mcucon` broken on any other clone path | fixed |

@@ -232,7 +232,7 @@ if is_udhcpc "$UDHCPC_PID"; then
 else
   rm -f "$UDHCPC_PID"
   # Ask for the address we had last time. A DHCP server is free to refuse, and
-  # this changes nothing if it does - but Windows ICS and macOS both honour it
+  # this changes nothing if it does - but Windows ICS and macOS both honor it
   # in practice, which keeps the numeric address stable across reboots for
   # anyone who prefers typing it to typing the name.
   #

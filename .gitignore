@@ -21,7 +21,7 @@ htmlcov/
 
 # The fileshare image and its downloaded contents. Microsoft's installers are
 # not ours to redistribute (docs/third-party.md), and the image is ~2 GB of build
-# artefact. Rebuild both with share/fetch-vscode.sh + share/build-image.sh.
+# artifact. Rebuild both with share/fetch-vscode.sh + share/build-image.sh.
 *.img
 
 # The rendered documentation site. Built from docs/ by tools/build-docs.sh, on

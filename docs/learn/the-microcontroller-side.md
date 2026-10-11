@@ -40,7 +40,7 @@ failure you want.
 **Your program starts at power-on and runs until power-off.** Every time.
 
 **Timing you can rely on.** Told to wait 100 microseconds, it waits 100
-microseconds. Nothing pre-empts it, because there is nothing else.
+microseconds. Nothing preempts it, because there is nothing else.
 
 **Direct hardware access.** A pin is a bit in a register at a fixed memory
 address. You write the bit; the voltage changes. There is no driver, no kernel
@@ -59,7 +59,7 @@ occasionally takes 50 ms is not.
 Zephyr gives you a few things worth having without giving up that property:
 
 - **Threads**, so different jobs can be written separately, with priorities that
-  are actually honoured.
+  are actually honored.
 - **Drivers** written to a common interface, so your code says "give me the GPIO
   device" instead of naming a memory address.
 - **A device tree** describing what is wired to what, so the same code can build

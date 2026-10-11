@@ -241,7 +241,7 @@ systemctl status serial-getty@ttyMSM0
 The two Linux serial ports have unrelated names because of Qualcomm's history.
 **MSM** is *Mobile Station Modem*. The GENI serial driver registers plain PIO
 ports as `ttyMSM*` and DMA-capable high-speed ports as `ttyHS*` — the same
-peripheral block in two flavours.
+peripheral block in two flavors.
 
 ### It is the last recovery path
 
@@ -357,7 +357,7 @@ you must sample `/sys/block/mmcblk0/stat` yourself - that counter does move.
 
 Read it by row. The rhythm identifies the state by itself, and no LED uses the
 same rhythm for two states, so none of this depends on telling red from green.
-The colour is a second witness, not the only one. Both blinks are lit half the
+The color is a second witness, not the only one. Both blinks are lit half the
 time.
 
 LED 1 and LED 2 are blinked by the kernel's `timer` LED trigger, which
@@ -365,7 +365,7 @@ LED 1 and LED 2 are blinked by the kernel's `timer` LED trigger, which
 `delay_on` or `delay_off` restarts the blink, so rewriting an unchanged state
 would make it stutter. LED 3 and LED 4 are redrawn by the firmware every
 250 ms from one counter, so the red and green channels of yellow cannot fall
-out of step. If a kernel offers no `timer` trigger, `leds.sh` shows the colour
+out of step. If a kernel offers no `timer` trigger, `leds.sh` shows the color
 steady and says so once in its log.
 
 LED 4 is worth understanding: it shows the *absence* of traffic. A blink per
@@ -376,7 +376,7 @@ report that it stopped.
 
 `~/two-computers-one-board/status/leds.sh explain` prints the current scheme; `... test` cycles the
 states so you can learn which physical LED is which, and
-`... show 1 blue slow` puts one LED into one colour and rhythm by hand (stop
+`... show 1 blue slow` puts one LED into one color and rhythm by hand (stop
 `unoq-leds` first, or its next pass puts the truth back).
 
 ## How the MPU flashes the MCU

@@ -118,7 +118,7 @@ Reading a reply sounds like `read()` and done. In practice
 
 - **The shell echoes your command back**, so the first thing you read is what you
   just sent, not the answer.
-- **Output is wrapped in ANSI escape codes** for colour, which must be stripped.
+- **Output is wrapped in ANSI escape codes** for color, which must be stripped.
 - **Bytes dribble in.** One `read()` rarely returns a whole reply; you must keep
   reading until you see the prompt.
 - **The reply might never come.** If the MCU is reset, or held in the wrong boot
@@ -166,7 +166,7 @@ sudo systemctl start unoq-cpu-bars
 
 It prints the same three fields — `uptime_ms`, `flip` and `sweeps` — as a
 Python dictionary. The library sent the line you typed, threw
-away the echo and the colour codes, read until the prompt came back, and split
+away the echo and the color codes, read until the prompt came back, and split
 what was left on spaces and `=`.
 
 One after the other, and not side by side in two windows, for a reason: **only

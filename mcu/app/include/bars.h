@@ -20,7 +20,7 @@
 /* Where n bars sit on the 13-column panel.
  *
  * Bars are uniform width with a one-column gap, and the whole group is
- * centred: leftovers show up as margin, never as one fatter bar.
+ * centered: leftovers show up as margin, never as one fatter bar.
  */
 struct app_bars_layout {
 	int width; /* columns per bar, >= 1 */
@@ -43,7 +43,7 @@ static inline int app_bars_column(const struct app_bars_layout *l, int i)
  *
  * Height uses the grayscale as a vernier: a bar is whole rows at full
  * brightness plus one partial row dimmed in proportion to the remainder. Eight
- * rows would otherwise quantise the reading to 12.5% steps, which for a CPU
+ * rows would otherwise quantize the reading to 12.5% steps, which for a CPU
  * meter is the difference between "idle" and "a core is busy".
  *
  * rotate180 mirrors the panel for a board viewed from the other side. It is a

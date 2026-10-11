@@ -12,7 +12,7 @@
 # With no DHCP server on the host, the board autoconfigures 169.254/16 and so
 # does the host, but neither ARPs for the other until something sends v4
 # traffic. IPv6 link-local needs no such prompting - it comes up by itself and
-# is what actually carries the ssh session. So on a live board the v4 neighbour
+# is what actually carries the ssh session. So on a live board the v4 neighbor
 # table held a single FAILED entry with no lladdr, the v6 table held the host
 # REACHABLE, and `wifi.sh check` told a person connected through that very link
 # that there was "no computer on br-usb".
@@ -39,7 +39,7 @@ setup() {
 }
 
 # The board as it actually was when this bug was found: bridge up with an
-# autoconf v4 address, no lease, no gateway, one dead v4 neighbour, and the
+# autoconf v4 address, no lease, no gateway, one dead v4 neighbor, and the
 # host sitting in the v6 table.
 ip_v6_only_host() {
   stub_body ip <<'SH'
@@ -75,7 +75,7 @@ SH
 @test "a v6 peer is pinged with -6 and the interface scope" {
   # A fe80:: address without a scope is not routable. Letting ping guess the
   # family fails on an address that is perfectly reachable, which would send
-  # this straight back to the neighbour-table fallback for the wrong reason.
+  # this straight back to the neighbor-table fallback for the wrong reason.
   ip_v6_only_host
   run "$WIFI" check
   ran_like 'ping -6 -c1 -W2 -I br-usb fe80::200:5eff:fe10:2030'
@@ -83,7 +83,7 @@ SH
 
 # --- what must not become a peer --------------------------------------------
 
-@test "a v4 neighbour with no lladdr is not a peer" {
+@test "a v4 neighbor with no lladdr is not a peer" {
   # 169.254.169.254 FAILED is the cloud-metadata probe going nowhere. It has an
   # address and no hardware behind it, so treating it as the host would strand
   # the board on the say-so of a failed lookup.
@@ -112,19 +112,19 @@ SH
   [[ "$output" == *"no computer on br-usb"* ]]
 }
 
-@test "an empty neighbour table in both families still refuses" {
+@test "an empty neighbor table in both families still refuses" {
   stub_body ip <<'SH'
 case "$*" in "link show br-usb") exit 0 ;; esac
 exit 0
 SH
   run "$WIFI" check
   [ "$status" -eq 1 ]
-  [[ "$output" == *"no IPv4 or IPv6 neighbour"* ]]
+  [[ "$output" == *"no IPv4 or IPv6 neighbor"* ]]
 }
 
 # --- ordering ---------------------------------------------------------------
 
-@test "an IPv4 gateway still wins over any neighbour" {
+@test "an IPv4 gateway still wins over any neighbor" {
   # An address the host routes with is a better answer than one it merely
   # answers on, so the v6 fallback must not displace a real default route.
   stub_body ip <<'SH'
@@ -143,7 +143,7 @@ SH
   [[ "$output" == *"192.168.137.1 answers on br-usb"* ]]
 }
 
-@test "IPv4 neighbours are preferred to IPv6 ones" {
+@test "IPv4 neighbors are preferred to IPv6 ones" {
   stub_body ip <<'SH'
 case "$*" in
   "link show br-usb")            exit 0 ;;
@@ -179,7 +179,7 @@ SH
   [[ "$output" == *"does not answer on br-usb"* ]]
 }
 
-@test "an unbound gadget is refused before any neighbour is consulted" {
+@test "an unbound gadget is refused before any neighbor is consulted" {
   : >"$UNOQ_GADGET_DIR/UDC"
   ip_v6_only_host
   run "$WIFI" check

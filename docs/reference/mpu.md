@@ -196,7 +196,7 @@ grep -E '^pswp(in|out) ' /proc/vmstat
 
 The same measurement gave `pswpout 277888` and `pswpin 15991` since boot. Pages
 went in and were read back roughly **1 time in 17**. That is cold memory being
-parked and left alone, which is the behaviour you want. Thrashing is the other
+parked and left alone, which is the behavior you want. Thrashing is the other
 case: pages being read back about as fast as they are written out.
 
 ### Why this is the right design on eMMC
@@ -309,9 +309,9 @@ and nothing on the MPU knows how a bar is drawn.
 
 ### Reading the display
 
-Bars are 2 columns wide with a 1-column gap, centred, growing from the bottom.
+Bars are 2 columns wide with a 1-column gap, centered, growing from the bottom.
 
-Eight rows would quantise load into 12.5% steps, so the top pixel of each bar is
+Eight rows would quantize load into 12.5% steps, so the top pixel of each bar is
 dimmed in proportion to the remainder — the 3-bit grayscale is used as a vernier,
 giving 56 distinguishable heights instead of 8.
 

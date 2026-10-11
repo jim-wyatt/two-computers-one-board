@@ -102,7 +102,7 @@ Read by `status/leds.sh`, which runs as `unoq-leds.service`. Set these in
 | `UNOQ_LED_NET_EVERY` | `12` | The reachability ping runs on every Nth pass: once a minute at the defaults. |
 | `UNOQ_LED_PROBE_IP` | `1.1.1.1` | The address that ping goes to. |
 | `UNOQ_LED_BLINK_SLOW_MS` | `1000` | The slow blink (degraded, or in progress): milliseconds lit, then the same again dark. Once every two seconds at the default. |
-| `UNOQ_LED_BLINK_FAST_MS` | `250` | The fast blink (needs a human), likewise. Twice a second at the default; do not go below about 170, which is three flashes a second and the ceiling for anything that flashes. Keep it well apart from the slow one: the two rhythms are how the states are told apart without colour. |
+| `UNOQ_LED_BLINK_FAST_MS` | `250` | The fast blink (needs a human), likewise. Twice a second at the default; do not go below about 170, which is three flashes a second and the ceiling for anything that flashes. Keep it well apart from the slow one: the two rhythms are how the states are told apart without color. |
 
 These two set LED 1 and LED 2 only. LED 3 and LED 4 blink at the same rates
 from the firmware, where they are constants in
@@ -198,6 +198,7 @@ and setting one will mostly make a script look in the wrong place.
 | `UNOQ_WATCHDOG_CONF_DIR` | `/etc/systemd/system.conf.d` | Where `80-watchdog.sh` writes its `systemd` drop-in. |
 | `UNOQ_WATCHDOG_SYSFS` | `/sys/class/watchdog` | Where `80-watchdog.sh` looks for a watchdog device. |
 | `UNOQ_FSTAB` | `/etc/fstab` | The mount table `85-esp-permissions.sh` edits. Its backup is written beside it. |
+| `UNOQ_CODESPELL` | `.venv/bin/codespell` | The spelling checker `tools/check-spelling.sh` runs. |
 | `UNOQ_PY_LOCK`, `UNOQ_ZEPHYR_LOCK`, `UNOQ_ZEPHYR_IN`, `UNOQ_PYPROJECT`, `UNOQ_WORKSPACE_STEP` | the files in the repository | The five files `tools/check-constraints.sh` compares, so its tests can hand it copies with one thing wrong. |
 | `UNOQ_RUN_DIR` | `/run` | Where `usb-net-up.sh` keeps the DHCP client's pid file, and where provisioning notes that packages changed in this boot. |
 | `UNOQ_NET_SYSFS` | `/sys/class/net` | Where `usb-net-up.sh` looks for the gadget's network interfaces. |

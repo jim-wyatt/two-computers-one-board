@@ -88,7 +88,7 @@ jobs:
   #   1. hung, and took an unrelated pull request to the 15-minute job timeout
   #      with chrome still alive
   #   2. reported "0 of 1 drew" on all 11 pages of a build that rendered
-  #      perfectly - a shared --user-data-dir serialising the launches
+  #      perfectly - a shared --user-data-dir serializing the launches
   #   3. chromium 150 never exits from --dump-dom at all;
   #      --virtual-time-budget simply does not end the process
   #
@@ -104,7 +104,7 @@ jobs:
   #     commit here moves it.
   #   - a browser that stops answering is killed and reported as "the harness
   #     is broken", in seconds, as a different failure from "a diagram did not
-  #     draw". The step timeout below is a third line of defence, not the first.
+  #     draw". The step timeout below is a third line of defense, not the first.
   #
   # Its own job rather than a step in `checks`, so that the day it does break
   # it is one red tick with an obvious name and the fast gates have already

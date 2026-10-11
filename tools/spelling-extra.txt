@@ -1,0 +1,17 @@
+rasterise->rasterize
+rasterised->rasterized
+rasterises->rasterizes
+rasteriser->rasterizer
+rasterisers->rasterizers
+rasterising->rasterizing
+quantise->quantize
+quantised->quantized
+quantises->quantizes
+quantising->quantizing
+quantisation->quantization
+virtualise->virtualize
+virtualised->virtualized
+whilst->while
+amongst->among
+learnt->learned
+spelt->spelled

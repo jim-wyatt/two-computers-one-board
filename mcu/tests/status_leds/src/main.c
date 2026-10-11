@@ -8,7 +8,7 @@
  * looks like a board in a different state. So the mapping is checked here, and
  * checked for the property that matters rather than for a list of remembered
  * values: every state of an LED must be tellable from every other WITHOUT
- * using its colour. That is the whole reason the rhythms exist.
+ * using its color. That is the whole reason the rhythms exist.
  *
  * These are the same inline functions status_leds.c calls. What is not tested
  * here is that a GPIO moved; that takes the board.
@@ -43,11 +43,11 @@ ZTEST(status_leds, test_led3_states)
 	struct status_look trial = status_led3_look(false, false);
 	struct status_look fault = status_led3_look(true, true);
 
-	zassert_equal(ok.colour, STATUS_GREEN);
+	zassert_equal(ok.color, STATUS_GREEN);
 	zassert_equal(ok.rhythm, STATUS_STEADY, "a confirmed image is the settled state");
-	zassert_equal(trial.colour, STATUS_YELLOW);
+	zassert_equal(trial.color, STATUS_YELLOW);
 	zassert_equal(trial.rhythm, STATUS_SLOW, "probation is in progress, not a fault");
-	zassert_equal(fault.colour, STATUS_RED);
+	zassert_equal(fault.color, STATUS_RED);
 	zassert_equal(fault.rhythm, STATUS_FAST, "a fault needs a human");
 }
 
@@ -56,12 +56,12 @@ ZTEST(status_leds, test_led3_fault_outranks_the_image_state)
 	struct status_look a = status_led3_look(true, true);
 	struct status_look b = status_led3_look(true, false);
 
-	zassert_equal(a.colour, b.colour, "a fault looks the same on either image");
+	zassert_equal(a.color, b.color, "a fault looks the same on either image");
 	zassert_equal(a.rhythm, b.rhythm, "a fault looks the same on either image");
 	zassert_equal(b.rhythm, STATUS_FAST, "an unconfirmed image must not soften a fault");
 }
 
-ZTEST(status_leds, test_led3_states_differ_without_colour)
+ZTEST(status_leds, test_led3_states_differ_without_color)
 {
 	enum status_rhythm ok = status_led3_look(false, true).rhythm;
 	enum status_rhythm trial = status_led3_look(false, false).rhythm;
@@ -79,9 +79,9 @@ ZTEST(status_leds, test_led4_states)
 	struct status_look fresh = status_led4_look(true);
 	struct status_look stale = status_led4_look(false);
 
-	zassert_equal(fresh.colour, STATUS_GREEN);
+	zassert_equal(fresh.color, STATUS_GREEN);
 	zassert_equal(fresh.rhythm, STATUS_STEADY);
-	zassert_equal(stale.colour, STATUS_RED);
+	zassert_equal(stale.color, STATUS_RED);
 	zassert_equal(stale.rhythm, STATUS_FAST, "silence is a fault, not a slow day");
 	zassert_not_equal(fresh.rhythm, stale.rhythm, "must not rely on hue");
 }

@@ -143,7 +143,7 @@ profile_row() {
 #
 # Deliberately not `ping`: Windows blocks ICMP to the ICS adapter by default, so
 # the single most common host this will ever meet does not answer one. ARP is
-# answered by the stack below the firewall, which is why the neighbour table
+# answered by the stack below the firewall, which is why the neighbor table
 # knew about that host all along while every ping to it timed out.
 gateway_answers() {
   busybox arping -c2 -w3 -I "$BRIDGE" "$1" >/dev/null 2>&1

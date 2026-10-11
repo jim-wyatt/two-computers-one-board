@@ -44,7 +44,7 @@ NoNewPrivileges=yes
 # the address to browse to, on a board whose USB link was up and answering on
 # two addresses. nss-myhostname resolves the local hostname by asking the
 # kernel for local addresses over a NETLINK socket; blocked, it falls back to
-# 127.0.0.2 - documented behaviour, and indistinguishable from "no network".
+# 127.0.0.2 - documented behavior, and indistinguishable from "no network".
 #
 # Reproduced with systemd-run, same command, three sandboxes:
 #   unrestricted                      -> 10.55.0.1, 192.168.137.210

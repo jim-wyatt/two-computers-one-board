@@ -4,7 +4,7 @@
 #
 # status/leds.sh decides what the two Linux-driven LEDs say about the board. It is
 # the only thing that still reports when the network, the gadget and the shell
-# have all gone - so a wrong colour here is worse than a dark board: it is a
+# have all gone - so a wrong color here is worse than a dark board: it is a
 # board confidently lying about its own health.
 #
 # The whole script is drivable from the environment already - the sysfs root,
@@ -14,11 +14,11 @@
 #
 # WHAT THE FAKE HAS TO PRETEND
 # ----------------------------
-# A state is a colour AND a rhythm, and the rhythm is the kernel's `timer`
+# A state is a color AND a rhythm, and the rhythm is the kernel's `timer`
 # trigger. Real sysfs reacts to a write: put `timer` in `trigger` and the file
 # reads back `none [timer] heartbeat`, and `delay_on` and `delay_off` appear;
 # put `none` there and they go. A directory of plain files does none of that,
-# so kernel_reacts() below does it by hand after every run. It is modelled on
+# so kernel_reacts() below does it by hand after every run. It is modeled on
 # the board (kernel 7.0.0, which offers exactly `none timer heartbeat`).
 #
 # The limit: it reacts after the script has finished, not between its writes,
@@ -169,7 +169,7 @@ stamps() { find "$UNOQ_LED_DIR" -type f -exec stat -c '%n %y' {} + | sort; }
 
 # A bind guard that answers `status` however the test wants. leds.sh used to
 # look for it beside itself, which made this untestable; UNOQ_BIND_GUARD was
-# added for that, and is also what lets the two scripts stop being neighbours.
+# added for that, and is also what lets the two scripts stop being neighbors.
 guard_says() {
   cat >"$BATS_TEST_TMPDIR/guard" <<EOF
 #!/bin/bash
@@ -188,7 +188,7 @@ EOF
 }
 
 @test "no internet but a computer on the cable is a slow blue blink, not red" {
-  # The distinction that earns the third colour: "plugged in, host not sharing"
+  # The distinction that earns the third color: "plugged in, host not sharing"
   # and "nothing there at all" are different problems with different fixes.
   stub ping 1
   leds once
@@ -282,7 +282,7 @@ guard_at_its_limit() {
   [ "$(look_of LED2)" = "green steady" ]
 }
 
-# --- rhythm: the channel that does not need colour vision -------------------
+# --- rhythm: the channel that does not need color vision -------------------
 
 @test "no two states of one LED share a rhythm" {
   # The point of the whole exercise. If two states of an LED blinked alike,
@@ -364,7 +364,7 @@ guard_at_its_limit() {
   [ "$(look_of LED1)" = "blue slow" ]
 }
 
-@test "a two-channel colour blinks both channels, started in one last burst" {
+@test "a two-channel color blinks both channels, started in one last burst" {
   # Yellow is red and green, and to the kernel those are two LEDs with a timer
   # each. They are in step only if they are started in step: every delay_off -
   # the write that starts the blink that stays - comes after every delay_on.
@@ -376,7 +376,7 @@ guard_at_its_limit() {
   [ "$g/delay_off" -nt "$r/delay_on" ]
 }
 
-@test "show refuses a colour or a rhythm it does not know" {
+@test "show refuses a color or a rhythm it does not know" {
   run "$LEDSH" show 1 mauve slow
   [ "$status" -eq 2 ]
   run "$LEDSH" show 1 red frantic
@@ -387,7 +387,7 @@ guard_at_its_limit() {
 
 # --- a kernel that cannot blink ---------------------------------------------
 
-@test "without the timer trigger the colour is shown steady, and it says so" {
+@test "without the timer trigger the color is shown steady, and it says so" {
   # Half the information is better than none, and far better than a channel
   # left dark because a write to `trigger` was refused.
   for ch in "${CHANNELS[@]}"; do offers "$ch" none heartbeat; done
@@ -465,12 +465,12 @@ guard_at_its_limit() {
   [ "$(look_of LED1)" = off ]
 }
 
-@test "explain gives every state a rhythm, not only a colour" {
+@test "explain gives every state a rhythm, not only a color" {
   run "$LEDSH" explain
   [[ "$output" == *"steady"* ]]
   [[ "$output" == *"slow blink"* ]]
   [[ "$output" == *"fast blink"* ]]
-  # No state line may name a colour without a rhythm in front of it.
+  # No state line may name a color without a rhythm in front of it.
   refute grep -E '^ +(LED [34] +)?(red|green|blue|yellow) ' <<<"$output"
 }
 

@@ -10,7 +10,7 @@ computers that happen to share a piece of plastic**.
 They do not share memory. They do not share an operating system. Neither can
 read the other's variables. If they want to cooperate, they have to send each
 other messages over a wire, exactly like two machines on a network — and the
-wire is about two centimetres long.
+wire is about two centimeters long.
 
 ## MPU and MCU
 
@@ -131,7 +131,7 @@ consequences, because it catches every newcomer:
 
 - A variable on the MCU **cannot** be read from Linux. There is no address for
   it. There is no pointer you can pass.
-- Sending a message means **serialising** it: turning a value into bytes,
+- Sending a message means **serializing** it: turning a value into bytes,
   pushing those bytes down a wire, and having the other side turn them back.
 - Messages take time and can fail. A wire can be disconnected; a chip can be
   held in reset; bytes can be lost.
@@ -192,7 +192,7 @@ Before moving on, you should be able to answer these:
    flicker.
 2. **Nothing at all.** The two chips do not share memory, so there is no
    address for `x` on the other side. The microcontroller only learns the value
-   if you serialise it into bytes and send it down the wire.
+   if you serialize it into bytes and send it down the wire.
 3. **The MPU decodes the JPEG; the MCU generates the pulse train.** Decoding is
    a data problem that wants speed, memory and files. The pulse train is a
    timing problem, and determinism — the same timing every time — is what the

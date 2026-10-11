@@ -194,7 +194,7 @@ SH
 
 # --- the tunable ------------------------------------------------------------
 
-@test "UNOQ_WATCHDOG_SEC is honoured" {
+@test "UNOQ_WATCHDOG_SEC is honored" {
   have_device
   UNOQ_WATCHDOG_SEC=45 run bash "$WATCHDOG"
   [ "$status" -eq 0 ]
@@ -295,7 +295,7 @@ SH
   [[ "$output" != *"The board now resets"* ]]
 }
 
-@test "a timeout systemd prints in minutes is recognised as the one asked for" {
+@test "a timeout systemd prints in minutes is recognized as the one asked for" {
   # 90s is reported as "1min 30s". Read as text it never equals 90s, and every
   # run would re-execute PID 1 and then fail.
   have_device

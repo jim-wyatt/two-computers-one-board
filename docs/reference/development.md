@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
 
 How to change this repository without breaking a board: where things are, the
 checks every change has to pass, and the maintenance jobs that are nobody's
-favourite.
+favorite.
 
 The reasoning behind the checks is the chapter
 [Knowing it works](../learn/knowing-it-works.md). This page is the detail.
@@ -23,7 +23,7 @@ The reasoning behind the checks is the chapter
 ├── mcu/                    everything for the STM32U585
 │   ├── app/                the firmware: shell + SMP + NVS + LED matrix
 │   │   ├── include/        app_proto.h - the MPU<->MCU contract, shared
-│   │   └── src/            main.c, matrix.c (charlieplex driver), bars.c (rasteriser)
+│   │   └── src/            main.c, matrix.c (charlieplex driver), bars.c (rasterizer)
 │   ├── tests/              ztest suites, run on the host with native_sim
 │   ├── board-support/      the OpenOCD configuration that names this board's SWD pins
 │   ├── zbuild.sh           west build + sign + compile_commands
@@ -118,18 +118,19 @@ that silently does nothing is worse than no gate.
 | | tests | `pytest` + coverage | `python/unoq`, held at **100%** of branches |
 | `shell` | lint | `shellcheck -x` | every tracked `*.sh` |
 | | format | `shfmt -i 2 -ci` | every tracked `*.sh` |
-| | behaviour | `bats` | `tests/*.bats` — see [the suite's own guide](../../tests/README.md) |
+| | behavior | `bats` | `tests/*.bats` — see [the suite's own guide](../../tests/README.md) |
 | | units | `tools/check-units.sh` | systemd accepts every unit file and udev rule as provisioning would install them, and everything they start exists — for a root unit, in the set of scripts that is copied for root |
 | `c` | version pin | `tools/check-zephyr-pin.sh` | the board and CI build the same Zephyr |
 | | lock files | `tools/check-constraints.sh` | every Python package the project names is pinned in a lock file, and the Zephyr lock matches the pinned Zephyr |
 | | format | `clang-format` | `mcu/**/*.[ch]`, in Zephyr's own style |
 | `docs` | build | `mkdocs --strict` | every internal link and anchor resolves |
+| `docs` | spelling | `tools/check-spelling.sh` | American spelling throughout, in comments and messages as well as prose. `.codespellrc` lists what is deliberately not a misspelling |
 | | offline | `tools/check-diagram-assets.sh` | the diagram library is on disk, not at a CDN |
 | | settings | `tools/check-config-docs.sh` | [What you can change](configuration.md) names every setting the code reads |
 | | site inputs | `tools/check-site-inputs.sh` | no page embeds a file the site's path filters do not watch |
 | `workflows` | lint | `actionlint` | `.github/workflows/`, including the shell inside every `run:` block |
 | `diagrams` | render | `tools/check-diagrams.sh` | every diagram actually draws, and can be read: lettering displayed at 12px or more and no diagram wider than the text column, in a 1440px window. One headless browser, driven over every page that has one, a few seconds |
-| `mcu` | tests | `ztest` on `native_sim` | the protocol in `app_proto.h` and the rasteriser in `bars.c` |
+| `mcu` | tests | `ztest` on `native_sim` | the protocol in `app_proto.h` and the rasterizer in `bars.c` |
 
 Install the tools, and the pre-commit hook that runs `--fast`:
 
@@ -164,7 +165,7 @@ chip and system command is faked, because the suites have to be runnable on a
 board that is mid-flash — and on a laptop with no board at all — and a test
 that quietly drove the real BOOT0 line would be worse than no test.
 
-Three Python suites are not about behaviour at all. They pin facts that have no
+Three Python suites are not about behavior at all. They pin facts that have no
 other source of truth:
 
 - **The GPIO line numbers** (`test_link.py`). Nothing upstream records them. A
@@ -227,7 +228,7 @@ machines, and a slow CI is one people stop waiting for.
 
 - **A newer commit cancels the run it replaces**, on the same branch or pull
   request, in `ci.yml` and `provision.yml`. A superseded build of the site is
-  cancelled too; a deployment that has started is left to finish.
+  canceled too; a deployment that has started is left to finish.
 - **The expensive jobs are filtered by what changed**: the firmware build and
   the browser check in `ci.yml`, by the `changes` job; `provision.yml` by its
   `paths:`; and `pages.yml` only rebuilds the site when the site's inputs
@@ -245,7 +246,7 @@ switched on for the account. Both are settings.
 - **Scripts explain themselves.** The header comment of each script says what
   it does and why it is the way it is, including what went wrong before. Keep
   that up when you change one.
-- **Shell behaviour gets a test.** Pick by blast radius: what happens when this
+- **Shell behavior gets a test.** Pick by blast radius: what happens when this
   is wrong? Then check the new test fails when you break the script on purpose.
 - **`unoq/*` ignores ruff's `PT` rules.** They are pytest-style checks and
   misfire on `fota.test()`, which is MCUboot's "mark this image pending".
@@ -341,7 +342,7 @@ SWD pins.
 The build goes to `/opt/openocd-rebuilt` and **tests itself against the real
 MCU**: it must see `Cortex-M33`, or it exits non-zero and leaves `/opt/openocd`
 alone. `--promote` keeps the old install as `/opt/openocd.<timestamp>`. Every
-tool here honours `OCD_ROOT`, so you can try the new one first:
+tool here honors `OCD_ROOT`, so you can try the new one first:
 
 ```bash
 OCD_ROOT=/opt/openocd-rebuilt zflash

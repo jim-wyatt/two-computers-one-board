@@ -66,10 +66,10 @@
 # The manager has to be told to read the drop-in. systemctl(1) describes
 # daemon-reload as re-running generators and reloading UNIT files; it promises
 # nothing about system.conf. Recent systemd does in fact re-read its own
-# configuration on a reload, but that is behaviour read out of the source, not
+# configuration on a reload, but that is behavior read out of the source, not
 # something the manual commits to. daemon-reexec restarts PID 1 from its
 # configuration the same way boot does, so it cannot miss the file. It is the
-# heavier of the two - state is serialised and the process replaced - and it is
+# heavier of the two - state is serialized and the process replaced - and it is
 # also what every upgrade of the systemd package does, so it is well trodden.
 # It runs only when the file changed or the manager is not running the timeout
 # the file asks for, and the result is then read back rather than assumed.
@@ -142,7 +142,7 @@ manager_timeout() {
 # as "30s", but 90s comes back as "1min 30s", 60s as "1min", and a manager with
 # no watchdog says "0" - words and units, largest first, separated by spaces.
 # A bare number is the property's raw form, microseconds. "infinity" and
-# anything else unrecognised are not guessed at: not being able to read the
+# anything else unrecognized are not guessed at: not being able to read the
 # answer is not the same as the answer being right.
 span_usec() {
   local total=0 tok n mult

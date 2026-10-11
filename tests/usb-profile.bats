@@ -68,14 +68,14 @@ run_profile() {
 
 # --- detect: identifying the host by asking the wire ------------------------
 
-@test "a Windows ICS host is recognised by its gateway answering ARP" {
+@test "a Windows ICS host is recognized by its gateway answering ARP" {
   ANSWERS="192.168.137.1" fake_arping
   run_profile detect
   [ "$status" -eq 0 ]
   [ "$output" = "windows-ics" ]
 }
 
-@test "a macOS sharing host is recognised by its own gateway" {
+@test "a macOS sharing host is recognized by its own gateway" {
   ANSWERS="192.168.2.1" fake_arping
   run_profile detect
   [ "$status" -eq 0 ]
@@ -145,7 +145,7 @@ CONF
 
 # --- up: claiming an address, and the proofs required -----------------------
 
-@test "a recognised host gets its address claimed" {
+@test "a recognized host gets its address claimed" {
   ANSWERS="192.168.137.1" fake_arping
   run_profile up windows-ics
   [ "$status" -eq 0 ]

@@ -105,7 +105,7 @@ static void matrix_tick(const struct device *dev, void *user_data)
 	ARG_UNUSED(user_data);
 
 	/* Unconditionally first: the previous LED has to stop conducting
-	 * before the next pair is driven, or its neighbours ghost. */
+	 * before the next pair is driven, or its neighbors ghost. */
 	all_pins_floating();
 
 	level = framebuffer[idx];
@@ -174,7 +174,7 @@ void matrix_draw(const uint8_t *levels)
 
 	/* Without the devicetree nodes there is no port to write and no timer
 	 * to pace it; going further would call counter_*() on a device that
-	 * never initialised. */
+	 * never initialized. */
 	if (!ready) {
 		return;
 	}

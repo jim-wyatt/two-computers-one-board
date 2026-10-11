@@ -155,7 +155,7 @@ learn_active() { : >"$FLAGS/learn-active"; }
 }
 
 @test "a mount that goes rw in place leaves the web server running" {
-  # No unmount needed, so nothing is holding anything: the old behaviour,
+  # No unmount needed, so nothing is holding anything: the old behavior,
   # unchanged, including not asking systemd anything at all.
   learn_active
   : >"$FLAGS/remount-rw-works"

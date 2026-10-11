@@ -499,7 +499,7 @@ now, so turning wifi off would leave no way in. The script has refused, and
 wifi is still on. Plug the USB-C port into a computer, then look at
 `~/two-computers-one-board/usb/status.sh`.
 
-**`no computer on br-usb: no gateway, and no IPv4 or IPv6 neighbour either`**
+**`no computer on br-usb: no gateway, and no IPv4 or IPv6 neighbor either`**
 from the same command. The gadget is bound, and nothing on the other end of the
 cable has answered. Check the cable carries data, and that the computer shows a
 new network adapter. If the computer is meant to share its internet connection,

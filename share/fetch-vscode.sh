@@ -15,7 +15,7 @@
 # always resolve to the current stable build, so this stays current without
 # pinning a version that goes stale in the repo.
 #
-# These are Microsoft's binaries under their own licence - they are downloaded
+# These are Microsoft's binaries under their own license - they are downloaded
 # onto your board, never redistributed by this project. See docs/third-party.md.
 set -uo pipefail
 # shellcheck source=provision/lib.sh

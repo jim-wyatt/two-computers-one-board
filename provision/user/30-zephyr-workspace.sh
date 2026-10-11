@@ -72,7 +72,7 @@ fi
 step "Zephyr $ZEPHYR_VERSION checkout"
 if [ -d "$WS/zephyr" ] && [ -f "$WS/.west/config" ]; then
   have="$(git -c safe.directory="$WS/zephyr" -C "$WS/zephyr" describe --tags 2>/dev/null)"
-  skip "workspace initialised at ${have:-unknown}"
+  skip "workspace initialized at ${have:-unknown}"
 else
   # --clone-opt=--depth=1: the one commit that is the release, not the 137,000
   # behind it. Zephyr's history is a gigabyte of git objects - measured, 1004 MB
