@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 [project]
 name = "unoq"
-version = "0.2.0"
+version = "1.0.0"
 description = "Talk to the Arduino UNO Q's STM32U585 from the Linux MPU"
 requires-python = ">=3.11"
 license = "MIT"
