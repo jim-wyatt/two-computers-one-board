@@ -321,7 +321,8 @@ what happened, either way, would settle the question for everyone after you.
 The run ends with `########## done ##########`. If you started it from
 `adb shell`, that shell then closes by itself, about twenty seconds later: the
 board is handing its USB port over from `adb` to the network link. Nothing has
-gone wrong.
+gone wrong. (With `--no-usb-gadget` or `--minimal` there is no hand-over: the
+shell stays open, `adb` goes on working, and step 3 below does not apply.)
 
 1. **Look at the four small LEDs**, in a row at the end of the board opposite
    the USB-C port. You do not need to be logged in for this. Steady green on
@@ -343,7 +344,8 @@ gone wrong.
    measuring its four processor cores and the microcontroller drawing them:
    both halves working, and talking.
 
-3. **Log back in, over the same cable.** Your computer now sees the board as a
+3. **Log back in, over the same cable**, unless you left the USB link out.
+   Your computer now sees the board as a
    network adapter and a drive called `UNO-Q`. From a terminal on your
    computer:
 

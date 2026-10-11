@@ -798,8 +798,10 @@ unoq-usb-bind.service" ]
   # systemd refuses to start a unit that hit its start limit until its failed
   # state is cleared, and this step runs right after the firmware is flashed.
   S="$BATS_TEST_DIRNAME/../provision/65-cpu-bars.sh"
-  reset="$(grep -n 'systemctl reset-failed unoq-cpu-bars.service' "$S" | cut -d: -f1)"
+  reset="$(grep -n '^systemctl reset-failed unoq-cpu-bars.service' "$S" | cut -d: -f1)"
   enable="$(grep -n '^enable_unit unoq-cpu-bars.service' "$S" | cut -d: -f1)"
   [ -n "$reset" ] && [ -n "$enable" ]
   [ "$reset" -lt "$enable" ]
+  # At the start of a line, so not inside an `if`: the count of recent starts
+  # outlives the failed state, and has to be cleared whatever the state is.
 }

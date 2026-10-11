@@ -39,10 +39,16 @@ install_unit "$PROJECT/python/unoq-cpu-bars.service"
 # systemd refuses to start a unit that hit its start limit until that is
 # cleared. This step usually runs right after the firmware has been flashed,
 # which is exactly when the reason it gave up has just been fixed.
-if systemctl is-failed --quiet unoq-cpu-bars.service 2>/dev/null; then
-  systemctl reset-failed unoq-cpu-bars.service >/dev/null 2>&1 || true
+#
+# Cleared every time, not only when the unit is failed. The count of recent
+# starts outlives the state: a demo stopped on its last permitted attempt is
+# merely "inactive", and its next start would still be refused. reset-failed
+# zeroes that count too, and does nothing to a unit with nothing to clear.
+WAS_FAILED=0
+systemctl is-failed --quiet unoq-cpu-bars.service 2>/dev/null && WAS_FAILED=1
+systemctl reset-failed unoq-cpu-bars.service >/dev/null 2>&1 || true
+[ "$WAS_FAILED" = 1 ] &&
   did "cleared the failed state unoq-cpu-bars was left in (it had stopped retrying)"
-fi
 enable_unit unoq-cpu-bars.service
 
 step "verify"

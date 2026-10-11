@@ -390,10 +390,15 @@ if [ "$SKIP_MCU" = 0 ]; then
   # was measured using seven of the twelve. Stopped, it uses none. It is
   # started again below - by step 65 in the usual case, and here when this run
   # was asked to leave the demo out but an earlier one installed it.
+  # "activating" as well as "active": between attempts the unit sits in
+  # activating (auto-restart) for RestartSec, and a run that began in that
+  # gap would have left it retrying through the whole flash.
   DEMO_PAUSED=0
-  if systemctl is-active --quiet unoq-cpu-bars.service 2>/dev/null; then
-    sudo systemctl stop unoq-cpu-bars.service && DEMO_PAUSED=1
-  fi
+  case "$(systemctl show unoq-cpu-bars.service -p ActiveState --value 2>/dev/null)" in
+    active | activating)
+      sudo systemctl stop unoq-cpu-bars.service && DEMO_PAUSED=1
+      ;;
+  esac
   # flash-all.sh derives the workspace itself.
   if bash "$PROJECT/mcu/flash-all.sh" >"$FLASH_LOG" 2>&1; then
     did "MCUboot + application flashed"
