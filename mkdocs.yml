@@ -235,6 +235,13 @@ markdown_extensions:
 # Grouped into four acts rather than listed as sixteen. A flat sidebar of
 # sixteen chapter titles reads as a filing cabinet; the groups are the argument
 # the course is making, and they are the same four the home page uses.
+#
+# A few entries carry a title of their own. Every page opens with a licence
+# comment, so MkDocs does not find the heading under it and names the page
+# after its file instead - and a file name has no capitals to give. Seen in the
+# sidebar: "Mpu", "Mcu", "Usb", "The linux side", "The led matrix". Only the
+# ones a file name gets wrong are spelled out; the rest read correctly as
+# they are.
 nav:
   - Home: index.md
   - Set up a board: setup.md
@@ -242,17 +249,17 @@ nav:
       - learn/start-here.md
       - What is actually here:
           - learn/two-computers.md
-          - learn/the-linux-side.md
+          - The Linux side: learn/the-linux-side.md
           - learn/the-microcontroller-side.md
           - learn/from-power-to-prompt.md
       - Making them cooperate:
           - learn/how-they-talk.md
           - learn/from-source-to-chip.md
           - learn/how-the-build-knows-your-hardware.md
-          - learn/the-led-matrix.md
+          - The LED matrix: learn/the-led-matrix.md
       - Living with real hardware:
           - learn/updating-safely.md
-          - learn/one-cable-many-devices.md
+          - One cable, many devices: learn/one-cable-many-devices.md
           - learn/four-lights.md
           - learn/debugging-without-a-screen.md
       - Making it yours:
@@ -264,9 +271,9 @@ nav:
       # rather than an entry in its list.
       - reference/index.md
       - reference/hardware.md
-      - reference/mpu.md
-      - reference/mcu.md
-      - reference/usb.md
+      - MPU: reference/mpu.md
+      - MCU: reference/mcu.md
+      - USB: reference/usb.md
       - reference/configuration.md
       - reference/provisioning.md
       - reference/troubleshooting.md

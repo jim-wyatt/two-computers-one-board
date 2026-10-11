@@ -46,6 +46,32 @@
 [data-md-color-scheme="slate"][data-md-color-accent="custom"] {
   --md-accent-fg-color: #3fc3b8;
   --md-accent-fg-color--transparent: #3fc3b81a;
+  /* The colour of text drawn ON the accent, which is what a hovered button
+   * is. Left at white it works out at 2.1:1 against the light teal above. */
+  --md-accent-bg-color: #082726;
+}
+
+/* The dark header's teal is a fine background and an unreadable foreground,
+ * and Material paints buttons with the same variable it paints the header
+ * with. Measured on the home page in the dark scheme: the two outlined
+ * buttons were 1.45:1 against the page, and the filled one was the same
+ * 1.45:1 as a shape. Links already had their own lifted colour; buttons now
+ * use it too, and the filled one takes the light scheme's teal, which carries
+ * white text at 6.1:1. */
+[data-md-color-scheme="slate"] .md-typeset .md-button {
+  color: var(--md-typeset-a-color);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .md-button--primary {
+  color: #ffffff;
+  background-color: #0f6e6a;
+  border-color: #0f6e6a;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .md-button:is(:focus, :hover) {
+  color: var(--md-accent-bg-color);
+  background-color: var(--md-accent-fg-color);
+  border-color: var(--md-accent-fg-color);
 }
 
 /* --------------------------------------------------------------------------
@@ -60,12 +86,19 @@
 }
 
 /* A measure. Past about 80 characters the eye loses the start of the next line,
- * and these pages have long paragraphs. */
+ * and these pages have long paragraphs.
+ *
+ * It only ever bites on the home page: with both sidebars shown the column is
+ * 34.4rem, and with them hidden it is 59.4rem. At 46rem the home page's
+ * paragraphs measured 920px, about 118 characters a line; 38rem is 760px and
+ * about 98, against 88 on every other page. Callouts are held to the same
+ * measure, or the tip at the foot of the home page is one 1188px line. */
 .md-content__inner > p,
 .md-content__inner > ul,
 .md-content__inner > ol,
-.md-content__inner > blockquote {
-  max-width: 46rem;
+.md-content__inner > blockquote,
+.md-content__inner > .admonition {
+  max-width: 38rem;
 }
 
 .md-typeset h1 {
@@ -86,14 +119,144 @@
   font-weight: 620;
 }
 
-/* Tables carry a lot of the reference material. Uppercase headers separate the
- * header row from the body without needing a heavy rule. */
+/* The "link to this section" mark is invisible until the heading is hovered,
+ * and on a phone nothing hovers. It still takes up room: when a heading nearly
+ * fills the line the mark wraps onto a line of its own, and the heading grows
+ * an empty line between its text and its rule. Measured at 390px: 18 of the
+ * site's 371 headings, two of them on the setup page. */
+@media screen and (max-width: 44.9375em) {
+  .md-typeset .headerlink {
+    display: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * tables
+ *
+ * Tables carry most of the reference material, and Material sets them a good
+ * deal smaller than prose: 12.8px against 15.5px, with the `code` in a cell at
+ * 10.9px. On pages that are mostly table, that is the page.
+ * ----------------------------------------------------------------------- */
+
+.md-typeset table:not([class]) {
+  font-size: 0.7rem;
+}
+
+/* Uppercase headers separate the header row from the body without needing a
+ * heavy rule. */
 .md-typeset table:not([class]) th {
   font-size: 0.66rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--md-default-fg-color--light);
+}
+
+/* A header row with nothing in it (`| | | |`, used where the columns need no
+ * names) still drew a 25px band above the first row. With the band gone the
+ * first row's own top rule sits on the table's border, so that goes too. */
+.md-typeset table:not([class]) thead:not(:has(th:not(:empty))) {
+  display: none;
+}
+
+.md-typeset table:not([class]) thead:not(:has(th:not(:empty))) + tbody tr:first-child td {
+  border-top: 0;
+}
+
+/* Material lets `code` break anywhere, which is right in a paragraph and wrong
+ * in a narrow column: the name of a setting was cut wherever the column
+ * happened to end, its last five letters on a line of their own. Measured
+ * over every page: of the 763 pieces of code in table cells, 74 were split
+ * mid-word at 1440px and 196 at 390px. Here code breaks only where a browser
+ * would break ordinary text, plus after each underscore: tools/mkdocs_hooks.py
+ * puts a <wbr> there, and says what happened when there were none. */
+.md-typeset table:not([class]) code {
+  word-break: normal;
+}
+
+/* ON A PHONE, A TABLE OF THREE OR MORE COLUMNS BECOMES A LIST OF CARDS.
+ *
+ * Most tables here hold sentences, not numbers. Three columns of sentences in
+ * 358px is three columns about 100px wide: the first table on the setup page
+ * measured 2283px tall at two or three words a line, and nine tables with
+ * more columns than that scrolled sideways as well, so the name of a setting
+ * was off-screen while you read what it did.
+ *
+ * So each row is set as a block, with every cell the full width and its column
+ * heading above it. The heading text comes from `data-label`, which
+ * tools/mkdocs_hooks.py copies onto each cell at build time, along with the
+ * `data-stack` that opts the table in. Two-column tables are left alone: a
+ * name and its meaning fit side by side.
+ *
+ * 44.9375em is Material's own phone/tablet boundary. */
+@media screen and (max-width: 44.9375em) {
+  /* The tables that stay tables get their room back first. Material gives
+   * every cell 1.25em of padding each side and a 5rem minimum, which in a
+   * three-column table at 390px is 105px of padding and two 100px columns
+   * holding one short word each, leaving the sentence about 105px. */
+  .md-typeset table:not([class]) th,
+  .md-typeset table:not([class]) td {
+    min-width: 3rem;
+    padding-right: 0.7em;
+    padding-left: 0.7em;
+  }
+
+  /* Material wraps every table in an inline-block that shrinks to fit. A table
+   * that is now a block has nothing to shrink to. */
+  .md-typeset__table:has(> table[data-stack]) {
+    display: block;
+  }
+
+  .md-typeset table[data-stack]:not([class]) {
+    display: block;
+    border: 0;
+    overflow: visible;
+  }
+
+  /* Out of sight, not `display: none`: the labels below are generated content,
+   * and a screen reader should still be able to find the real headings. */
+  .md-typeset table[data-stack]:not([class]) thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .md-typeset table[data-stack]:not([class]) tbody,
+  .md-typeset table[data-stack]:not([class]) tr,
+  .md-typeset table[data-stack]:not([class]) td {
+    display: block;
+  }
+
+  .md-typeset table[data-stack]:not([class]) tr {
+    margin-bottom: 0.5rem;
+    padding: 0.35rem 0;
+    border: 0.05rem solid var(--md-typeset-table-color);
+    border-radius: 0.1rem;
+  }
+
+  .md-typeset table[data-stack]:not([class]) td {
+    min-width: 0;
+    padding: 0.25rem 0.7rem;
+    border: 0;
+  }
+
+  /* A first column with no heading is the row's own name ("Chip",
+   * "Processor"), so it is set as one. */
+  .md-typeset table[data-stack]:not([class]) td:first-child:not([data-label]) {
+    font-weight: 700;
+  }
+
+  .md-typeset table[data-stack]:not([class]) td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--md-default-fg-color--light);
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -105,16 +268,19 @@
 
 .hero {
   margin: 0 0 3rem;
-  padding: 2.4rem 0 2.6rem;
+  padding: 1.2rem 0 2.6rem;
   border-bottom: 1px solid var(--md-default-fg-color--lightest);
 }
 
+/* 26ch and balanced: at 20ch the title ran to four lines at 1440px, the last
+ * of them one word, and the buttons ended 620px down a 900px window. */
 .hero h1 {
   font-size: 2.3rem;
   line-height: 1.12;
   letter-spacing: -0.022em;
   margin: 0 0 0.6rem;
-  max-width: 20ch;
+  max-width: 26ch;
+  text-wrap: balance;
 }
 
 .hero p {
@@ -127,6 +293,32 @@
 
 .hero .md-button {
   margin: 0 0.4rem 0.4rem 0;
+}
+
+/* On a phone the same title was six lines of 46px type, and of the three
+ * buttons only the first was on the first screen (they ended 827, 893 and
+ * 959px down a window of 844). Smaller type and a little less air puts all
+ * three there. They go full width because, stacked at three different widths,
+ * they read as a ragged list rather than as three choices. */
+@media screen and (max-width: 44.9375em) {
+  .hero {
+    padding-top: 0;
+  }
+
+  .hero h1 {
+    font-size: 1.7rem;
+  }
+
+  .hero p {
+    font-size: 0.85rem;
+    margin-bottom: 1.1rem;
+  }
+
+  .hero .md-button {
+    display: block;
+    margin-right: 0;
+    text-align: center;
+  }
 }
 
 /* The one-line summary of what the two chips are, under the hero. Grid rather
@@ -146,12 +338,32 @@
   background: var(--md-code-bg-color);
 }
 
+/* The link colour, not the primary. They are the same teal in the light
+ * scheme; in the dark one the primary is the header's background, and these
+ * two headings measured 1.11:1 against their box. */
 .split h3 {
   margin: 0 0 0.5rem;
   font-size: 0.8rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--md-primary-fg-color);
+  color: var(--md-typeset-a-color);
+}
+
+/* Both card grids on the home page hold four cards. Material's grid fits as
+ * many 16rem columns as it can, which in the 1188px column is three - so each
+ * grid was a row of three with the fourth card alone underneath. Four across,
+ * then two by two, then (Material's own, on a phone) one: never a row with a
+ * single card in it. */
+@media screen and (min-width: 45em) {
+  .hero ~ .grid.cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media screen and (min-width: 76.25em) {
+  .hero ~ .grid.cards {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -192,9 +404,13 @@
   display: none;
 }
 
+/* Set at the size of the prose around them. These are not asides: the first
+ * one on the setup page is the warning that the script changes the board, and
+ * at 0.72rem it was the smallest running text on the page (14.4px in 15.5px
+ * prose). */
 .md-typeset .admonition,
 .md-typeset details {
-  font-size: 0.72rem;
+  font-size: 0.775rem;
   border-width: 0 0 0 0.15rem;
   border-radius: 0 0.2rem 0.2rem 0;
   box-shadow: none;
