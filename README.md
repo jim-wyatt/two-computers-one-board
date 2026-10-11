@@ -168,6 +168,8 @@ line marked `FAILED` are usually enough to find it.
 This was built and tested on the UNO Q (`arduino,imola`). Nothing here has been
 tested on any other board.
 
+<a id="licence"></a> <!-- the heading's address before the spelling changed; links to it still land here. codespell:ignore licence -->
+
 ## License
 
 MIT — see [LICENSE](LICENSE). A few files belong to other projects and keep

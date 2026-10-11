@@ -180,8 +180,7 @@ if wanted docs; then
   # tracked file, because the British spellings were in comments and messages
   # as much as in the prose.
   if have codespell "spelling (en_US)"; then
-    mapfile -t SPELL_FILES < <(git ls-files)
-    run "spelling (en_US)" "$VENV/bin/codespell" "${SPELL_FILES[@]}"
+    run "spelling (en_US)" "$PROJECT/tools/check-spelling.sh"
   fi
   if have mkdocs "docs (mkdocs --strict)"; then
     run "docs (mkdocs --strict)" "$PROJECT/tools/build-docs.sh"

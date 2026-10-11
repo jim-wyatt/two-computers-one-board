@@ -99,6 +99,8 @@ Both are true, and the gap between a nominal constant and a measured value is
 worth being suspicious about in general — here it is benign, but the only reason
 we know that is that somebody measured.
 
+<a id="grey-from-a-panel-that-has-no-grey"></a> <!-- the heading's address before the spelling changed; links to it still land here. codespell:ignore grey -->
+
 ## Gray, from a panel that has no gray
 
 The LEDs are single-color blue and can only be on or off. Yet the bars fade.

@@ -124,7 +124,7 @@ that silently does nothing is worse than no gate.
 | | lock files | `tools/check-constraints.sh` | every Python package the project names is pinned in a lock file, and the Zephyr lock matches the pinned Zephyr |
 | | format | `clang-format` | `mcu/**/*.[ch]`, in Zephyr's own style |
 | `docs` | build | `mkdocs --strict` | every internal link and anchor resolves |
-| `docs` | spelling | `codespell` | American spelling throughout, in comments and messages as well as prose. `.codespellrc` lists what is deliberately not a misspelling |
+| `docs` | spelling | `tools/check-spelling.sh` | American spelling throughout, in comments and messages as well as prose. `.codespellrc` lists what is deliberately not a misspelling |
 | | offline | `tools/check-diagram-assets.sh` | the diagram library is on disk, not at a CDN |
 | | settings | `tools/check-config-docs.sh` | [What you can change](configuration.md) names every setting the code reads |
 | | site inputs | `tools/check-site-inputs.sh` | no page embeds a file the site's path filters do not watch |

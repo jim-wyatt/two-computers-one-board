@@ -43,6 +43,8 @@ quality gate, and the conventions.
 - **No secrets, and nothing that is somebody else's to distribute.** See
   [third-party.md](docs/third-party.md).
 
+<a id="licence"></a> <!-- the heading's address before the spelling changed; links to it still land here. codespell:ignore licence -->
+
 ## License
 
 By contributing you agree that your contribution is released under the

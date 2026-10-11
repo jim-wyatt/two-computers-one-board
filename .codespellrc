@@ -11,7 +11,13 @@
 [codespell]
 builtin = clear,rare,en-GB_to_en-US
 dictionary = tools/spelling-extra.txt,-
-skip = .git,.venv,share,*.svd,*.svg,*.png,*.ico,*.pem,LICENSE,LICENSES,python/requirements-lock.txt,mcu/requirements-zephyr-lock.txt,mcu/requirements-zephyr.in,docs/assets/javascripts/lunr,.codespellrc,tools/spelling-extra.txt
+# tools/check-spelling.sh, which is what the gate runs, takes other people's
+# text out of the file list itself. These are for running codespell by hand
+# on the whole tree, where it walks directories and `skip` does apply.
+skip = ./.git,./.venv,./share/learn,./LICENSE,./LICENSES,./docs/assets/javascripts/lunr,*.svd,*.svg,*.png,*.ico,*.pem,./python/requirements-lock.txt,./mcu/requirements-zephyr-lock.txt,./mcu/requirements-zephyr.in
+# A word that only looks like a misspelling, in one place: end that line with
+# a comment containing  codespell:ignore <the word>  (the old anchors beside
+# five renamed headings are marked that way). Everywhere:
 # Not misspellings here:
 #   abl    a partition on this board (abl_a, abl_b)
 #   te ue  fragments of messages quoted from tools, in troubleshooting.md

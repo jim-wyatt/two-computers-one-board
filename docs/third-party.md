@@ -37,6 +37,8 @@ that any of these organizations produced, reviewed or endorsed this project.
 If you own one of these marks and object to how it is used here, open an issue
 and it will be changed.
 
+<a id="licences-not-trademarks"></a> <!-- the heading's address before the spelling changed; links to it still land here. codespell:ignore licences -->
+
 ## Licenses, not trademarks
 
 The rest of this page is about **copyright and licensing** — which files belong

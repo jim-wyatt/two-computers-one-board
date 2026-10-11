@@ -175,6 +175,8 @@ chip's health, and it is on the correct chip to say it.
 > while that service runs and blinking red a few seconds after it stops, and it
 > starts out blinking red at every MCU reset until the first command arrives.
 
+<a id="colour-alone-was-not-enough"></a> <!-- the heading's address before the spelling changed; links to it still land here. codespell:ignore colour -->
+
 ## Color alone was not enough
 
 Everything above was first built with color as the only channel, and mostly
