@@ -68,8 +68,10 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BRIDGE="${UNOQ_USB_BRIDGE:-br-usb}"
-UDHCPC_PID=/run/unoq-usb-udhcpc.pid
-DNSMASQ_PID=/run/unoq-usb-dnsmasq.pid
+RUN_DIR="${UNOQ_RUN_DIR:-/run}"
+NET_SYSFS="${UNOQ_NET_SYSFS:-/sys/class/net}"
+UDHCPC_PID="$RUN_DIR/unoq-usb-udhcpc.pid"
+DNSMASQ_PID="$RUN_DIR/unoq-usb-dnsmasq.pid"
 
 log() { echo "unoq-usb-net: $*"; }
 die() {
@@ -131,7 +133,7 @@ done < <(ip -4 -o addr show dev "$BRIDGE" 2>/dev/null |
 # numbers them differently - and enslaving a netdev that never passes a frame
 # costs nothing.
 enslaved=0
-for iface in /sys/class/net/usb*; do
+for iface in "$NET_SYSFS"/usb*; do
   [ -e "$iface" ] || continue
   name="$(basename "$iface")"
   master="$(basename "$(readlink -f "$iface/master" 2>/dev/null || echo none)")"
