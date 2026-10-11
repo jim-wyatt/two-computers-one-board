@@ -59,18 +59,21 @@ published sample key, which everyone has. The signature proves an image arrived
 intact. It does not prove where it came from. See
 [Updating safely](docs/learn/updating-safely.md).
 
-**The optional web server has no authentication.** `--with-learning` serves the
-documentation, and the installers on the drive image, over plain HTTP on port
+**The web server has no authentication, and is on by default.** A plain
+`./bootstrap.sh` serves the documentation, and the installers on the drive image, over plain HTTP on port
 8080, on every network interface the board has. It serves a read-only
 filesystem and runs as an unprivileged user with a restricted sandbox, but
-anyone who can reach the board can read what it serves.
+anyone who can reach the board can read what it serves. `--no-learning` leaves
+it out.
 
-**`--with-usb-gadget` switches SSH on.** The factory image ships `sshd`
-installed and off, and its way in is `adb shell` over the cable. The gadget
+**SSH is switched on, by default.** A plain `./bootstrap.sh` sets up the USB
+link. The factory image ships `sshd` installed and off, and its way in is
+`adb shell` over the cable. The gadget
 takes that cable, so the step enables `sshd` first and leaves it on: password
 login for `arduino`, on every network interface the board has, including wifi.
 The password is the one you chose with `arduino-passwd`, and it is now what
-stands between your network and a shell with `sudo`. See
+stands between your network and a shell with `sudo`. `--no-usb-gadget` leaves
+the USB port with `adb` and SSH as it was, which on a factory image is off. See
 [usb.md](docs/reference/usb.md#adb-is-disabled-and-ssh-is-switched-on).
 
 **The serial console is a login.** The board's own serial console offers a

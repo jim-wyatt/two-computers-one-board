@@ -115,7 +115,7 @@ unoq-link.service      loaded active exited  Arduino UNO Q MPU<->MCU link (BOOT0
 
 Those three are what the course's setup gives you. `unoq-link` says `exited`,
 not `running`, and that is success: it sets two pins at boot and has nothing
-more to do. The other optional extras add `unoq-learn` and `unoq-usb-gadget`.
+more to do. A plain setup also gives you `unoq-learn` and `unoq-usb-gadget`.
 
 Useful commands, which you will use constantly:
 

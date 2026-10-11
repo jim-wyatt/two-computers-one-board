@@ -112,13 +112,14 @@ the course explains what that script did and why. You can read the first few
 chapters while it runs.
 
 > [!IMPORTANT]
-> **Set the board up with `./bootstrap.sh --with-cpu-bars`.** The exercises
-> use the worked example — CPU load on the LED matrix — running as a service,
-> and that option is what installs it. Many of them start with
+> **Set the board up with a plain `./bootstrap.sh`.** The exercises use the
+> worked example — CPU load on the LED matrix — running as a service, and a
+> plain run installs it. Many of them start with
 > `sudo systemctl stop unoq-cpu-bars` and end by starting it again, because the
 > service holds the one wire to the microcontroller and you are about to borrow
-> it. If you set up without the option, run `./bootstrap.sh --with-cpu-bars`
-> now; everything already done is skipped.
+> it. If you set up with `--no-cpu-bars` or `--minimal`, add the demo and
+> nothing else with
+> `sudo bash ~/two-computers-one-board/provision/65-cpu-bars.sh`.
 
 ## A warning that will save you an afternoon
 

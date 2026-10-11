@@ -408,8 +408,8 @@ When each script then takes effect is listed in
 **A provisioning step warns that units "still run as root from the checkout".**
 The board was set up before root had its own copies, and the step that
 installed those units has not been run since. Run the step the warning names.
-A plain `./bootstrap.sh` does not run `95-usb-gadget.sh`, so the four USB
-units need that step, or `./bootstrap.sh --with-usb-gadget`.
+A run with `--no-usb-gadget` or `--minimal` does not run `95-usb-gadget.sh`,
+so the four USB units need that step, or a plain `./bootstrap.sh`.
 
 **A service fails with `status=203/EXEC` after you move the checkout.**
 A virtualenv is **not relocatable**. Its console scripts carry an absolute
@@ -495,7 +495,7 @@ reach it. Cause, how to look, and the two commands that clear it:
 [the bind guard](usb.md#the-bind-guard).
 
 **`/srv/unoq-share has no content`** from `provision/75-learning-web.sh` or
-`./bootstrap.sh --with-learning`. The web server serves the drive image, and
+`./bootstrap.sh`. The web server serves the drive image, and
 the image has not been built. Build it, then run the step again:
 
 ```bash

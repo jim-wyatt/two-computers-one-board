@@ -372,7 +372,9 @@ if [ -d "$STAGING/vscode" ] && compgen -G "$STAGING/vscode/*" >/dev/null; then
 elif [ -d "$MOUNT/vscode" ] && compgen -G "$MOUNT/vscode/*" >/dev/null; then
   skip "installers already in the image ($(du -sh "$MOUNT/vscode" | cut -f1))"
 else
-  warn "no installers found - run share/fetch-vscode.sh first"
+  # Not a warning: the installers are a separate download that nobody is
+  # obliged to make, and the drive is complete without them.
+  skip "no VS Code installers on the drive (optional: share/fetch-vscode.sh fetches them)"
 fi
 
 sync

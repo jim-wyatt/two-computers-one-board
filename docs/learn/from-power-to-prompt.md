@@ -156,9 +156,9 @@ control and debug lines between the two chips:
 ## Why a boot can report two minutes
 
 How long the whole thing takes depends on one choice made at setup. With the
-optional USB extra installed (`./bootstrap.sh --with-usb-gadget`, or
-`--everything`), `systemd-analyze` reports about two and a half minutes. Without
-it, a fraction of that. The difference is a single unit that waits on purpose.
+USB link installed, which a plain `./bootstrap.sh` does, `systemd-analyze`
+reports about two and a half minutes. Without it (`--no-usb-gadget`), a
+fraction of that. The difference is a single unit that waits on purpose.
 
 This sample is from a board *with* the extra. Ask it where the time goes:
 

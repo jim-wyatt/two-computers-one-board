@@ -134,9 +134,7 @@ step "verify /dev/ttyHS1 is free"
 if [ ! -e /dev/ttyHS1 ]; then
   warn "/dev/ttyHS1 does not exist - is this an UNO Q?"
 elif holder=$(fuser /dev/ttyHS1 2>/dev/null | tr -s ' ' ' ' | sed 's/^ *//;s/ *$//') && [ -n "$holder" ]; then
-  # fuser pads its output, and unquoted padding turns into empty ps arguments.
-  warn "/dev/ttyHS1 held by PID(s) $holder: $(ps -o comm= -p "${holder// /,}" 2>/dev/null | tr '\n' ' ')"
-  warn "  unoq-cpu-bars holding it is expected - see provision/65-cpu-bars.sh"
+  report_port_holders /dev/ttyHS1 "$holder"
 else
   skip "/dev/ttyHS1 is free"
 fi

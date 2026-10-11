@@ -18,10 +18,10 @@ when you have the vocabulary.
 > [!WARNING]
 > **This changes your board, and you run it at your own risk.**
 >
-> Even with no options, the script switches off the desktop, Arduino's own
-> services and automatic updates, and replaces the firmware on the
-> microcontroller. App Lab and the Arduino workflow stop working until you put
-> them back. The list is just below.
+> The script switches off the desktop, Arduino's own services and automatic
+> updates, replaces the firmware on the microcontroller, and takes the USB port
+> from `adb`, switching SSH on in its place. App Lab and the Arduino workflow
+> stop working until you put them back. The list is just below.
 >
 > It has been tested on one kind of board in one state: an UNO Q freshly
 > restored to the factory image. There is no warranty of any kind — the
@@ -35,7 +35,9 @@ when you have the vocabulary.
 
 ### What a plain `./bootstrap.sh` changes
 
-Nothing here needs an option to happen. Each line is a deliberate choice for a
+Nothing here needs an option to happen. `./bootstrap.sh --minimal` leaves out
+the three rows about the demo, the web server and the USB port, and nothing
+else. Each line is a deliberate choice for a
 board used as a headless development machine, and each can be put back.
 
 | It does this | Because | To keep things as they were |
@@ -48,6 +50,9 @@ board used as a headless development machine, and each can be put back.
 | **Switches off Bluetooth and `udisks2`.** | Nothing here uses them. | `UNOQ_TIER2=0` |
 | **Installs services that run at every boot**, as root: the control lines to the microcontroller, and the status LEDs. They run copies of this checkout's scripts, kept in `/usr/local/lib/unoq/` and owned by root. | Without the first, the microcontroller looks dead after a reboot. The copies are so that changing a file in your home directory does not change what root runs. | — |
 | **Pings `1.1.1.1` about once a minute.** | It is how the status LED knows whether there is a route out. | `UNOQ_LED_PROBE_IP`, in [What you can change](reference/configuration.md) |
+| **Runs the CPU-bars demo from boot**: Linux measures its four cores, the microcontroller draws them on the LED grid. | It is the worked example the whole course is built on. It holds the one serial line to the microcontroller, so stop it (`sudo systemctl stop unoq-cpu-bars`) before using the shell or the Python API yourself. | `./bootstrap.sh --no-cpu-bars` |
+| **Serves the course on port 8080**, from the board, with no password, on every network the board is on. | So the course is one address away from the computer next to it, and works with no internet. Anyone who can reach the board can read what it serves, which is this documentation. | `./bootstrap.sh --no-learning` |
+| **Makes the USB port a network link and a drive.** `adb` stops working, because it needs the same port; SSH is switched on first, and is how you log in from then on. The port can no longer host devices such as a keyboard or a network dongle. | One cable then gives your computer the board's network, its name (`uno-q.local`) and the course as files. | `./bootstrap.sh --no-usb-gadget` keeps `adb` and leaves SSH as it was. |
 | **Deletes what it downloaded in order to install**: apt's package files, and the download caches of `uv` and `pip`. Nothing that is installed, and nothing of yours. | The home partition is 8 GB, and none of it is needed again. | `UNOQ_KEEP_CACHES=1` |
 | **Adds a line to `~/.bashrc`**, a git pre-commit hook in the checkout, and VS Code machine settings if there are none. | The shell shortcuts, and settings that suit a small board. | Delete the line. |
 
@@ -177,7 +182,7 @@ have a terminal on it.
 ```bash
 git clone https://github.com/jim-wyatt/two-computers-one-board.git ~/two-computers-one-board
 cd ~/two-computers-one-board
-./bootstrap.sh --with-cpu-bars      # what the course expects; plain ./bootstrap.sh also works
+./bootstrap.sh
 ```
 
 Run it as yourself, not with `sudo`. It prints what it is about to change,
@@ -226,22 +231,27 @@ There are four words, and they are the whole vocabulary:
 | `35`, `40` | Sets up Python and the `unoq` package, and the shell shortcuts. |
 | `45`, `50` | Makes the two control lines to the microcontroller correct at every boot, and starts the status LEDs. |
 | `60` | Builds this project's firmware and writes it to the microcontroller. |
-| `65` | With `--with-cpu-bars`: the demo, as a service that starts at boot. |
+| `65` | The CPU-bars demo, as a service that starts at boot. |
+| `70`, `75` | Builds the drive image with this documentation on it, and starts the web server that serves it. |
 | `90` | Gives back the disk space the downloads borrowed, and says how much. |
+| `95` | Hands the USB port over from `adb` to the network link and the drive. Always last. |
 
 The numbers are the order things run in, and each is the start of a file name:
 stage `25` is `provision/user/25-zephyr-sdk.sh`. The gaps are the
-[optional extras](#the-optional-extras), which have numbers of their own.
+[opt-in extras](#options), which have numbers of their own.
 Stages `20` to `40` run as you, and their banners say so. So does `60`, the
 firmware: it builds in your workspace, and must not be run with `sudo`. The
-others run as root. [Provisioning](reference/provisioning.md) has what each one changes and
+others run as root. [Provisioning](reference/provisioning.md) has what each
+one changes and
 how to undo it.
 
 ### How long it takes
 
 One run, timed from start to finish: a board just restored to the factory
-image, on wifi to a home broadband connection, set up from `adb shell` with
-`--with-cpu-bars --with-usb-gadget`. The board was sampled every five seconds.
+image, on wifi to a home broadband connection, set up from `adb shell`. That
+run was made before the web server joined the default, so it has no row for
+stage `75`, which adds a few seconds. The board was
+sampled every five seconds.
 Yours will differ with your connection; use this to know which parts are slow
 and that a quiet terminal is normal.
 
@@ -263,7 +273,7 @@ and that a quiet terminal is normal.
 | `95` the USB gadget | 47 seconds |
 | **All of it** | **20 minutes 25 seconds** |
 
-Then, with `--with-usb-gadget` from `adb shell`: the shell closed 24 seconds
+Then, because it was started from `adb shell`: the shell closed 24 seconds
 after the run ended, and 21 seconds after that the board was back on the same
 cable as a network adapter and a drive.
 
@@ -327,16 +337,19 @@ try. Then:
     - **The firmware.** Stage `60` builds it and flashes it
       again on every run, and says `changed` for each. That is deliberate: it
       is how a board ends up running the firmware in the checkout.
-    - **The drive image**, if you asked for `--with-learning` or
-      `--with-usb-gadget`. Stage `70` renders the documentation onto it again
+    - **The drive image.** Stage `70` renders the documentation onto it again
       each time.
 
-    For a run that is nothing but `ok`, leave the firmware out and do not ask
-    for the drive:
+    The USB step's hand-over also reports `changed`, because it rebuilds the
+    gadget each time. For a run that is nothing but `ok`, leave out the
+    firmware and the three things that go with the drive:
 
     ```bash
-    ./bootstrap.sh --skip-mcu
+    ./bootstrap.sh --minimal --skip-mcu
     ```
+
+    That changes nothing already installed; leaving something out of a later
+    run does not remove it.
 
 2. **Look at the four small LEDs**, in a row at the end of the board opposite
    the USB-C port. Steady green on all four is a healthy board. From the edge
@@ -349,18 +362,19 @@ try. Then:
     | LED 2 | nothing on the Linux side has failed |
     | LED 1 | the board can reach the internet |
 
-    LED 4 is green only with `--with-cpu-bars`, because that demo is what talks
-    to the microcontroller; without it LED 4 blinks red, which is correct. One
+    LED 4 is green because the CPU-bars demo is talking to the
+    microcontroller; set up with `--no-cpu-bars`, it blinks red, which is
+    correct. One
    that blinks red is telling you something specific;
    [Four lights](learn/four-lights.md) says what, or run
    `~/two-computers-one-board/status/leds.sh explain`.
 
-3. **Look at the LED grid**, if you set it up with `--with-cpu-bars`. Four bars of
+3. **Look at the LED grid.** Four bars of
    light on the LED grid, moving. That is Linux measuring its four processor
    cores and the microcontroller drawing them: both halves working, and
    talking.
 
-4. **Or ask the microcontroller directly**, if you did not. Open a new shell,
+4. **Or ask the microcontroller directly**, if you set up with `--no-cpu-bars`. Open a new shell,
    so the shortcuts are loaded, and:
 
     ```bash
@@ -376,7 +390,7 @@ try. Then:
     gone up. `sweeps` counts redraws of the LED grid and stays at 0 until
     something is drawn.
 
-    (With `--with-cpu-bars` this command says the port is busy, and names the
+    (With the demo running this command says the port is busy, and names the
     service holding it. That is correct: only one program can use the wire to
     the microcontroller at a time, and the demo has it.)
 
@@ -409,27 +423,42 @@ with the output from the last banner down.
 > just the SDK step; the root stages want `sudo bash`. Each is as safe to
 > re-run as the whole.
 
-## The optional extras
+## Options
 
-Each of these is left out by default because it takes something away, and you
-should know what before you agree to it.
+A plain run sets up everything the course uses. The options are for leaving
+something out, or for adding one of three things that are not for everybody.
 
-**For the course, use `--with-cpu-bars`.** Its exercises are built around the
-demo running as a service. The chapter on USB wants `--with-usb-gadget` as
-well, and says so when you get there; nothing else needs an extra.
+### Leaving something out
 
-| Flag | Gives you | Costs you |
+| Option | Leaves out | You would, if |
 |---|---|---|
-| `--with-cpu-bars` | The CPU-bars demo on the LED matrix from boot. | That service holds the serial line to the microcontroller. Stop it (`sudo systemctl stop unoq-cpu-bars`) before using the shell or the Python API. |
-| `--with-usb-gadget` | Plug the board into a computer and it appears as a network connection and a drive. | `adb` stops working, because it needs the same USB port: the step switches SSH on first, and from then on you log in with `ssh arduino@<board name>.local` and your password. If you ran the setup from `adb shell`, **that shell closes about twenty seconds after the run ends**, which is the hand-over and not a crash. The USB-C port can also no longer host devices, so anything plugged into it, a network dongle included, stops working. Read [usb.md](reference/usb.md) first. |
-| `--with-learning` | The course, served by the board on port 8080. | A small web server with no password, listening on every network the board is on. Anyone who can reach the board can read what it serves. |
-| `--with-purge` | A few hundred MB of disk back, by removing the remaining Arduino packages. (The ~2 GB of container images go in the default run.) | It is the one step that is hard to undo. The stock firmware is backed up first. |
-| `--everything` | All four. | All four. |
-| `--with-watchdog` | The board resets itself if its kernel hangs, instead of waiting for someone to pull the cable. | It also resets if `systemd` merely stalls for 30 seconds. It has survived a clean firmware build with swap 80% full on one board, which is one measurement and not a promise. Not included in `--everything`. |
-| `--with-esp-lockdown` | The EFI partition, and the random seed on it, readable by root only. Run on one board, through a reboot. | It edits the line of `/etc/fstab` the board boots from. The edit is checked before it is installed and the old file is kept as `/etc/fstab.unoq-esp.bak`. Not included in `--everything`. |
+| `--no-cpu-bars` | The CPU-bars demo at boot. | You want the serial line to the microcontroller for yourself from the start. The course's exercises assume the demo is there. |
+| `--no-learning` | The web server on port 8080. | The board is on a network where a page with no password should not be. The same pages are still on the drive. |
+| `--no-usb-gadget` | The network link and drive over USB. | You want to keep `adb`, or you use the USB-C port for a dock, a keyboard or a network dongle. SSH is left as it was, which on a factory-fresh board is off. |
+| `--minimal` | All three. | You want the toolchain, the firmware and the status LEDs, without the demo, the web server or the USB link. |
+| `--skip-mcu` | Building and flashing the firmware. | You want the microcontroller left exactly as it is. |
 
-You can add any of them later by running `bootstrap.sh` again with the flag.
-Everything already done is skipped.
+If you ran the setup from `adb shell` without `--no-usb-gadget`, **that shell
+closes about twenty seconds after the run ends.** That is the hand-over to the
+USB network link, not a crash; log in again with
+`ssh arduino@<board name>.local` and your password. [usb.md](reference/usb.md)
+has the detail.
+
+### Adding something
+
+| Option | Gives you | Costs you |
+|---|---|---|
+| `--with-purge` | A few hundred MB of disk back, by removing the remaining Arduino packages. (The ~2 GB of container images go in the default run.) | It is the one step that is hard to undo. The stock firmware is backed up first. |
+| `--with-watchdog` | The board resets itself if its kernel hangs, instead of waiting for someone to pull the cable. | It also resets if `systemd` merely stalls for 30 seconds. It has survived a clean firmware build with swap 80% full on one board, which is one measurement and not a promise. |
+| `--with-esp-lockdown` | The EFI partition, and the random seed on it, readable by root only. Run on one board, through a reboot. | It edits the line of `/etc/fstab` the board boots from. The edit is checked before it is installed and the old file is kept as `/etc/fstab.unoq-esp.bak`. |
+
+You can change your mind later by running `bootstrap.sh` again with a
+different set. Everything already done is skipped. Leaving an option out on a
+later run does not remove what an earlier run installed;
+[Provisioning](reference/provisioning.md) has the command that undoes each.
+
+`--with-cpu-bars`, `--with-learning`, `--with-usb-gadget` and `--everything`
+are still accepted, for commands copied from older pages.
 
 ## Next
 

@@ -117,12 +117,12 @@ the first two. The others arrive with the flag named.
 |---|---|---|---|---|
 | `unoq-link` | Drives BOOT0 low and the serial-link enable high, so the MCU runs its firmware and `/dev/ttyHS1` carries data | always (`provision/45-mcu-link.sh`) | root | one-shot, stays active |
 | `unoq-leds` | Drives LED 1 (connectivity) and LED 2 (does anything need a human) | always (`provision/50-status-leds.sh`) | root | long-running, always restarted |
-| `unoq-cpu-bars` | Draws CPU load on the LED matrix. Holds `/dev/ttyHS1` | `--with-cpu-bars` (`provision/65-cpu-bars.sh`) | you | long-running |
-| `unoq-learn` | Serves the documentation and installers over HTTP on port 8080 | `--with-learning` (`provision/75-learning-web.sh`) | you | long-running |
-| `unoq-usb-gadget` | Builds the USB gadget definition and prepares the `br-usb` bridge. Never binds | `--with-usb-gadget` (`provision/95-usb-gadget.sh`) | root | one-shot, stays active |
-| `unoq-usb-bind` | Asks the bind guard, then binds the gadget and brings the USB network up. Not enabled at boot: udev starts it when a USB device controller or the gadget's network interface appears | `--with-usb-gadget` | root | one-shot, re-run on every plug-in |
-| `unoq-usb-confirm` | Waits 120 seconds, then clears the bind guard's counter: this boot survived | `--with-usb-gadget` | root | one-shot |
-| `unoq-uplink-fallback` | If wifi has been turned off and the USB link has given no internet by the deadline, turns wifi back on | `--with-usb-gadget` | root | one-shot |
+| `unoq-cpu-bars` | Draws CPU load on the LED matrix. Holds `/dev/ttyHS1` | default; not with `--no-cpu-bars` (`provision/65-cpu-bars.sh`) | you | long-running |
+| `unoq-learn` | Serves the documentation and installers over HTTP on port 8080 | default; not with `--no-learning` (`provision/75-learning-web.sh`) | you | long-running |
+| `unoq-usb-gadget` | Builds the USB gadget definition and prepares the `br-usb` bridge. Never binds | default; not with `--no-usb-gadget` (`provision/95-usb-gadget.sh`) | root | one-shot, stays active |
+| `unoq-usb-bind` | Asks the bind guard, then binds the gadget and brings the USB network up. Not enabled at boot: udev starts it when a USB device controller or the gadget's network interface appears | default; not with `--no-usb-gadget` | root | one-shot, re-run on every plug-in |
+| `unoq-usb-confirm` | Waits 120 seconds, then clears the bind guard's counter: this boot survived | default; not with `--no-usb-gadget` | root | one-shot |
+| `unoq-uplink-fallback` | If wifi has been turned off and the USB link has given no internet by the deadline, turns wifi back on | default; not with `--no-usb-gadget` | root | one-shot |
 
 "You" is the account that owns the checkout: the unit files are written with
 `arduino` and rewritten to the real user and path when they are installed.

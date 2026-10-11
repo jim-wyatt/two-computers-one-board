@@ -92,12 +92,12 @@ flowchart TD
   U --> R3["45 MCU link GPIOs<br/>50 status LEDs"]
   R3 --> E4["55 purge Arduino packages<br/><small>only with --with-purge</small>"]
   E4 --> B["60 build + sign + flash<br/>the firmware"]
-  B --> O["opt-in extras, in this order:<br/>65 CPU bars at boot<br/>70 the drive image<br/>75 learning web server<br/>80 watchdog · 85 EFI permissions"]
+  B --> O["65 CPU bars at boot<br/>70 the drive image<br/>75 learning web server<br/><small>80 watchdog · 85 EFI permissions,<br/>only if asked for</small>"]
   O --> C["90 disk space back<br/><small>downloads nobody needs again</small>"]
   C --> E2["95 USB gadget<br/><small>always last</small>"]
 ```
 
-The purge is an opt-in extra too, but it runs before the firmware is built
+The purge has to be asked for, and it runs before the firmware is built
 rather than with the others. The USB gadget is always last, because it takes
 the USB host port down with it.
 [Provisioning](../reference/provisioning.md) lists what each numbered step
@@ -110,26 +110,37 @@ workspace, the Python venv and the shell environment all belong to you, and a
 a real failure mode, and the split is how it is prevented rather than warned
 about.
 
-## Everything expensive is opt-in
+## What costs you something is named before it happens
 
 ```bash
-./bootstrap.sh                     # the board, working
-./bootstrap.sh --with-cpu-bars     # LED matrix at boot   (holds /dev/ttyHS1)
-./bootstrap.sh --with-usb-gadget   # IP over USB          (drops the USB host port)
-./bootstrap.sh --with-learning     # web server on :8080
-./bootstrap.sh --with-purge        # remove the Arduino packages
-./bootstrap.sh --everything
+./bootstrap.sh                     # the whole board the course is taught on
+./bootstrap.sh --no-cpu-bars       # ...without the LED matrix demo  (it holds /dev/ttyHS1)
+./bootstrap.sh --no-learning       # ...without the web server on :8080
+./bootstrap.sh --no-usb-gadget     # ...without IP over USB          (it takes the port from adb)
+./bootstrap.sh --minimal           # ...without any of the three
+./bootstrap.sh --with-purge        # and remove the Arduino packages
 ```
 
-Each flag costs you something concrete, and the comment beside it says what.
+These three were opt-in once, on the principle that anything with a cost
+should be asked for. The principle was sound and the result was not: a reader
+following the course had to know to ask for the demo its exercises are built
+on, and found the web server by wondering where it was. So the default became
+the board the course assumes, and the principle moved to where it still
+holds. Before it changes anything, the script prints what it is about to do,
+with the cost of each of the three and the option that leaves it out, and
+waits ten seconds.
+
 Running the demo at boot claims the serial port, so the MCU shell stops working
 until you stop the service. The USB gadget turns the only USB port into a
-device, so nothing plugged into it works any more.
+device, so nothing plugged into it works any more, and `adb` gives way to SSH.
+What still has to be asked for is the purge, because it is hard to undo, and
+the watchdog and the EFI lockdown, because each has been run on one board.
 
 > [!NOTE]
-> `--with-learning` serves the files on the drive image, so the image has to
-> exist first — and `bootstrap.sh` builds it first. Asked for the web server
-> or the USB gadget, it runs `share/build-image.sh` as stage 70, ahead of both,
+> The web server serves the files on the drive image, so the image has to
+> exist first — and `bootstrap.sh` builds it first. Unless both the web server
+> and the USB gadget are left out, it runs `share/build-image.sh` as stage 70,
+> ahead of both,
 > with this documentation rendered onto it. It used not to, and a fresh board
 > stopped at the web server's stage with `/srv/unoq-share has no content`. You will only see
 > that message now if you run `provision/75-learning-web.sh` by hand on a

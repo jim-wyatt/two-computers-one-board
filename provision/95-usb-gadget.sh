@@ -284,7 +284,7 @@ EOF
 fi
 # Said the way things are. The first version told someone whose board was
 # already on the cable to plug it in, and offered a web page on port 8080 that
-# only exists with --with-learning.
+# does not exist on a board set up with --no-learning.
 if [ "$DEFERRED" = 1 ] || [ -n "$(names "${UNOQ_UDC_DIR:-/sys/class/udc}"/*)" ]; then
   echo
   echo "The board is on the cable. From the computer at the other end:"

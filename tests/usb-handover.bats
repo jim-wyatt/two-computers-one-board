@@ -174,6 +174,52 @@ load_lib() {
   refute ran "systemctl reset-failed arduino-router.service"
 }
 
+# --- who has the MCU's serial port ----------------------------------------------
+
+# holders <comm>... - a `ps` that names these as the holders, one per line.
+holders() {
+  printf '%s\n' "$@" >"$BATS_TEST_TMPDIR/holders"
+  stub_body ps <<SH
+cat "$BATS_TEST_TMPDIR/holders"
+SH
+}
+
+@test "this project's demo holding the serial port, alone, is not a warning" {
+  holders unoq-cpu-bars
+  load_lib
+  run report_port_holders /dev/ttyHS1 "499"
+  [[ "$output" != *"warn"* ]]
+  [[ "$output" == *"held by unoq-cpu-bars"* ]]
+}
+
+@test "something else holding the serial port is a warning" {
+  holders arduino-router
+  load_lib
+  run report_port_holders /dev/ttyHS1 "670"
+  [[ "$output" == *"warn"* ]]
+  [[ "$output" == *"arduino-router"* ]]
+}
+
+@test "the demo AND something else is still a warning, and names both" {
+  # The case that matters: "the demo is there, so it is fine" would wave a
+  # real second holder through.
+  holders unoq-cpu-bars tio
+  load_lib
+  run report_port_holders /dev/ttyHS1 "499 812"
+  [[ "$output" == *"warn"* ]]
+  [[ "$output" == *"tio"* ]]
+  [[ "$output" != *"and by nothing else"* ]]
+}
+
+@test "a holder that has gone by the time it is looked up is not called the demo" {
+  holders
+  : >"$BATS_TEST_TMPDIR/holders"
+  load_lib
+  run report_port_holders /dev/ttyHS1 "499"
+  [[ "$output" == *"warn"* ]]
+  [[ "$output" != *"and by nothing else"* ]]
+}
+
 # --- packages changed, so a reboot is owed ---------------------------------------
 
 @test "installing a package leaves the note that a reboot is owed" {

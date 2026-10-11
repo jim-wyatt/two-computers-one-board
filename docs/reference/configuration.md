@@ -34,8 +34,8 @@ edit. `provision/95-usb-gadget.sh` writes it once, with the common settings
 commented out, and never overwrites it afterwards. Four units read it:
 `unoq-usb-gadget`, `unoq-usb-bind`, `unoq-uplink-fallback` and `unoq-leds`.
 
-That script only runs with `--with-usb-gadget`, so a board set up without the
-USB extra has no such file. `unoq-leds` is installed on every board and reads
+That script does not run with `--no-usb-gadget` or `--minimal`, so a board set
+up without the USB link has no such file. `unoq-leds` is installed on every board and reads
 the same file, so to change an LED setting there, create it:
 
 ```bash
