@@ -34,12 +34,31 @@ updates:
         patterns: ["*"]
     commit-message:
       prefix: deps
+  # The Zephyr lock gets SECURITY updates only.
+  #
+  # open-pull-requests-limit: 0 switches off version updates and leaves
+  # security updates alone. (Those are a repository setting, not something
+  # this file turns on: Settings > Advanced Security > Dependabot security
+  # updates, which is enabled here.) Version updates cannot work here, and opened the same
+  # broken pull request twice before this was understood: the file is compiled
+  # from Zephyr's own requirement lists, which are not in this repository, so
+  # Dependabot can move one pin but cannot re-resolve the rest around it. It
+  # moved wrapt to 2.x, python-can (which is why wrapt is there at all) wants
+  # it below 2, and the install failed on both architectures. Closing that
+  # pull request, or telling Dependabot to ignore it, does nothing for a
+  # grouped update; it came back at the next run.
+  #
+  # Newer versions arrive the way the file is made: tools/update-constraints.sh
+  # resolves everything together. Run it when Zephyr's version changes, or to
+  # take updates on purpose.
+  #
+  # A security update moves one pin the same way, so it can fail the same way.
+  # That failure is worth having: it says a pinned version is vulnerable. Fix
+  # it with the script, not by merging the pull request.
   - package-ecosystem: pip
     directory: /mcu
     schedule:
       interval: monthly
-    groups:
-      zephyr-lock:
-        patterns: ["*"]
+    open-pull-requests-limit: 0
     commit-message:
       prefix: deps
