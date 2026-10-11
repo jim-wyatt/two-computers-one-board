@@ -319,6 +319,26 @@ report_port_holders() {
   fi
 }
 
+# --- lock files ---------------------------------------------------------------
+#
+# The steps that build a Python environment skip the install when what they
+# need is already there, which is what makes a second run quick. "Already
+# there" used to mean "imports": so when a lock file changed, a board that was
+# already set up went on running the old versions for good, under a line that
+# said `ok`. The environment now remembers WHICH lock it was built to.
+
+# lock_id <lockfile> - what identifies this version of it.
+lock_id() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1; }
+# lock_current <venv> <lockfile> - was this environment built to this lock?
+lock_current() {
+  [ -f "$1/.unoq-lock" ] && [ -n "$(lock_id "$2")" ] &&
+    [ "$(cat "$1/.unoq-lock" 2>/dev/null)" = "$(lock_id "$2")" ]
+}
+# lock_record <venv> <lockfile> - say so, once every install into it has worked.
+lock_record() { lock_id "$2" >"$1/.unoq-lock"; }
+# lock_pin <lockfile> <package> - the version it gives that package, or nothing.
+lock_pin() { sed -n "s/^$2==\\([^ ;]*\\).*/\\1/p" "$1" | head -1; }
+
 # ensure_group <group> - create as a system group if missing.
 ensure_group() {
   if getent group "$1" >/dev/null; then

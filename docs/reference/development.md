@@ -378,7 +378,9 @@ tools/update-constraints.sh     # recompile both: after adding a dependency, or 
 ```
 
 Then run the gates, and bootstrap on a board: a new version of a package is a
-change like any other. Dependabot proposes updates to both once a month, as
+change like any other. Each environment records which lock it was built to, so
+that bootstrap notices the file has changed and brings the board to the new
+versions; without a change it skips the installs as before. Dependabot proposes updates to both once a month, as
 one pull request each.
 
 ## Recovery

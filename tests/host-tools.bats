@@ -30,15 +30,21 @@ setup() {
 echo "uv $*" >>"$STUB_LOG"
 case "$1 $2" in
   "--version ") echo "uv 0.0.0" ;;
-  "tool list") for t in "$FLAGS"/installed-*; do [ -e "$t" ] && echo "${t##*installed-} v1.0"; done ;;
+  "tool list")
+    for t in "$FLAGS"/installed-*; do
+      [ -e "$t" ] && echo "${t##*installed-} v$(cat "$t")"
+    done ;;
   "tool install")
-    tool="${@: -1}"
+    spec="${@: -1}"
+    tool="${spec%%==*}"
+    ver="1.0"
+    [ "$spec" != "$tool" ] && ver="${spec##*==}"
     if [ -e "$FLAGS/fail-$tool" ]; then
       echo "error: Failed to download \`$tool\`" >&2
       echo "  Caused by: No space left on device (os error 28)" >&2
       exit 2
     fi
-    touch "$FLAGS/installed-$tool" ;;
+    echo "$ver" >"$FLAGS/installed-$tool" ;;
 esac
 exit 0
 SH
@@ -50,9 +56,9 @@ SH
   [ "$status" -eq 0 ]
   # Each at the version the lock file gives it.
   L="$PROJECT/mcu/requirements-zephyr-lock.txt"
-  ran "uv tool install -c $L -b $L cmake"
-  ran "uv tool install -c $L -b $L ninja"
-  ran "uv tool install -c $L -b $L west"
+  ran_like "^uv tool install -c $L -b $L cmake==[0-9.]+\$"
+  ran_like "^uv tool install -c $L -b $L ninja==[0-9.]+\$"
+  ran_like "^uv tool install -c $L -b $L west==[0-9.]+\$"
 }
 
 @test "when uv cannot install a tool, what uv said is shown" {
@@ -66,7 +72,7 @@ SH
 @test "a failure stops the step there, not after the next tool" {
   touch "$FLAGS/fail-cmake"
   run "$STEP"
-  refute ran_like "^uv tool install .* ninja\$"
+  refute ran_like "^uv tool install .* ninja"
 }
 
 @test "a second run installs nothing" {
@@ -76,4 +82,15 @@ SH
   [ "$status" -eq 0 ]
   refute ran_like "^uv tool install"
   [[ "$output" == *"0 changed"* ]]
+}
+
+@test "a tool installed at another version is brought to the one in the lock file" {
+  # Present is not enough. A board set up before a pin moved would otherwise
+  # keep the old cmake for good, under a line that said ok.
+  echo "3.0.0" >"$FLAGS/installed-cmake"
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  ran_like '^uv tool install .* cmake==[0-9.]+$'
+  [[ "$output" == *"cmake brought to v"*"(was v3.0.0)"* ]]
+  [ "$(cat "$FLAGS/installed-cmake")" != "3.0.0" ]
 }

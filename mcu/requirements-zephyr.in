@@ -1,0 +1,35 @@
+# The packages provision/user/30-zephyr-workspace.sh and 20-host-tools.sh ask
+# for by name, at Zephyr v4.4.2. Written by tools/update-constraints.sh;
+# read by tools/check-constraints.sh. Not an input to anything else.
+anytree
+canopen
+cmake
+colorama
+coverage
+gcovr
+imgtool
+intelhex
+jsonschema
+junitparser
+mypy
+natsort
+ninja
+packaging
+patool
+ply
+psutil
+pyelftools
+pykwalify
+pylink-square
+pyserial
+pytest
+python-dotenv
+pyyaml
+requests
+reuse
+semver
+setuptools
+tqdm
+west
+wheel
+windows-curses

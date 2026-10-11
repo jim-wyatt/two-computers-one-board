@@ -88,4 +88,15 @@ printf '%s\n' west imgtool natsort cmake ninja setuptools wheel >"$TMP/extra.txt
   requirements-base.txt requirements-build-test.txt extra.txt \
   --custom-compile-command "tools/update-constraints.sh  (Zephyr $ZEPHYR_VERSION)" \
   -o "$PROJECT/mcu/requirements-zephyr-lock.txt")
-echo "  $(grep -cE '^[a-zA-Z0-9]' "$PROJECT/mcu/requirements-zephyr-lock.txt") packages pinned"
+# What was ASKED for, kept beside what was resolved. The gate has to know every
+# package the workspace step installs by name, and it has to work with no
+# workspace and no network - so the list is written down here, when both were
+# to hand, instead of being looked up later.
+{
+  echo "# The packages provision/user/30-zephyr-workspace.sh and 20-host-tools.sh ask"
+  echo "# for by name, at Zephyr $ZEPHYR_VERSION. Written by tools/update-constraints.sh;"
+  echo "# read by tools/check-constraints.sh. Not an input to anything else."
+  cat "$TMP/requirements-base.txt" "$TMP/requirements-build-test.txt" "$TMP/extra.txt" |
+    sed 's/#.*//' | grep -oE '^[A-Za-z0-9][A-Za-z0-9._-]*' | tr 'A-Z_.' 'a-z--' | sort -u
+} >"$PROJECT/mcu/requirements-zephyr.in"
+echo "  $(grep -cE '^[a-zA-Z0-9]' "$PROJECT/mcu/requirements-zephyr-lock.txt") packages pinned, $(grep -cvE '^#' "$PROJECT/mcu/requirements-zephyr.in") of them asked for by name"

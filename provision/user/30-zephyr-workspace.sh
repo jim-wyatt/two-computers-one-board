@@ -50,9 +50,16 @@ else
   did "created $WS/.venv (python $PYTHON_VERSION)"
 fi
 
+# Whether this environment was built to the lock file as it now is. If not -
+# a pin moved, or it predates the lock - every install below runs again, and
+# uv changes only what the lock now disagrees with.
+ZLOCK="$PROJECT/mcu/requirements-zephyr-lock.txt"
+LOCKED=0
+lock_current "$WS/.venv" "$ZLOCK" && LOCKED=1
+
 step "west + imgtool in the workspace venv"
-if [ -x "$WS/.venv/bin/west" ] && [ -x "$WS/.venv/bin/imgtool" ]; then
-  skip "west and imgtool present"
+if [ "$LOCKED" = 1 ] && [ -x "$WS/.venv/bin/west" ] && [ -x "$WS/.venv/bin/imgtool" ]; then
+  skip "west and imgtool present, at the locked versions"
 else
   # imgtool signs the MCUboot image; zbuild.sh calls it by this path.
   uv pip install --python "$WS/.venv/bin/python" -q \
@@ -140,8 +147,9 @@ step "Zephyr's own python requirements"
 # all three. It used to ask only for elftools, which is in the base list: a
 # workspace with the base list and nothing else was reported complete, and
 # mcu/ztest.sh then failed on its first import.
-if "$WS/.venv/bin/python" -c 'import elftools, junitparser, natsort' 2>/dev/null; then
-  skip "requirements already satisfied"
+if [ "$LOCKED" = 1 ] &&
+  "$WS/.venv/bin/python" -c 'import elftools, junitparser, natsort' 2>/dev/null; then
+  skip "requirements already satisfied, at the locked versions"
 else
   # Versions come from the lock file, compiled from these same lists at the
   # pinned Zephyr version (tools/update-constraints.sh).
@@ -154,6 +162,9 @@ else
     fail "could not install Zephyr's requirements"
   did "Zephyr requirements installed (build and test)"
 fi
+# Only now, with every install above done: a run that died half way must find
+# no record, and do them again.
+lock_record "$WS/.venv" "$ZLOCK"
 
 step "size"
 skip "workspace: $(du -sh "$WS" 2>/dev/null | cut -f1)"

@@ -48,8 +48,8 @@ for f in "$PY_LOCK" "$Z_LOCK"; do
   }
 done
 
-# 1. Every name in a dependency list of pyproject.toml: [project].dependencies
-# and every group under [project.optional-dependencies].
+# 1. Every name in a dependency list of pyproject.toml: [project].dependencies,
+# every group under [project.optional-dependencies], and [build-system].requires.
 #
 # Read as TOML, by a TOML parser. The first version of this picked the lists
 # out with awk, one line at a time, and a dependency on the second line of an
@@ -64,7 +64,11 @@ import tomllib
 
 with open(sys.argv[1], "rb") as f:
     project = tomllib.load(f).get("project", {})
-reqs = list(project.get("dependencies", []))
+with open(sys.argv[1], "rb") as f:
+    build = tomllib.load(f).get("build-system", {})
+# What BUILDS the package counts too: an editable install fetches these into
+# an environment of its own, and an unpinned one there is still unpinned.
+reqs = list(project.get("dependencies", [])) + list(build.get("requires", []))
 for group in project.get("optional-dependencies", {}).values():
     reqs.extend(group)
 for req in reqs:
@@ -85,9 +89,19 @@ want_z="$(sed -n 's/^ZEPHYR_VERSION="\${ZEPHYR_VERSION:-\(v[0-9.]*\)}"$/\1/p' "$
 [ -n "$want_z" ] || bad "could not read the pinned Zephyr version from $WORKSPACE_STEP"
 grep -q "(Zephyr $want_z)" "$Z_LOCK" ||
   bad "mcu/requirements-zephyr-lock.txt was not compiled for Zephyr $want_z"
-for n in west imgtool natsort cmake ninja pyelftools pytest; do
-  pinned "$Z_LOCK" "$n" || bad "$n is installed by a provisioning step and not in mcu/requirements-zephyr-lock.txt"
-done
+# Every package asked for by name, from the list update-constraints.sh wrote
+# when it compiled the lock. Seven of them used to be spelled out here, and the
+# other forty could have lost their pin without this noticing.
+Z_IN="${UNOQ_ZEPHYR_IN:-$PROJECT/mcu/requirements-zephyr.in}"
+[ -s "$Z_IN" ] || bad "missing $Z_IN - run tools/update-constraints.sh"
+asked=0
+while IFS= read -r n; do
+  case "$n" in '' | '#'*) continue ;; esac
+  asked=$((asked + 1))
+  pinned "$Z_LOCK" "$n" ||
+    bad "$n is asked for by a provisioning step and not in mcu/requirements-zephyr-lock.txt"
+done <"$Z_IN"
+[ "$asked" -gt 5 ] || bad "$Z_IN names only $asked packages - has it been truncated?"
 
 # 3. Exact pins only. A line that names a package without == would let the
 # newest version in, which is the thing these files exist to stop.

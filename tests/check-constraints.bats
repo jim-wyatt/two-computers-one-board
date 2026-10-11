@@ -16,6 +16,8 @@ setup() {
   cp "$PROJECT/mcu/requirements-zephyr-lock.txt" "$BATS_TEST_TMPDIR/z.lock"
   cp "$PROJECT/python/pyproject.toml" "$BATS_TEST_TMPDIR/pyproject.toml"
   cp "$PROJECT/provision/user/30-zephyr-workspace.sh" "$BATS_TEST_TMPDIR/ws.sh"
+  cp "$PROJECT/mcu/requirements-zephyr.in" "$BATS_TEST_TMPDIR/z.in"
+  export UNOQ_ZEPHYR_IN="$BATS_TEST_TMPDIR/z.in"
   export UNOQ_PY_LOCK="$BATS_TEST_TMPDIR/py.lock"
   export UNOQ_ZEPHYR_LOCK="$BATS_TEST_TMPDIR/z.lock"
   export UNOQ_PYPROJECT="$BATS_TEST_TMPDIR/pyproject.toml"
@@ -83,7 +85,29 @@ PY
   sed -i '/^cmake==/d' "$UNOQ_ZEPHYR_LOCK"
   run "$CHECK"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"cmake is installed by a provisioning step"* ]]
+  [[ "$output" == *"cmake is asked for by a provisioning step"* ]]
+}
+
+@test "any package Zephyr's own lists ask for, missing from the lock, is caught" {
+  # Not one of the handful this gate used to name: one from the middle of
+  # requirements-build-test.txt.
+  sed -i '/^junitparser==/d' "$UNOQ_ZEPHYR_LOCK"
+  run "$CHECK"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"junitparser is asked for"* ]]
+}
+
+@test "the tool that builds the package has to be pinned as well" {
+  sed -i '/^hatchling==/d' "$UNOQ_PY_LOCK"
+  run "$CHECK"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"hatchling is in python/pyproject.toml and not in"* ]]
+}
+
+@test "a list of what was asked for that has been emptied does not pass by saying nothing" {
+  echo "# nothing" >"$UNOQ_ZEPHYR_IN"
+  run "$CHECK"
+  [ "$status" -ne 0 ]
 }
 
 @test "a line that is not an exact pin is caught" {

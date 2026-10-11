@@ -15,7 +15,8 @@ dependencies = ["pyserial", "gpiod", "smpclient"]
 unoq-cpu-bars = "unoq.cpubars:main"
 unoq-learn = "unoq.learn:main"
 
-# Install with:  uv pip install --python ~/two-computers-one-board/.venv/bin/python -e 'python[dev]'
+# Install with:  tools/install-dev-tools.sh   (it passes the lock file; a bare
+# `uv pip install -e` would take whatever versions are newest)
 # Everything below is also what tools/check.sh runs.
 [project.urls]
 Homepage = "https://jim-wyatt.github.io/two-computers-one-board/"

@@ -70,8 +70,14 @@ hw_missing() {
   echo "${out# }"
 }
 
+# Was this environment built to the lock file as it now is? If not - a pin
+# moved, or the environment predates the lock - every install below runs
+# again, and uv changes only what the lock now disagrees with.
+LOCKED=0
+lock_current "$VENV" "$LOCK" && LOCKED=1
+
 MISSING="$(hw_missing)"
-if [ -z "$MISSING" ]; then
+if [ -z "$MISSING" ] && [ "$LOCKED" = 1 ]; then
   skip "all hardware libraries present: $HW_PKGS"
 else
   # Everything, not just what is missing: uv resolves the set together, and a
@@ -83,15 +89,19 @@ else
         gcc or python3-dev. provision/15-dev-tools.sh installs both."
   STILL="$(hw_missing)"
   [ -z "$STILL" ] || fail "still missing after install:$STILL"
-  did "hardware libraries installed ($MISSING)"
+  if [ -n "$MISSING" ]; then
+    did "hardware libraries installed ($MISSING)"
+  else
+    did "hardware libraries brought to the locked versions"
+  fi
 fi
 
 step "unoq package (editable)"
 # The [docs] extra comes along at provisioning time, not just for developers:
 # share/build-image.sh renders the learning site during the same bootstrap, and
 # a board without mkdocs produces a USB drive and a web server with no content.
-if "$VENV/bin/python" -c 'import unoq' 2>/dev/null && [ -x "$VENV/bin/unoq-cpu-bars" ] &&
-  [ -x "$VENV/bin/mkdocs" ]; then
+if [ "$LOCKED" = 1 ] && "$VENV/bin/python" -c 'import unoq' 2>/dev/null &&
+  [ -x "$VENV/bin/unoq-cpu-bars" ] && [ -x "$VENV/bin/mkdocs" ]; then
   skip "unoq importable, unoq-cpu-bars and mkdocs on PATH"
 else
   uv pip install --python "$VENV/bin/python" -q -c "$LOCK" -b "$LOCK" -e "$PROJECT/python[docs]" ||
@@ -103,13 +113,18 @@ step "dev tooling"
 # Delegated rather than duplicated: install-dev-tools.sh already knows how to
 # get ruff/mypy/pytest into this venv and shellcheck/shfmt into ~/.local/bin,
 # and it is what CI runs too.
-if [ -x "$VENV/bin/pytest" ] && [ -x "$VENV/bin/mypy" ] && [ -x "$VENV/bin/ruff" ]; then
+if [ "$LOCKED" = 1 ] && [ -x "$VENV/bin/pytest" ] && [ -x "$VENV/bin/mypy" ] &&
+  [ -x "$VENV/bin/ruff" ]; then
   skip "ruff, mypy and pytest present"
 else
   "$PROJECT/tools/install-dev-tools.sh" >/dev/null 2>&1 ||
     fail "tools/install-dev-tools.sh failed - run it directly to see why"
   did "dev tooling installed"
 fi
+
+# Only now, with every install above done: a run that died half way must find
+# no record, and do them again.
+lock_record "$VENV" "$LOCK"
 
 step "verify"
 if out="$("$VENV/bin/python" -c 'import unoq; print(unoq.__version__)' 2>&1)"; then

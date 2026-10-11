@@ -344,7 +344,9 @@ jobs:
           # reason; the run number is the CI equivalent.
           IMAGE_VERSION: 0.0.0+${{ github.run_number }}
         run: |
-          pip3 install --quiet -c mcu/requirements-zephyr-lock.txt imgtool
+          # As an environment variable, because that is the form pip also
+          # applies inside the isolated environment it builds a package in.
+          PIP_CONSTRAINT=mcu/requirements-zephyr-lock.txt pip3 install --quiet imgtool
           # `west topdir`, not $ZEPHYR_BASE: the setup action exports that only
           # within its own steps. Asking west where the workspace is works from
           # any directory inside it.
