@@ -41,7 +41,7 @@ The single most important property here:
 That is not a tidiness point. It changes what the script *is*:
 
 - It becomes the recovery path. A run that died forty minutes in, halfway
-  through a 3.3 GB download, is fixed by running it again — not by working out
+  through a 2 GB download, is fixed by running it again — not by working out
   what got done and resuming by hand.
 - It becomes safe to run on a board that is already working, which means people
   actually run it, which means it stays true.
@@ -93,7 +93,8 @@ flowchart TD
   R3 --> E4["40 purge Arduino packages<br/><small>only with --with-purge</small>"]
   E4 --> B["build + sign + flash<br/>the firmware"]
   B --> O["opt-in extras, in this order:<br/>50 CPU bars at boot<br/>65 the drive image<br/>70 learning web server<br/>80 watchdog · 85 EFI permissions"]
-  O --> E2["60 USB gadget<br/><small>always last</small>"]
+  O --> C["90 disk space back<br/><small>downloads nobody needs again</small>"]
+  C --> E2["60 USB gadget<br/><small>always last</small>"]
 ```
 
 The purge is an opt-in extra too, but it runs before the firmware is built
@@ -105,7 +106,7 @@ changes.
 Numbered, because order matters and a reader should be able to see it. Split at
 `provision/user/`, because **half of it must not be root**: the Zephyr
 workspace, the Python venv and the shell environment all belong to you, and a
-`sudo` in the wrong place leaves a 3.3 GB directory you cannot write to. That is
+`sudo` in the wrong place leaves a 2 GB directory you cannot write to. That is
 a real failure mode, and the split is how it is prevented rather than warned
 about.
 
@@ -241,7 +242,7 @@ idempotence, working.
    "already done" for everything.
 2. **Because half of what it makes belongs to you.** The Zephyr workspace, the
    Python venv and the shell environment are yours, and a `sudo` in the wrong
-   place leaves a 3.3 GB directory you cannot write to. The split at
+   place leaves a 2 GB directory you cannot write to. The split at
    `provision/user/` prevents that rather than warning about it.
 3. **A bootstrap run undoing your own setting.** It is the one file a person is
    expected to edit. A run that reset it every time would undo the change on

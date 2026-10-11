@@ -59,8 +59,9 @@ cd ~/two-computers-one-board && ./bootstrap.sh
 > put them back. The stock firmware is copied aside first. Read
 > [Set up a board](docs/setup.md) before you run it.
 
-That is the whole setup. It takes 40–60 minutes, nearly all of it downloading
-the Zephyr workspace (~3.3 GB) and SDK (~1 GB), and it needs about 6 GB free.
+That is the whole setup. It took about 25 minutes on a stock board over home
+broadband, most of it downloading the Zephyr workspace (~2 GB) and SDK
+(~0.8 GB), and it needs about 6 GB free.
 Run it as yourself; it asks for `sudo` where it needs it.
 
 **If it stops, run it again.** Every step reports `changed` or `ok`, and a

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Copyright (c) 2026 Jim Wyatt
 # SPDX-License-Identifier: MIT
-# The Zephyr workspace (~3.3 GB). Runs as YOU, not root. This is the long one.
+# The Zephyr workspace (~2 GB). Runs as YOU, not root. This is the long one.
 #
 #   bash ~/two-computers-one-board/provision/user/30-zephyr-workspace.sh
 #
@@ -9,9 +9,9 @@
 #
 # THE MANIFEST FILTER
 # -------------------
-# Keeps the workspace at ~3.3 GB instead of ~7 GB by skipping vendor HALs for
-# hardware this board does not have. It is not cosmetic - a 3.6 GiB board with
-# a 10 GB rootfs does not have 7 GB to spare.
+# Keeps the workspace at ~2 GB by skipping vendor HALs for hardware this board
+# does not have - several more GB of other manufacturers' chips. It is not
+# cosmetic: the home partition on this board is 8 GB.
 #
 # It lives in ../../west-project-filter and is READ from there, because CI now
 # builds the same module set and a second copy would drift. Edit that file.
@@ -91,7 +91,7 @@ if [ "$current" = "$FILTER" ]; then
 else
   (cd "$WS" && "$WS/.venv/bin/west" config manifest.project-filter -- "$FILTER") ||
     fail "could not set the manifest filter"
-  did "manifest filter set (keeps the workspace at ~3.3 GB)"
+  did "manifest filter set (keeps the workspace at ~2 GB)"
 fi
 
 step "west update"

@@ -21,8 +21,8 @@
   "extensions.autoCheckUpdates": false,
 
   // The file watcher is the one component whose cost scales with what is on
-  // disk rather than what is open. ~/zephyrproject is ~3.3 GB and the SDK
-  // another ~1 GB, and neither is ever edited by hand - they are checkouts west
+  // disk rather than what is open. ~/zephyrproject is ~2 GB and the SDK
+  // another ~0.8 GB, and neither is ever edited by hand - they are checkouts west
   // manages and a toolchain. Watching them buys nothing and costs an inotify
   // watch per directory.
   "files.watcherExclude": {
