@@ -254,7 +254,7 @@ and that a quiet terminal is normal.
 | Building and signing the firmware | 2 minutes 50 seconds |
 | Building the bootloader and flashing both | 2 minutes 28 seconds |
 | `50` the demo service | 5 seconds |
-| `65` the drive image | 42 seconds |
+| `65` the drive image | 37 seconds |
 | `90` giving disk space back | 5 seconds |
 | `60` the USB gadget | 47 seconds |
 | **All of it** | **20 minutes 25 seconds** |

@@ -226,8 +226,12 @@ FREE_MB=$(df -Pm "$HOME" | awk 'NR==2 {print $4}')
 # the last and largest thing fetched. A run interrupted half way has the
 # directories and still has the downloading to do.
 INSTALLED_WS="${ZEPHYR_WORKSPACE:-$HOME/zephyrproject}"
+# The SDK that will be asked for, not any SDK: an older one lying about does
+# not save the download. Same default as provision/user/20-zephyr-sdk.sh.
+INSTALLED_SDK="$HOME/zephyr-sdk-${ZEPHYR_SDK_VERSION:-1.0.1}"
 if [ -d "$INSTALLED_WS/modules/hal/stm32" ] &&
-  ls "$HOME"/zephyr-sdk-*/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc >/dev/null 2>&1; then
+  { [ -x "$INSTALLED_SDK/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc" ] ||
+    [ -x "$INSTALLED_SDK/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc" ]; }; then
   skip "${FREE_MB} MB free in $HOME (the SDK and workspace are already installed)"
 elif [ "$FREE_MB" -lt 6000 ]; then
   warn "only ${FREE_MB} MB free in $HOME - the SDK and workspace need ~3 GB, and the builds more"
@@ -422,6 +426,8 @@ echo
 warn_stale_root_units
 # And what the red light, if there is one, is about.
 warn_failed_units
+# And whether anything running is still the version from before the run.
+advise_reboot
 
 if [ -n "$FIRMWARE_PROBLEM" ]; then
   fail "everything above is in place, but $FIRMWARE_PROBLEM.

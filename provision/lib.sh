@@ -39,10 +39,27 @@ export TARGET_USER TARGET_HOME
 #
 # Suspending it is not only cosmetic, and the cost is paid for elsewhere:
 # needrestart is also what restarts services whose libraries were replaced
-# under them. With it off, a daemon that was running through the upgrade in
-# step 10 keeps the old code until it is restarted - so that step says, when it
-# has upgraded anything, that a reboot is what finishes the job.
+# under them. With it off, a daemon that was running through an install keeps
+# the old code until it is restarted. So every apt transaction these steps
+# make leaves a note (packages_changed, below), and whoever ran them is told at
+# the end that a reboot is what finishes the job.
 export NEEDRESTART_SUSPEND=1
+
+# packages_changed / reboot_advised - "apt changed something since boot".
+#
+# A file under /run, because that is exactly the lifetime wanted: it is there
+# from the first package this boot until the reboot that makes it untrue.
+REBOOT_NOTE="${UNOQ_RUN_DIR:-/run}/unoq-packages-changed"
+packages_changed() { : >"$REBOOT_NOTE" 2>/dev/null || true; }
+# Debian's own flag as well: /var/run is /run, and some packages set it.
+reboot_advised() { [ -e "$REBOOT_NOTE" ] || [ -f "${UNOQ_RUN_DIR:-/run}/reboot-required" ]; }
+# advise_reboot - say so, once, if it applies. For the end of a run.
+advise_reboot() {
+  reboot_advised || return 0
+  warn "packages were installed or upgraded in this boot. Services that were"
+  warn "  already running keep the old versions until the board restarts:"
+  warn "      sudo reboot"
+}
 
 # --- output ----------------------------------------------------------------
 
@@ -82,6 +99,7 @@ summary() {
   # steps, most of which could do nothing about it, on a board that was in the
   # middle of being fixed.
   [ -n "${UNOQ_IN_BOOTSTRAP:-}" ] || warn_stale_root_units
+  [ -n "${UNOQ_IN_BOOTSTRAP:-}" ] || advise_reboot
 }
 
 need_root() {
@@ -106,6 +124,7 @@ apt_install() {
   apt-get update -qq
   DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${missing[@]}" >/dev/null ||
     fail "apt-get install ${missing[*]}"
+  packages_changed
   did "installed: ${missing[*]}"
 }
 

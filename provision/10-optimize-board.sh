@@ -143,10 +143,9 @@ else
   # a library that has just been replaced, is suspended for these steps (see
   # lib.sh). So after any upgrade a reboot is what puts every running process
   # on the new code, whether or not Debian left its flag.
-  if [ -f /var/run/reboot-required ] || [ "${PENDING:-0}" -gt 0 ]; then
-    warn "packages were upgraded: reboot when provisioning has finished, so that"
-    warn "  everything running is running the new versions:  sudo reboot"
-  fi
+  # Noted, not said here: bootstrap.sh says it once at the end, and a step
+  # run by hand says it in its own summary.
+  [ "${PENDING:-0}" -gt 0 ] && packages_changed
 fi
 
 # --- I2C access. Stock: PermissionError on /dev/i2c-{0,1,2} ----------------

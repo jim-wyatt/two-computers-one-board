@@ -174,6 +174,35 @@ load_lib() {
   refute ran "systemctl reset-failed arduino-router.service"
 }
 
+# --- packages changed, so a reboot is owed ---------------------------------------
+
+@test "installing a package leaves the note that a reboot is owed" {
+  export UNOQ_RUN_DIR="$BATS_TEST_TMPDIR/run"
+  mkdir -p "$UNOQ_RUN_DIR"
+  stub dpkg-query 1
+  stub apt-get
+  load_lib
+  run reboot_advised
+  [ "$status" -ne 0 ]
+  apt_install some-package
+  run reboot_advised
+  [ "$status" -eq 0 ]
+  run advise_reboot
+  [[ "$output" == *"sudo reboot"* ]]
+}
+
+@test "a package that was already installed leaves no note" {
+  export UNOQ_RUN_DIR="$BATS_TEST_TMPDIR/run"
+  mkdir -p "$UNOQ_RUN_DIR"
+  stub dpkg-query 0 "install ok installed"
+  load_lib
+  apt_install some-package
+  run reboot_advised
+  [ "$status" -ne 0 ]
+  run advise_reboot
+  [ -z "$output" ]
+}
+
 # --- warn_failed_units -----------------------------------------------------------
 
 @test "failed units are named at the end of a run, with what LED 2 is doing about them" {

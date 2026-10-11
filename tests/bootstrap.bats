@@ -27,6 +27,11 @@ setup() {
   load helpers/stub
   stub_setup
 
+  # Where "packages changed in this boot" is noted. Not the real /run: this
+  # machine's own state must not decide what a test of the script says.
+  export UNOQ_RUN_DIR="$BATS_TEST_TMPDIR/run"
+  mkdir -p "$UNOQ_RUN_DIR"
+
   PROJECT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 
   export HOME="$BATS_TEST_TMPDIR/home"
@@ -275,6 +280,12 @@ installed() {
       sdk)
         mkdir -p "$HOME/zephyr-sdk-1.0.1/gnu/arm-zephyr-eabi/bin"
         : >"$HOME/zephyr-sdk-1.0.1/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+        chmod +x "$HOME/zephyr-sdk-1.0.1/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+        ;;
+      old-sdk)
+        mkdir -p "$HOME/zephyr-sdk-0.17.0/gnu/arm-zephyr-eabi/bin"
+        : >"$HOME/zephyr-sdk-0.17.0/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+        chmod +x "$HOME/zephyr-sdk-0.17.0/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
         ;;
       workspace) mkdir -p "$HOME/zephyrproject/modules/hal/stm32" ;;
     esac
@@ -305,4 +316,26 @@ installed() {
   mkdir -p "$HOME/zephyrproject/zephyr" "$HOME/zephyr-sdk-1.0.1"
   bootstrap
   [[ "$output" == *"only 3943 MB free"* ]]
+}
+
+@test "an older SDK lying about does not count as the one that will be downloaded" {
+  tight_disk
+  installed old-sdk workspace
+  bootstrap
+  [[ "$output" == *"only 3943 MB free"* ]]
+}
+
+# --- a reboot, after packages change ---------------------------------------------
+
+@test "a run that installed packages ends by saying a reboot finishes the job" {
+  # needrestart is suspended while these steps run, so nothing restarts the
+  # services that were running on libraries apt has just replaced.
+  : >"$UNOQ_RUN_DIR/unoq-packages-changed"
+  bootstrap
+  [[ "$output" == *"sudo reboot"* ]]
+}
+
+@test "a run that changed no packages says nothing about rebooting" {
+  bootstrap
+  [[ "$output" != *"sudo reboot"* ]]
 }
