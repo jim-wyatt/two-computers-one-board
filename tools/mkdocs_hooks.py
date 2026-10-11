@@ -3,9 +3,9 @@
 """Build-time hooks for the documentation site.
 
 MkDocs loads this file directly from `hooks:` in mkdocs.yml - it is not a
-plugin and needs no package, no entry point and no extra dependency. Two jobs,
-both of which exist so that the SAME markdown reads correctly in two places:
-on GitHub, and on the rendered site the board serves.
+plugin and needs no package, no entry point and no extra dependency. Three
+jobs, all of which exist so that the SAME markdown reads correctly in two
+places: on GitHub, and on the rendered site the board serves.
 
     docs/**/*.md  --+--> GitHub renders it raw
                     |
@@ -131,8 +131,100 @@ def _convert_alerts(markdown: str) -> str:
 
 
 # --------------------------------------------------------------------------
-# the hook MkDocs calls
+# 3. tables that survive a narrow column
 # --------------------------------------------------------------------------
+#
+# Two things, both done to the rendered HTML rather than by writing the tables
+# differently in markdown - where GitHub would have to render the result too,
+# and where nobody should have to think about either. Nothing is rearranged:
+# with the stylesheet missing, what is left is still an ordinary table.
+#
+# NAMES THAT BREAK WHERE THEIR WORDS DO. A long name in a narrow column has to
+# break somewhere, and a browser offers two choices. Anywhere at all is
+# Material's default, and it cut names wherever the column happened to end,
+# leaving the last five letters of a setting on a line of their own: measured
+# over every page, 74 of the 763 pieces of code in table cells were split
+# mid-word at 1440px, and 196 at 390px. Nowhere at all is the other, and it
+# was tried: the names took the room the sentences needed, and two tables on
+# the settings page no longer fitted the column. So docs/stylesheets/extra.css
+# says "nowhere", and this marks the places that are acceptable after all -
+# after each underscore - with <wbr>. At the same type size the settings page
+# is 15618px tall without them and 13640px with, and no table on the site
+# scrolls sideways at either width. <wbr> is an empty element:
+# the name is still one unbroken string to select and copy, and none of it
+# reaches the search index (checked in the built search_index.js).
+#
+# ROWS A PHONE CAN SET AS CARDS. Most tables in these pages hold sentences,
+# and three columns of sentences do not fit a phone: measured at 390px, the
+# first table on the setup page was three columns about 100px wide and 2283px
+# tall. The stylesheet sets each row of such a table as a block instead, one
+# cell under another. A cell on a line of its own has lost its column, so it
+# needs its heading repeated beside it, and CSS can only print text that is
+# already on the element. So each column's heading is copied onto the cells
+# under it as `data-label`, and the table is marked `data-stack` so the
+# stylesheet knows it may.
+
+_TABLE = re.compile(r"<table>(.*?)</table>", re.DOTALL)
+_HEAD = re.compile(r"<thead>(.*?)</thead>", re.DOTALL)
+_TH = re.compile(r"<th\b[^>]*>(.*?)</th>", re.DOTALL)
+_ROW = re.compile(r"<tr>(.*?)</tr>", re.DOTALL)
+_TD = re.compile(r"<td\b")
+_TAG = re.compile(r"<[^>]+>")
+# Inline code is text and entities only, so there is no markup inside it to
+# trip over, and no entity has an underscore in its name.
+_CODE = re.compile(r"<code>([^<]*)</code>")
+
+# Two columns are a name and its meaning, and fit side by side at 390px.
+_STACK_FROM_COLUMNS = 3
+
+
+def _breakable(code: re.Match[str]) -> str:
+    return f"<code>{code.group(1).replace('_', '_<wbr>')}</code>"
+
+
+def _fit_table(match: re.Match[str]) -> str:
+    inner = _CODE.sub(_breakable, match.group(1))
+    head = _HEAD.search(inner)
+    # Tags out, entities left as they are: the text goes straight back into an
+    # attribute, where `&amp;` is already what it has to be.
+    labels = [
+        _TAG.sub("", th).strip().replace('"', "&quot;")
+        for th in _TH.findall(head.group(1) if head else "")
+    ]
+    # A header row of `| | | |` means the columns need no names. Those tables
+    # are a few short words to a cell, and are fine as they are.
+    if len(labels) < _STACK_FROM_COLUMNS or not any(labels):
+        return f"<table>{inner}</table>"
+
+    def label_row(row: re.Match[str]) -> str:
+        cells = iter(labels)
+
+        def label_cell(cell: re.Match[str]) -> str:
+            label = next(cells, "")
+            return f'{cell.group(0)} data-label="{label}"' if label else cell.group(0)
+
+        return f"<tr>{_TD.sub(label_cell, row.group(1))}</tr>"
+
+    return f"<table data-stack>{_ROW.sub(label_row, inner)}</table>"
+
+
+def _fit_tables(html: str) -> str:
+    return _TABLE.sub(_fit_table, html)
+
+
+# --------------------------------------------------------------------------
+# the hooks MkDocs calls
+# --------------------------------------------------------------------------
+
+
+def on_page_content(
+    html: str,
+    *,
+    page: Page,  # noqa: ARG001 - part of the MkDocs hook signature
+    config: MkDocsConfig,  # noqa: ARG001
+    files: Files,  # noqa: ARG001
+) -> str:
+    return _fit_tables(html)
 
 
 def on_page_markdown(
