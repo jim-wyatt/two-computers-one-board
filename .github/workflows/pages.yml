@@ -59,14 +59,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install uv
-        # Exact tag, not @v9: astral-sh publish moving major tags only up
-        # to v7, so `@v9` does not resolve and the whole workflow fails to
-        # start. Bump this by hand - `latest release` and `latest major tag`
-        # are different questions for this action.
-        uses: astral-sh/setup-uv@v10.2.0
+        # Pinned to a commit, like every action here, with the release it is in
+        # the trailing comment: Dependabot reads that comment and moves both.
+        # The release is an exact one (v10.2.0), not a major: astral-sh publish
+        # moving major tags only up to v7, so `@v9` or `@v10` does not resolve
+        # and the whole workflow fails to start.
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           enable-cache: true
 
@@ -83,9 +84,9 @@ jobs:
         # there. --strict means a broken internal link fails the job.
         run: tools/build-docs.sh
 
-      - uses: actions/configure-pages@v6
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
 
-      - uses: actions/upload-pages-artifact@v5
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: share/learn
 
@@ -103,4 +104,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5

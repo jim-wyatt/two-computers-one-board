@@ -11,10 +11,15 @@ than find out.
 
 ## Reporting a problem
 
-Use **Security → Report a vulnerability** on the repository, which sends a
-private report to the maintainer. If that option is not shown, open an ordinary
-issue that says you have something to report and gives no detail, and you will
-be contacted.
+Open an [issue](https://github.com/jim-wyatt/two-computers-one-board/issues).
+There is no private channel, on purpose. This is a learning project for a
+development board that sits on a desk: it is not deployed anywhere, nobody
+depends on it staying up, and a fault in it is more useful to the next reader
+when it is discussed in the open.
+
+The one exception is a problem in somebody else's software that this project
+merely uses, such as Zephyr, MCUboot, Debian or Arduino's image. Report that
+to them, by whatever route they ask for, and not here.
 
 This is one person's project, maintained in spare time. Expect an answer within
 a couple of weeks rather than a couple of days.

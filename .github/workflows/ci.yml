@@ -51,14 +51,15 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install uv
-        # Exact tag, not @v9: astral-sh publish moving major tags only up
-        # to v7, so `@v9` does not resolve and the whole workflow fails to
-        # start. Bump this by hand - `latest release` and `latest major tag`
-        # are different questions for this action.
-        uses: astral-sh/setup-uv@v10.2.0
+        # Pinned to a commit, like every action here, with the release it is in
+        # the trailing comment: Dependabot reads that comment and moves both.
+        # The release is an exact one (v10.2.0), not a major: astral-sh publish
+        # moving major tags only up to v7, so `@v9` or `@v10` does not resolve
+        # and the whole workflow fails to start.
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           enable-cache: true
 
@@ -118,11 +119,11 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install uv
-        # Exact tag for the reason given in `checks`.
-        uses: astral-sh/setup-uv@v10.2.0
+        # An exact release, pinned by commit, for the reason given in `checks`.
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           enable-cache: true
 
@@ -291,7 +292,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # Checked out under a fixed name rather than the repository's, because
           # west.yml has to name this directory and the repository is going to
@@ -315,7 +316,7 @@ jobs:
           echo "module filter: $v"
 
       - name: Set up Zephyr
-        uses: zephyrproject-rtos/action-zephyr-setup@v1
+        uses: zephyrproject-rtos/action-zephyr-setup@be8136a8bba01580485d98b7ad2d32477c36a49a # v1
         with:
           app-path: app
           toolchains: arm-zephyr-eabi
