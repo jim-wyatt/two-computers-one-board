@@ -35,6 +35,14 @@ fi
 
 step "unoq-cpu-bars.service"
 install_unit "$PROJECT/python/unoq-cpu-bars.service"
+# A demo that gave up on a silent microcontroller is in the failed state, and
+# systemd refuses to start a unit that hit its start limit until that is
+# cleared. This step usually runs right after the firmware has been flashed,
+# which is exactly when the reason it gave up has just been fixed.
+if systemctl is-failed --quiet unoq-cpu-bars.service 2>/dev/null; then
+  systemctl reset-failed unoq-cpu-bars.service >/dev/null 2>&1 || true
+  did "cleared the failed state unoq-cpu-bars was left in (it had stopped retrying)"
+fi
 enable_unit unoq-cpu-bars.service
 
 step "verify"

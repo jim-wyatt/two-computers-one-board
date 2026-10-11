@@ -432,3 +432,50 @@ line_of() { grep -nE "$1" "$STUB_LOG" | head -1 | cut -d: -f1; }
   [ "$web" -lt "$clean" ]
   [ "$clean" -lt "$usb" ]
 }
+
+# --- the demo, while the chip is written --------------------------------------------
+
+demo_running() {
+  stub_body systemctl <<'SH'
+[ "$1" = is-active ] && exit 0
+exit 0
+SH
+}
+
+@test "a running demo is stopped before the flash, so it spends none of its retries on it" {
+  demo_running
+  bootstrap
+  [ "$status" -eq 0 ]
+  stop="$(line_of '^sudo systemctl stop unoq-cpu-bars.service$')"
+  flash="$(line_of 'mcu/flash-all\.sh')"
+  [ -n "$stop" ] && [ -n "$flash" ]
+  [ "$stop" -lt "$flash" ]
+}
+
+@test "a demo that was not running is not stopped" {
+  stub systemctl 1
+  bootstrap
+  refute ran_like '^sudo systemctl stop unoq-cpu-bars'
+}
+
+@test "left out of this run but installed by an earlier one, the demo is started again" {
+  # --no-cpu-bars skips the step that would have started it. Leaving a
+  # service this run did not install stopped would be a change nobody asked for.
+  demo_running
+  bootstrap --no-cpu-bars
+  [ "$status" -eq 0 ]
+  ran "sudo systemctl start unoq-cpu-bars.service"
+}
+
+@test "in the usual run it is not started twice: the demo step does that" {
+  demo_running
+  bootstrap
+  refute ran "sudo systemctl start unoq-cpu-bars.service"
+  ran_step provision/65-cpu-bars.sh
+}
+
+@test "with --skip-mcu nothing is flashed and the demo is left alone" {
+  demo_running
+  bootstrap --skip-mcu
+  refute ran_like '^sudo systemctl stop unoq-cpu-bars'
+}

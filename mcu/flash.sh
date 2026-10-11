@@ -68,3 +68,14 @@ echo "flashing $IMG ${ADDR:+@ $ADDR}"
 "$OPENOCD" -s "$OCD_ROOT" -s "$OCD_ROOT/share/openocd/scripts" \
   -f "$CFG" -c "$PROGRAM"
 echo "done."
+
+# The demo retries while the chip is being written, and it has a limit. One
+# flash is nowhere near it; several in a few minutes can be. If that has
+# happened, say so here, where the person who caused it is looking.
+if systemctl is-failed --quiet unoq-cpu-bars.service 2>/dev/null; then
+  echo
+  echo "The CPU-bars demo gave up retrying while the chip was being written."
+  echo "Start it again:"
+  echo "  sudo systemctl reset-failed unoq-cpu-bars && sudo systemctl start unoq-cpu-bars"
+  echo "To avoid it: sudo systemctl stop unoq-cpu-bars before flashing, start it after."
+fi

@@ -774,3 +774,32 @@ unoq-usb-bind.service" ]
   [[ "$output" != *"still run as root"* ]]
   [[ "$output" == *"already correct"* ]]
 }
+
+# --- the demo gives up, so that somebody is told -----------------------------
+
+@test "the CPU-bars demo stops retrying after a few minutes of a silent microcontroller" {
+  # Without a start limit it restarted for ever, "restarting" is not "failed",
+  # and LED 2 stayed green over a board whose MCU had no firmware on it.
+  U="$BATS_TEST_DIRNAME/../python/unoq-cpu-bars.service"
+  burst="$(sed -n 's/^StartLimitBurst=//p' "$U")"
+  interval="$(sed -n 's/^StartLimitIntervalSec=//p' "$U")"
+  [ -n "$burst" ] && [ -n "$interval" ]
+  # In [Unit], where systemd reads them; in [Service] they are ignored.
+  awk '/^\[/{s=$0} /^StartLimit(Burst|IntervalSec)=/{ if (s != "[Unit]") bad=1 } END{ exit bad }' "$U"
+  # Loose enough to ride out a flash (about a minute of silence, which at the
+  # measured twelve seconds an attempt is five of them), tight enough to say
+  # something within a few minutes.
+  [ "$burst" -ge 10 ] && [ "$burst" -le 20 ]
+  [ "$interval" -ge $((burst * 15)) ]
+  [ "$interval" -le 900 ]
+}
+
+@test "the step that installs the demo can start it again after it has given up" {
+  # systemd refuses to start a unit that hit its start limit until its failed
+  # state is cleared, and this step runs right after the firmware is flashed.
+  S="$BATS_TEST_DIRNAME/../provision/65-cpu-bars.sh"
+  reset="$(grep -n 'systemctl reset-failed unoq-cpu-bars.service' "$S" | cut -d: -f1)"
+  enable="$(grep -n '^enable_unit unoq-cpu-bars.service' "$S" | cut -d: -f1)"
+  [ -n "$reset" ] && [ -n "$enable" ]
+  [ "$reset" -lt "$enable" ]
+}

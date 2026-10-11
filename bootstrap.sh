@@ -384,6 +384,16 @@ if [ "$SKIP_MCU" = 0 ]; then
   step "flash"
   # An MCUboot build must be flashed as the full chain the first time: the
   # signed app alone lands in slot0 with no bootloader in front of it.
+  # The demo is paused while the chip is written. It talks to the MCU twice a
+  # second and retries when it gets no answer, and it only has so many retries
+  # before systemd calls it failed (see python/unoq-cpu-bars.service): a flash
+  # was measured using seven of the twelve. Stopped, it uses none. It is
+  # started again below - by step 65 in the usual case, and here when this run
+  # was asked to leave the demo out but an earlier one installed it.
+  DEMO_PAUSED=0
+  if systemctl is-active --quiet unoq-cpu-bars.service 2>/dev/null; then
+    sudo systemctl stop unoq-cpu-bars.service && DEMO_PAUSED=1
+  fi
   # flash-all.sh derives the workspace itself.
   if bash "$PROJECT/mcu/flash-all.sh" >"$FLASH_LOG" 2>&1; then
     did "MCUboot + application flashed"
@@ -398,6 +408,10 @@ if [ "$SKIP_MCU" = 0 ]; then
         fixed, write both again:
           $PROJECT/mcu/flash-all.sh"
     warn "the microcontroller may be partly written. Recover with: $PROJECT/mcu/flash-all.sh"
+  fi
+  if [ "$DEMO_PAUSED" = 1 ] && [ "$WITH_CPU_BARS" = 0 ]; then
+    sudo systemctl start unoq-cpu-bars.service ||
+      warn "could not start unoq-cpu-bars again - check: journalctl -u unoq-cpu-bars -n 20"
   fi
 fi
 

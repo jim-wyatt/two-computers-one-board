@@ -9,6 +9,25 @@ Documentation=file:/home/arduino/two-computers-one-board/docs/reference/mpu.md
 # service starts, finds a silent port, and restarts forever.
 Requires=unoq-link.service
 After=unoq-link.service
+# How long this may go on failing before systemd stops trying and calls it
+# failed: twelve starts in five minutes. Measured on the board, with the MCU
+# held in reset, one attempt takes about twelve seconds (the handshake times
+# out, then RestartSec), so that is about two and a half minutes of a
+# microcontroller that does not answer.
+#
+# Without a limit it retried for ever, and "restarting" is not "failed". On a
+# board whose MCU had lost its firmware this unit restarted forty-five times
+# in ten minutes while `systemctl --failed` stayed empty and LED 2, which
+# reports failed units, stayed green: the matrix was dark and every light
+# Linux owns said the board was fine.
+#
+# The limit is this loose because silence is sometimes normal. Flashing holds
+# the MCU in reset for the better part of a minute - five attempts - and the boot race the
+# Restart= line below exists for takes a few seconds. Neither comes near it.
+# Recover, once the MCU is answering again:
+#   sudo systemctl reset-failed unoq-cpu-bars && sudo systemctl start unoq-cpu-bars
+StartLimitIntervalSec=300
+StartLimitBurst=12
 
 [Service]
 Type=simple
