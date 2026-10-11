@@ -8,7 +8,7 @@
 # WHY IT IS WRITTEN TWICE
 # -----------------------
 # The board builds a standalone workspace at ~/zephyrproject, outside the
-# checkout, because the Zephyr tree is 3.3 GB and should survive deleting the
+# checkout, because the Zephyr workspace is 2 GB and should survive deleting the
 # repository. CI cannot do that - the setup action needs the application repo to
 # BE the manifest repo (`west init -l`), so it needs a west.yml here.
 #

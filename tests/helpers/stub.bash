@@ -84,5 +84,22 @@ ran() { grep -qxF "$1" "$STUB_LOG"; }
 # ran_like <extended regex> - for when one argument is unpredictable.
 ran_like() { grep -qE "$1" "$STUB_LOG"; }
 
+# refute <command>... - passes only if the command FAILS.
+#
+# USE THIS, NOT `! command`. In a bats test `! command` does nothing unless it
+# is the very last line: bash's `set -e`, which is what makes a failing line
+# fail a test, deliberately ignores the status of a command negated with `!`.
+# So `! ran "rm -rf /"` half way down a test passes whether or not it ran.
+#
+# Thirty-seven assertions in this directory were written that way, including
+# the one guarding what the clean-up step may delete, and none of them could
+# fail. A function that returns 1 is an ordinary failing command, and can.
+refute() {
+  if "$@"; then
+    echo "expected this to fail, and it did not: $*" >&2
+    return 1
+  fi
+}
+
 # never_ran <name> - the command was not invoked at all.
 never_ran() { ! grep -q "^$1 " "$STUB_LOG" && ! grep -qx "$1" "$STUB_LOG"; }

@@ -42,7 +42,7 @@ SH
 
 run "$PROJECT/usb/usb-route.sh" add 192.168.137.1
 [ "$status" -eq 0 ]
-! ran_like 'ip route'
+refute ran_like 'ip route'
 ```
 
 Everything else is environment variables the scripts already accept —
@@ -69,6 +69,8 @@ without touching `/var/lib`.
 | [`install-runtime.bats`](install-runtime.bats) | The root-owned copies of the scripts that the root services run. A stale or writable file there is something root executes at the next boot; a missing one is a service that does not start. |
 | [`gadget-up.bats`](gadget-up.bats) | Which file the host is handed as the drive. Run as root's copy, a script that asks who owns it gets the answer `root`, and the drive comes up empty. |
 | [`usb-status.bats`](usb-status.bats) | The comparison between the checkout and root's copies. If it says "same" when they are not, an edit that never reached the board looks like a fix that does nothing. |
+| [`cleanup.bats`](cleanup.bats) | A step that deletes things as root at the end of every run. Clearing root's `uv` cache and calling it yours, ignoring `UNOQ_KEEP_CACHES`, or reporting a change on a board with nothing to clear. |
+| [`host-tools.bats`](host-tools.bats) | The first download of a fresh board failing with nothing but the name of the command, so that a full disk and a dead network look the same. |
 | [`usb-handover.bats`](usb-handover.bats) | The order a stock board's doors are closed and opened in. `adbd` stopped before `sshd` is running, or by a script that is `adbd`'s own child, is a board nobody can log into; and "stopped and disabled" printed over a unit that is still running is how the MCU's serial port stayed held. |
 | [`zephyr-sdk.bats`](zephyr-sdk.bats) | The first step of `bootstrap.sh` a stranger's board ever stopped at. It passed on every board it was developed on, and failed on a fresh one. |
 | [`build-flash.bats`](build-flash.bats) | `zbuild` and `zflash` with nothing after them: the right app, and never the unsigned image. Also that CI can run the same script the board does. |
@@ -105,3 +107,17 @@ board nobody can reach".
 
 That last step is not optional. The suites here were each checked that way
 before being committed: break the script, watch the right test go red.
+
+5. **Write "this must not happen" as `refute`, never as `!`.**
+
+    ```bash
+    refute ran "systemctl stop adbd"      # fails the test if it ran
+    ! ran "systemctl stop adbd"           # does nothing, unless it is the last line
+    ```
+
+    A test fails when one of its lines fails, and bash does not count a line
+    negated with `!` as failing. So `! something` in the middle of a test
+    passes whatever happened. Thirty-seven assertions here were written that
+    way, and step 4 did not catch them, because a test with several
+    assertions still goes red when a *different* one of them trips.
+    `refute`, in `helpers/stub.bash`, is an ordinary command that returns 1.

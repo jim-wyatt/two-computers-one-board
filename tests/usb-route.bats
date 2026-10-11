@@ -60,7 +60,7 @@ lease() { run "$ROUTE" "$1" "${2-}"; }
 
 @test "replace, not add, so a renewing host does not stack routes or fail" {
   lease add 192.168.137.1
-  ! ran_like 'ip route add default'
+  refute ran_like 'ip route add default'
 }
 
 @test "a released lease withdraws only our own route" {
@@ -139,7 +139,7 @@ exit 0
 SH
   lease add 192.168.137.1
   [ "$status" -eq 0 ]
-  ! ran_like 'ip route'
+  refute ran_like 'ip route'
 }
 
 @test "a route that cannot be set is reported, not swallowed" {
@@ -194,7 +194,7 @@ SH
   stub curl 1
   lease prefer 192.168.137.1
   [ "$status" -eq 0 ]
-  ! ran_like 'ip route replace default via [0-9.]+ dev br-usb metric 550'
+  refute ran_like 'ip route replace default via [0-9.]+ dev br-usb metric 550'
 }
 
 @test "a link that stops working is demoted again" {
@@ -240,7 +240,7 @@ SH
   stub ping 0
   lease prefer 192.168.137.1
   [ "$status" -eq 0 ]
-  ! ran_like 'ip route'
+  refute ran_like 'ip route'
   never_ran ping
 }
 

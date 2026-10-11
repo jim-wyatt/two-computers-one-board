@@ -393,7 +393,7 @@ SH
   handover_line="$(grep -n '^usb_handover ' "$GADGET_STEP" | cut -d: -f1)"
   [ -n "$ssh_line" ] && [ -n "$handover_line" ]
   [ "$ssh_line" -lt "$handover_line" ]
-  ! grep -nE '^[^#]*(disable_unit|systemctl (stop|disable)[^#]*) adbd' "$GADGET_STEP"
+  refute grep -nE '^[^#]*(disable_unit|systemctl (stop|disable)[^#]*) adbd' "$GADGET_STEP"
 }
 
 @test "the hand-over is the last thing the step does to the board" {

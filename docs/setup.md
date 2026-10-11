@@ -48,6 +48,7 @@ board used as a headless development machine, and each can be put back.
 | **Switches off Bluetooth and `udisks2`.** | Nothing here uses them. | `UNOQ_TIER2=0` |
 | **Installs services that run at every boot**, as root: the control lines to the microcontroller, and the status LEDs. They run copies of this checkout's scripts, kept in `/usr/local/lib/unoq/` and owned by root. | Without the first, the microcontroller looks dead after a reboot. The copies are so that changing a file in your home directory does not change what root runs. | — |
 | **Pings `1.1.1.1` about once a minute.** | It is how the status LED knows whether there is a route out. | `UNOQ_LED_PROBE_IP`, in [What you can change](reference/configuration.md) |
+| **Deletes what it downloaded in order to install**: apt's package files, and the download caches of `uv` and `pip`. Nothing that is installed, and nothing of yours. | The home partition is 8 GB, and none of it is needed again. | `UNOQ_KEEP_CACHES=1` |
 | **Adds a line to `~/.bashrc`**, a git pre-commit hook in the checkout, and VS Code machine settings if there are none. | The shell shortcuts, and settings that suit a small board. | Delete the line. |
 
 [SECURITY.md](https://github.com/jim-wyatt/two-computers-one-board/blob/main/SECURITY.md)
@@ -56,40 +57,118 @@ says what you are trusting when you run it.
 ## Before you start
 
 - **An Arduino UNO Q** running the Debian image it shipped with.
-- **A USB-C cable that carries data.** Charge-only cables look identical and are
-  common. If the board powers up and nothing else works, suspect the cable
-  first.
-- **A terminal on the board**, logged in as the `arduino` user. Every command
-  in this project is typed there. SSH from your own computer is the comfortable
-  way to get one.
-- **A network connection on the board.** The script downloads about 4.5 GB.
-- **About 6 GB of free space** in the home directory. The script checks.
-- **Somewhere between 40 and 60 minutes**, most of which needs no attention.
+- **A computer** to type on: Windows, macOS or Linux.
+- **A USB-C cable that carries data**, between the two. Charge-only cables look
+  identical and are common. If the board powers up and your computer never
+  notices it, suspect the cable first.
+- **The name and password of a wifi network** the board can use. The script
+  downloads about 3 GB.
+- **About 6 GB of free space** in the board's home directory. A factory-fresh
+  board has about 7 GB, and the script checks.
+- **About 25 minutes**, most of which needs no attention. That is one timed
+  run, made before the download got smaller, so it should be an upper figure.
+  [How long each part took](#how-long-it-takes) is below.
 
-### Getting a terminal the first time
+You do not need a screen, a keyboard or a network cable for the board, and you
+do not need to install anything from Arduino.
 
-This project starts from a board you can already log into, and getting there is
-Arduino's ground rather than this project's. Their pages for this board cover
-it:
+## Step 0: get a terminal on the board
 
-- [UNO Q user manual](https://docs.arduino.cc/tutorials/uno-q/user-manual/) —
-  first power-up, and getting the board onto your network.
-- [SSH](https://docs.arduino.cc/tutorials/uno-q/ssh/) — logging in from your
-  own computer, which is the terminal every command here is typed into.
-- [Updating the image](https://docs.arduino.cc/tutorials/uno-q/update-image/)
-  — putting the factory image back, which is also how you undo everything this
-  project does.
+Everything in this project is typed into a terminal *on the board*. A
+factory-fresh board gives you one over the USB cable, using a small tool called
+`adb`. It needs no network and no password, which is exactly why it is the way
+in to a board that has neither yet.
 
-Those are Arduino's instructions, not this project's, and they have not been
-checked against it step by step. Once `ssh arduino@<your board>` gives you a
-prompt, you are where this page begins.
+### 1. Install `adb` on your computer
+
+| Your computer | Type this in a terminal |
+|---|---|
+| Windows | `winget install Google.PlatformTools`, then close the terminal and open a new one |
+| macOS | `brew install android-platform-tools` (needs [Homebrew](https://brew.sh)) |
+| Debian or Ubuntu | `sudo apt install adb` |
+
+`adb` is Google's tool for talking to Android devices over USB. The board is
+not an Android device; it just speaks the same protocol on its USB port.
+
+### 2. Plug the board in and open a terminal on it
+
+Connect the board to your computer with the USB-C cable. That powers it too.
+Give it a minute to start, then on your computer:
+
+```bash
+adb devices
+```
+
+```
+List of devices attached
+1269931879      device
+```
+
+One line with a number and the word `device` means your computer can see the
+board. (Your number will be different.) Then:
+
+```bash
+adb shell
+```
+
+```
+arduino@uno-q:~$
+```
+
+That prompt is the board. Everything from here on is typed there.
+
+> [!TIP]
+> **Nothing listed?** Try another cable first, then another USB port. An empty
+> list with a cable that works usually means the board is still starting; wait
+> a minute and run `adb devices` again.
+
+### 3. Give the board a password
+
+The `arduino` user has no password yet, and the setup needs one for `sudo`.
+
+```bash
+sudo arduino-passwd
+```
+
+Choose one you will remember. You will type it once when the setup starts, and
+again whenever you log in over SSH later.
+
+### 4. Connect the board to wifi
+
+```bash
+nmcli device wifi connect "your network name" --ask
+```
+
+It asks for the wifi password, and says `successfully activated` when it is
+on. Check that the internet is really there:
+
+```bash
+curl -sI https://github.com | head -1
+```
+
+```
+HTTP/2 200
+```
+
+That is the whole of step 0. The board has a password, it is online, and you
+have a terminal on it.
+
+> [!NOTE]
+> **What has been checked.** These four steps and the setup that follows were
+> run on a board freshly restored to the factory image, from a Windows
+> computer. The macOS and Linux install commands for `adb` are the standard
+> ones and were not run as part of that. If you already use SSH or a screen
+> and keyboard, any terminal logged in as `arduino` works just as well;
+> Arduino's [user manual](https://docs.arduino.cc/tutorials/uno-q/user-manual/)
+> and [SSH guide](https://docs.arduino.cc/tutorials/uno-q/ssh/) cover those,
+> and [Updating the image](https://docs.arduino.cc/tutorials/uno-q/update-image/)
+> is how you put the factory image back.
 
 > [!NOTE]
 > **If your board has been used before** — an App Lab project on it, packages
 > removed, a previous attempt at this — the script will still do the right
 > thing: it changes only what is not already as it should be. What this project
-> has *verified* is a board freshly restored to the factory image, using
-> Arduino's procedure linked above.
+> has *verified* is a board freshly restored to the factory image.
 
 ## Run it
 
@@ -99,9 +178,13 @@ cd ~/two-computers-one-board
 ./bootstrap.sh --with-cpu-bars      # what the course expects; plain ./bootstrap.sh also works
 ```
 
-Run it as yourself, not with `sudo`. It asks for your password once and uses
-`sudo` only for the steps that need it, so that everything in your home
-directory stays owned by you.
+Run it as yourself, not with `sudo`. It prints what it is about to change,
+waits ten seconds in case you want to stop it with Ctrl-C, then asks for your
+password once. It uses `sudo` only for the steps that need it, so that
+everything in your home directory stays owned by you.
+
+Then leave it alone. Keep the terminal open and the cable in; there is nothing
+to answer until it finishes.
 
 ### What you will see
 
@@ -135,17 +218,53 @@ There are four words, and they are the whole vocabulary:
 | Stage | What it does |
 |---|---|
 | preflight | Checks the board, `sudo`, free space and the network. Copies the stock microcontroller firmware somewhere safe. |
-| `10`, `20` | Switches off the desktop and the Arduino services that hold the hardware, and installs a compiler. |
-| `u10`, `u20` | Installs the build tools and the Zephyr SDK, the cross-compiler for the microcontroller (~1 GB). |
-| `u30` | Downloads Zephyr itself (~3.3 GB). **This is the slow one**, and most of the hour. |
+| `10`, `20` | Switches off the desktop and the Arduino services that hold the hardware, upgrades the installed packages, and installs a compiler. |
+| `u10`, `u20` | Installs the build tools and the Zephyr SDK, the cross-compiler for the microcontroller (~0.8 GB). |
+| `u30` | Downloads Zephyr itself (~2 GB). **This is the long download.** |
 | `u40`, `u50` | Sets up Python and the `unoq` package, and the shell shortcuts. |
 | `30`, `35` | Makes the two control lines to the microcontroller correct at every boot, and starts the status LEDs. |
 | MCU firmware | Builds this project's firmware and writes it to the microcontroller. |
 | `50` | With `--with-cpu-bars`: the demo, as a service that starts at boot. |
+| `90` | Gives back the disk space the downloads borrowed, and says how much. |
 
 Stages starting with `u` run as you. The others run as root.
 [Provisioning](reference/provisioning.md) has what each one changes and how to
-undo it.
+undo it, and the stages the [optional extras](#the-optional-extras) add.
+
+### How long it takes
+
+One run, timed: a factory-restored board, on wifi to a home broadband
+connection, with `--with-cpu-bars --with-usb-gadget`. Yours will differ with
+your connection; use it to know which parts are slow and that a quiet terminal
+is normal.
+
+| Stage | Took |
+|---|---|
+| The notice, and typing the password | under 1 minute |
+| `10` switching things off and upgrading every package | 7½ minutes |
+| `20` installing a compiler | 1 minute |
+| `u10` build tools | 20 seconds |
+| `u20` Zephyr SDK | 35 seconds |
+| `u30` Zephyr | 6½ minutes |
+| `u40`, `u50` Python and shell | 30 seconds |
+| `30`, `35` control lines and LEDs | 30 seconds |
+| Building the firmware | 3 minutes |
+| Building the bootloader and flashing both | 2½ minutes |
+| `50` the demo service | 10 seconds |
+| `65` the drive image | 40 seconds |
+| `90` giving disk space back | not timed: added after this run |
+| `60` the USB hand-over | not timed: it did not finish in this run |
+| **All of it, without the last two** | **about 24 minutes** |
+
+Three honest notes on those numbers. They were read by watching the board
+every fifteen seconds, so each is good to about that. `u30` has got shorter
+since: that run downloaded about 3.4 GB for it and the same step now downloads
+about 2 GB, which has not been timed on a board yet. And the last step of that
+run, `60`, is where it found a fault that has since been fixed; a run of it
+from start to finish is still to be made.
+
+The two long silences are `10`, while packages upgrade, and `u30`, while Zephyr
+downloads. Neither prints much. Both are working.
 
 ## How to tell it worked
 
@@ -179,12 +298,19 @@ try. Then:
     ./bootstrap.sh --skip-mcu
     ```
 
-2. **Look at the board**, if you set it up with `--with-cpu-bars`. Four bars of
+2. **Look at the four small LEDs**, in a row on the board. Steady green on
+   all of them is a healthy board: it can reach the internet, nothing has
+   failed, the new firmware is running, and the two halves are talking. One
+   that blinks red is telling you something specific;
+   [Four lights](learn/four-lights.md) says what, or run
+   `~/two-computers-one-board/status/leds.sh explain`.
+
+3. **Look at the LED grid**, if you set it up with `--with-cpu-bars`. Four bars of
    light on the LED grid, moving. That is Linux measuring its four processor
    cores and the microcontroller drawing them: both halves working, and
    talking.
 
-3. **Or ask the microcontroller directly**, if you did not. Open a new shell,
+4. **Or ask the microcontroller directly**, if you did not. Open a new shell,
    so the shortcuts are loaded, and:
 
     ```bash
@@ -204,7 +330,8 @@ try. Then:
     service holding it. That is correct: only one program can use the wire to
     the microcontroller at a time, and the demo has it.)
 
-Either of those means both halves of the board work and can talk to each other.
+Either of the last two means both halves of the board work and can talk to
+each other.
 Go to [Start here](learn/start-here.md).
 
 ## When it stops
@@ -244,7 +371,7 @@ well, and says so when you get there; nothing else needs an extra.
 | Flag | Gives you | Costs you |
 |---|---|---|
 | `--with-cpu-bars` | The CPU-bars demo on the LED matrix from boot. | That service holds the serial line to the microcontroller. Stop it (`sudo systemctl stop unoq-cpu-bars`) before using the shell or the Python API. |
-| `--with-usb-gadget` | Plug the board into a computer and it appears as a network connection and a drive. | The USB-C port can no longer host devices, so anything plugged into it, a network dongle included, stops working. Read [usb.md](reference/usb.md) first. |
+| `--with-usb-gadget` | Plug the board into a computer and it appears as a network connection and a drive. | `adb` stops working, because it needs the same USB port: the step switches SSH on first, and from then on you log in with `ssh arduino@<board name>.local` and your password. If you ran the setup from `adb shell`, **that shell closes about twenty seconds after the run ends**, which is the hand-over and not a crash. The USB-C port can also no longer host devices, so anything plugged into it, a network dongle included, stops working. Read [usb.md](reference/usb.md) first. |
 | `--with-learning` | The course, served by the board on port 8080. | A small web server with no password, listening on every network the board is on. Anyone who can reach the board can read what it serves. |
 | `--with-purge` | A few hundred MB of disk back, by removing the remaining Arduino packages. (The ~2 GB of container images go in the default run.) | It is the one step that is hard to undo. The stock firmware is backed up first. |
 | `--everything` | All four. | All four. |

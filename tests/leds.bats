@@ -442,7 +442,7 @@ guard_at_its_limit() {
   [ "$(look_of LED1)" = off ]
   [ "$(look_of LED2)" = off ]
   for ch in "${CHANNELS[@]}"; do
-    ! grep -q '\[timer\]' "$UNOQ_LED_DIR/$ch/trigger"
+    refute grep -q '\[timer\]' "$UNOQ_LED_DIR/$ch/trigger"
     [ ! -e "$UNOQ_LED_DIR/$ch/delay_on" ]
   done
 }
@@ -471,7 +471,7 @@ guard_at_its_limit() {
   [[ "$output" == *"slow blink"* ]]
   [[ "$output" == *"fast blink"* ]]
   # No state line may name a colour without a rhythm in front of it.
-  ! grep -E '^ +(LED [34] +)?(red|green|blue|yellow) ' <<<"$output"
+  refute grep -E '^ +(LED [34] +)?(red|green|blue|yellow) ' <<<"$output"
 }
 
 @test "an unknown verb is a usage error" {

@@ -192,7 +192,7 @@ SH
   run env PATH="$STUB_DIR:/usr/bin:/bin" "$PROJECT/mcu/zbuild.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"cannot be signed"* ]]
-  ! ran_like '^west sign'
+  refute ran_like '^west sign'
 }
 
 # --- flash -----------------------------------------------------------------
@@ -271,7 +271,7 @@ SH
   run "$PROJECT/mcu/flash-all.sh"
   [ "$status" -eq 0 ]
   ran_like "^west build .* -d $ZEPHYR_WORKSPACE/build-mcuboot$"
-  ! ran_like '/tmp/bmcuboot'
+  refute ran_like '/tmp/bmcuboot'
 }
 
 @test "flash-all flashes the bootloader first, then the signed application" {
@@ -291,7 +291,7 @@ SH
   : >"$STUB_LOG"
   run "$PROJECT/mcu/flash-all.sh"
   [ "$status" -eq 0 ]
-  ! ran_like '^west build'
+  refute ran_like '^west build'
 }
 
 @test "a bootloader built before Zephyr moved is rebuilt, not flashed stale" {
@@ -327,7 +327,7 @@ SH
   : >"$STUB_LOG"
   BOARD=arduino_uno_q run "$PROJECT/mcu/flash-all.sh"
   [ "$status" -eq 0 ]
-  ! ran_like '^west build'
+  refute ran_like '^west build'
 }
 
 @test "a bootloader image of unknown origin is rebuilt rather than trusted" {

@@ -5,7 +5,7 @@
 #
 # On the board, provision/user/30-zephyr-workspace.sh builds a STANDALONE
 # workspace at ~/zephyrproject with `west init -m .../zephyr --mr <version>`,
-# and this file is ignored. That layout is deliberate: the Zephyr tree is 3.3 GB
+# and this file is ignored. That layout is deliberate: the Zephyr workspace is 2 GB
 # and should survive deleting this checkout.
 #
 # CI cannot use that shape. zephyrproject-rtos/action-zephyr-setup runs

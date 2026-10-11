@@ -166,7 +166,7 @@ CONF
   ANSWERS="192.168.137.1" TAKEN="192.168.137.210" fake_arping
   run_profile up windows-ics
   [ "$status" -ne 0 ]
-  ! ran_like 'ip addr replace'
+  refute ran_like 'ip addr replace'
   [[ "$output" == *"already in use"* ]]
 }
 
@@ -252,7 +252,7 @@ CONF
   ANSWERS="192.168.137.1" fake_arping
   run_profile up not-a-profile
   [ "$status" -ne 0 ]
-  ! ran_like 'ip addr replace'
+  refute ran_like 'ip addr replace'
 }
 
 @test "UNOQ_USB_PROFILE_FALLBACK=0 disables the whole mechanism" {
@@ -263,7 +263,7 @@ CONF
   [ "$status" -ne 0 ]
   run_profile up windows-ics
   [ "$status" -ne 0 ]
-  ! ran_like 'ip addr replace'
+  refute ran_like 'ip addr replace'
 }
 
 # --- down: giving it back ---------------------------------------------------
@@ -290,7 +290,7 @@ CONF
   printf 'macos-sharing 192.168.2.210/24 192.168.2.1\n' >"$UNOQ_USB_PROFILE_STATE"
   run_profile down windows-ics
   [ "$status" -ne 0 ]
-  ! ran_like 'ip addr del'
+  refute ran_like 'ip addr del'
   [ -r "$UNOQ_USB_PROFILE_STATE" ]
 }
 
@@ -300,5 +300,5 @@ CONF
   # reachable. usb-dhcp.sh's deconfig has the same rule for the same reason.
   printf 'windows-ics 192.168.137.210/24 192.168.137.1\n' >"$UNOQ_USB_PROFILE_STATE"
   run_profile down
-  ! ran_like 'ip addr flush'
+  refute ran_like 'ip addr flush'
 }

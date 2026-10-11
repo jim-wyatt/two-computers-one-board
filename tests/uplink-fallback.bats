@@ -52,7 +52,7 @@ cable_is_dead() {
   run "$FALLBACK"
   [ "$status" -eq 0 ]
   never_ran ping
-  ! ran "nmcli radio wifi on"
+  refute ran "nmcli radio wifi on"
 }
 
 @test "wifi off and the cable reaches the internet: the radio stays off" {
@@ -61,7 +61,7 @@ cable_is_dead() {
   run "$FALLBACK"
   [ "$status" -eq 0 ]
   [[ "$output" == *"wifi stays off"* ]]
-  ! ran "nmcli radio wifi on"
+  refute ran "nmcli radio wifi on"
 }
 
 @test "wifi off and nothing reachable by the deadline: the radio comes back on" {
@@ -93,7 +93,7 @@ cable_is_dead() {
   run "$FALLBACK"
   [ "$status" -eq 0 ]
   ran_like '^curl --interface br-usb '
-  ! ran "nmcli radio wifi on"
+  refute ran "nmcli radio wifi on"
 }
 
 @test "a link that comes up late, inside the deadline, still keeps the radio off" {
@@ -106,7 +106,7 @@ SH
   run "$FALLBACK"
   [ "$status" -eq 0 ]
   [[ "$output" == *"after 30s"* ]]
-  ! ran "nmcli radio wifi on"
+  refute ran "nmcli radio wifi on"
 }
 
 @test "UNOQ_UPLINK_FALLBACK=0 means hands off, even with no uplink at all" {

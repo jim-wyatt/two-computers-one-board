@@ -5,9 +5,10 @@
 #
 #   bash ~/two-computers-one-board/provision/user/20-zephyr-sdk.sh
 #
-# Idempotent, and resumable: the download is ~1 GB and lands in a temp file
-# that is only moved into place once it has been verified, so an interrupted
-# run does not leave a half-SDK that later steps would try to use.
+# Idempotent, and resumable: the SDK is ~0.8 GB unpacked, and the download
+# lands in a temp file that is only moved into place once it has been verified,
+# so an interrupted run does not leave a half-SDK that later steps would try to
+# use.
 #
 # Only the arm-zephyr-eabi toolchain is installed. The full SDK carries a dozen
 # architectures this board will never build for.

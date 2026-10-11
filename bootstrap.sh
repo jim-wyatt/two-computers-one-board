@@ -27,8 +27,10 @@
 #     board, through reboots, and that is all: one can reset the board and the
 #     other edits the fstab entry it boots from, so --everything leaves both out
 #
-# TIME AND SPACE: ~40-60 minutes on a cold board, almost all of it the Zephyr
-# workspace (~3.3 GB) and SDK (~1 GB). Make sure you have ~6 GB free.
+# TIME AND SPACE: about 25 minutes on a stock board over home broadband,
+# measured once, and before the download was cut by about 1.4 GB. The Zephyr
+# workspace (~2 GB) and SDK (~0.8 GB) are most of what is left. Make sure you have ~6 GB free: the builds and the drive image need
+# room as well.
 set -uo pipefail
 
 PROJECT="$(cd "$(dirname "$0")" && pwd)"
@@ -127,7 +129,7 @@ echo "This will change this board. With the options given, it will:"
 echo
 echo "  - switch off the desktop, Arduino's services, Docker and automatic updates"
 echo "  - upgrade the installed packages"
-echo "  - install the Zephyr SDK and workspace into $HOME (~4.5 GB)"
+echo "  - install the Zephyr SDK and workspace into $HOME (~3 GB)"
 [ "$SKIP_MCU" = 0 ] &&
   echo "  - REPLACE THE FIRMWARE ON THE MICROCONTROLLER (the stock image is saved first)"
 [ "$WITH_PURGE" = 1 ] &&
@@ -209,7 +211,7 @@ trap "kill $SUDO_KEEPALIVE 2>/dev/null" EXIT
 
 FREE_MB=$(df -Pm "$HOME" | awk 'NR==2 {print $4}')
 if [ "$FREE_MB" -lt 6000 ]; then
-  warn "only ${FREE_MB} MB free in $HOME - the SDK and workspace need ~4.5 GB"
+  warn "only ${FREE_MB} MB free in $HOME - the SDK and workspace need ~3 GB, and the builds more"
 else
   skip "${FREE_MB} MB free in $HOME"
 fi
@@ -252,7 +254,7 @@ run_step "20  dev tools (root)" sudo "$PROJECT/provision/20-dev-tools.sh"
 
 run_step "u10 host tools: uv, cmake, ninja, west" user "$PROJECT/provision/user/10-host-tools.sh"
 run_step "u20 Zephyr SDK" user "$PROJECT/provision/user/20-zephyr-sdk.sh"
-run_step "u30 Zephyr workspace (~3.3 GB, slow)" user "$PROJECT/provision/user/30-zephyr-workspace.sh"
+run_step "u30 Zephyr workspace (the long download)" user "$PROJECT/provision/user/30-zephyr-workspace.sh"
 run_step "u40 python venv + unoq package" user "$PROJECT/provision/user/40-python-venv.sh"
 run_step "u50 shell env + git hook" user "$PROJECT/provision/user/50-shell-env.sh"
 
@@ -368,6 +370,9 @@ fi
   run_step "80  hardware watchdog (root)" sudo "$PROJECT/provision/80-watchdog.sh"
 [ "$WITH_ESP_LOCKDOWN" = 1 ] &&
   run_step "85  EFI partition permissions (root)" sudo "$PROJECT/provision/85-esp-permissions.sh"
+# Always, and after everything that downloads or installs: what the run
+# fetched in order to build things is not needed once they are built.
+run_step "90  disk space back (root)" sudo "$PROJECT/provision/90-cleanup.sh"
 # Last, always: it takes the USB host port down with it.
 [ "$WITH_USB_GADGET" = 1 ] &&
   run_step "60  USB gadget (root)" sudo "$PROJECT/provision/60-usb-gadget.sh"

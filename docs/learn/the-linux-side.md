@@ -142,7 +142,7 @@ room. (On this board that is less alarming than it sounds: see
 [mpu.md](../reference/mpu.md#swap-in-use-is-not-a-problem-here).)
 
 **Storage is slower and smaller.** The root filesystem is about 10 GB. The
-Zephyr source tree alone is ~3.3 GB.
+Zephyr workspace alone is ~2 GB, and that is with its history left out.
 
 **There is no screen.** Every diagnostic is a log line, a file, or something you
 read over the network. This is why so much of this project is about making state

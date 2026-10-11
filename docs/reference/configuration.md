@@ -128,6 +128,7 @@ Set on the command line, for one run of `bootstrap.sh` or of the script named.
 | `UNOQ_SKIP_APT_UPGRADE` | `0` | `provision/10-optimize-board.sh` | `1` skips the `apt-get upgrade` a restored board needs. Services restart as their packages upgrade, so expect a blip on the link you are connected over when it runs. |
 | `UNOQ_TIER2` | `1` | `provision/10-optimize-board.sh` | `0` leaves Bluetooth and `udisks2` enabled. They are disabled by default, not removed. |
 | `UNOQ_KEEP_DOCKER_IMAGES` | `0` | `provision/10-optimize-board.sh` | `1` keeps the ~2 GB of Arduino container images. |
+| `UNOQ_KEEP_CACHES` | `0` | `provision/90-cleanup.sh` | `1` keeps apt's downloaded packages and the `uv` and `pip` caches, which the last step of a run otherwise clears. Worth it on a slow connection. |
 | `UNOQ_BACKUP` | `~/uno-q-backup` | `provision/10`, `provision/40` | Where the stock MCU firmware and the list of removed container images are saved. |
 | `UNOQ_ALLOW_NO_STOCK_FW` | `0` | `bootstrap.sh`, `provision/40-purge-arduino.sh` | `1` lets the firmware be flashed, and the purge go ahead, with no copy of the stock firmware saved. Only for a board whose copy is already gone. |
 | `UNOQ_ALLOW_UNVERIFIED_SDK` | `0` | `provision/user/20-zephyr-sdk.sh` | `1` lets an SDK release chosen with `ZEPHYR_SDK_VERSION` be unpacked, and its `setup.sh` run, when the release publishes no checksum for it. It says so when it does. It has no effect on the pinned release, which is never unpacked unverified, and it never excuses a checksum that is published and does not match. |
@@ -197,6 +198,7 @@ and setting one will mostly make a script look in the wrong place.
 | `UNOQ_WATCHDOG_CONF_DIR` | `/etc/systemd/system.conf.d` | Where `80-watchdog.sh` writes its `systemd` drop-in. |
 | `UNOQ_WATCHDOG_SYSFS` | `/sys/class/watchdog` | Where `80-watchdog.sh` looks for a watchdog device. |
 | `UNOQ_FSTAB` | `/etc/fstab` | The mount table `85-esp-permissions.sh` edits. Its backup is written beside it. |
+| `UNOQ_APT_CACHE_DIR` | `/var/cache/apt` | Where `90-cleanup.sh` looks for downloaded packages. |
 | `UNOQ_UDC_DIR` | `/sys/class/udc` | Where `usb/handover.sh` looks for a USB controller to bind to. |
 | `UNOQ_SSH_DIR` | `/etc/ssh` | Where provisioning looks for SSH host keys before switching `sshd` on. |
 | `UNOQ_CGROUP_FILE` | `/proc/self/cgroup` | What a provisioning step reads to find out whether it was started from `adb shell`. |

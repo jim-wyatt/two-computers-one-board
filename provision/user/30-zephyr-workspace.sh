@@ -1,7 +1,7 @@
 #!/bin/bash
 # Copyright (c) 2026 Jim Wyatt
 # SPDX-License-Identifier: MIT
-# The Zephyr workspace (~3.3 GB). Runs as YOU, not root. This is the long one.
+# The Zephyr workspace (~2 GB). Runs as YOU, not root. This is the long one.
 #
 #   bash ~/two-computers-one-board/provision/user/30-zephyr-workspace.sh
 #
@@ -9,9 +9,9 @@
 #
 # THE MANIFEST FILTER
 # -------------------
-# Keeps the workspace at ~3.3 GB instead of ~7 GB by skipping vendor HALs for
-# hardware this board does not have. It is not cosmetic - a 3.6 GiB board with
-# a 10 GB rootfs does not have 7 GB to spare.
+# Keeps the workspace at ~2 GB by skipping vendor HALs for hardware this board
+# does not have - several more GB of other manufacturers' chips. It is not
+# cosmetic: the home partition on this board is 8 GB.
 #
 # It lives in ../../west-project-filter and is READ from there, because CI now
 # builds the same module set and a second copy would drift. Edit that file.
@@ -65,9 +65,16 @@ if [ -d "$WS/zephyr" ] && [ -f "$WS/.west/config" ]; then
   have="$(git -c safe.directory="$WS/zephyr" -C "$WS/zephyr" describe --tags 2>/dev/null)"
   skip "workspace initialised at ${have:-unknown}"
 else
-  echo "  west init (this clones Zephyr - several minutes)..."
+  # --clone-opt=--depth=1: the one commit that is the release, not the 137,000
+  # behind it. Zephyr's history is a gigabyte of git objects - measured, 1004 MB
+  # against 126 MB - and it was most of the wait in this step. Nothing here
+  # reads it: the build asks `git describe` for the tag, and the tag is the
+  # commit that was fetched.
+  # To get the history later, for `git log` or `git bisect` in Zephyr itself:
+  #   git -C ~/zephyrproject/zephyr fetch --unshallow
+  echo "  west init (this clones Zephyr at $ZEPHYR_VERSION, without its history)..."
   "$WS/.venv/bin/west" init -m https://github.com/zephyrproject-rtos/zephyr \
-    --mr "$ZEPHYR_VERSION" "$WS" >/dev/null 2>&1 ||
+    --mr "$ZEPHYR_VERSION" --clone-opt=--depth=1 "$WS" >/dev/null 2>&1 ||
     fail "west init failed"
   did "west init at $ZEPHYR_VERSION"
 fi
@@ -84,7 +91,7 @@ if [ "$current" = "$FILTER" ]; then
 else
   (cd "$WS" && "$WS/.venv/bin/west" config manifest.project-filter -- "$FILTER") ||
     fail "could not set the manifest filter"
-  did "manifest filter set (keeps the workspace at ~3.3 GB)"
+  did "manifest filter set (keeps the workspace at ~2 GB)"
 fi
 
 step "west update"
@@ -93,7 +100,7 @@ step "west update"
 if [ -d "$WS/modules/hal/stm32" ]; then
   skip "modules already checked out (delete $WS/modules to force a refresh)"
 else
-  echo "  west update (downloads ~3 GB - this is the slow step)..."
+  echo "  west update (the modules: about 1.3 GB on disk - this is the slow step)..."
   (cd "$WS" && "$WS/.venv/bin/west" update --narrow -o=--depth=1) >/dev/null 2>&1 ||
     fail "west update failed"
   did "modules checked out"
@@ -111,14 +118,35 @@ fi
 step "Zephyr's own python requirements"
 # Zephyr pins its tool versions per release; these are deliberate, and
 # check-versions.sh explains why `pip list --outdated` flags them.
-if "$WS/.venv/bin/python" -c 'import pyelftools' 2>/dev/null ||
-  "$WS/.venv/bin/python" -c 'import elftools' 2>/dev/null; then
+#
+# TWO OF ZEPHYR'S FIVE LISTS, NOT ALL OF THEM
+# scripts/requirements.txt is everything anyone working on Zephyr might want:
+# OpenCV for its camera tests, NXP's provisioning tools, plotly, pylint, a
+# second copy of clang-format. Installed whole it was 656 MB, and not one of
+# those is imported by anything this project runs. What is:
+#
+#   requirements-base.txt        west build, the devicetree and Kconfig scripts
+#   requirements-build-test.txt  twister, which mcu/ztest.sh runs
+#   natsort                      imported by twister, listed by Zephyr under
+#                                "run-test" with the hardware-in-the-loop tools
+#
+# 124 MB. A firmware build and the whole of mcu/ztest.sh pass on it, which is
+# checked on every pull request by the provisioning workflow. If a Zephyr
+# script you run by hand wants something more:
+#   uv pip install --python ~/zephyrproject/.venv/bin/python -r ~/zephyrproject/zephyr/scripts/requirements.txt
+# One import from each thing asked for below, so "already satisfied" is true of
+# all three. It used to ask only for elftools, which is in the base list: a
+# workspace with the base list and nothing else was reported complete, and
+# mcu/ztest.sh then failed on its first import.
+if "$WS/.venv/bin/python" -c 'import elftools, junitparser, natsort' 2>/dev/null; then
   skip "requirements already satisfied"
 else
   uv pip install --python "$WS/.venv/bin/python" -q \
-    -r "$WS/zephyr/scripts/requirements.txt" ||
+    -r "$WS/zephyr/scripts/requirements-base.txt" \
+    -r "$WS/zephyr/scripts/requirements-build-test.txt" \
+    natsort ||
     fail "could not install Zephyr's requirements"
-  did "Zephyr requirements installed"
+  did "Zephyr requirements installed (build and test)"
 fi
 
 step "size"
