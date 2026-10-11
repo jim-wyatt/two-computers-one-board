@@ -45,7 +45,10 @@ it works with no network at all.
 ## Set up a board
 
 You need an UNO Q running the Debian image it shipped with, a USB-C cable that
-carries data, and a terminal on the board as the `arduino` user. Then:
+carries data, and a terminal on the board as the `arduino` user.
+[Step 0](docs/setup.md#step-0-get-a-terminal-on-the-board) gets you that
+terminal from a factory-fresh board, over the USB cable, in four commands.
+Then, on the board:
 
 ```bash
 git clone https://github.com/jim-wyatt/two-computers-one-board.git ~/two-computers-one-board
