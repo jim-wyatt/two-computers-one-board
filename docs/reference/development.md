@@ -381,9 +381,9 @@ tools/update-constraints.sh     # recompile both: after adding a dependency, or 
 Then run the gates, and bootstrap on a board: a new version of a package is a
 change like any other. Each environment records which lock it was built to, so
 that bootstrap notices the file has changed and brings the board to the new
-versions; without a change it skips the installs as before. Dependabot proposes updates to the project's own lock once a month,
-as one pull request. For the Zephyr lock it raises security advisories only:
-that file is compiled from Zephyr's requirement lists, which are not in this
+versions; without a change it skips the installs as before. Dependabot
+proposes updates to the project's own lock once a month, as one pull request.
+For the Zephyr lock it proposes security updates only: that file is compiled from Zephyr's requirement lists, which are not in this
 repository, so Dependabot can move one pin and cannot re-resolve the rest
 around it. Take newer versions there with the script above.
 

@@ -34,7 +34,7 @@ updates:
         patterns: ["*"]
     commit-message:
       prefix: deps
-  # The Zephyr lock is watched for SECURITY advisories only.
+  # The Zephyr lock gets SECURITY updates only.
   #
   # open-pull-requests-limit: 0 switches off version updates and leaves
   # security updates on. Version updates cannot work here, and opened the same
@@ -49,6 +49,10 @@ updates:
   # Newer versions arrive the way the file is made: tools/update-constraints.sh
   # resolves everything together. Run it when Zephyr's version changes, or to
   # take updates on purpose.
+  #
+  # A security update moves one pin the same way, so it can fail the same way.
+  # That failure is worth having: it says a pinned version is vulnerable. Fix
+  # it with the script, not by merging the pull request.
   - package-ecosystem: pip
     directory: /mcu
     schedule:
