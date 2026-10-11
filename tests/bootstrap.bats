@@ -27,6 +27,11 @@ setup() {
   load helpers/stub
   stub_setup
 
+  # Where "packages changed in this boot" is noted. Not the real /run: this
+  # machine's own state must not decide what a test of the script says.
+  export UNOQ_RUN_DIR="$BATS_TEST_TMPDIR/run"
+  mkdir -p "$UNOQ_RUN_DIR"
+
   PROJECT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 
   export HOME="$BATS_TEST_TMPDIR/home"
@@ -162,6 +167,7 @@ bootstrap() {
 needs_a_password() {
   stub_body sudo <<'SH'
 [ "$*" = "-n -k true" ] && exit 1
+[ "$*" = "-n true" ] && exit 1
 exit 0
 SH
 }
@@ -183,6 +189,31 @@ SH
   ran "sudo -n -v"
   [[ "$output" == *"without a password"* ]]
   [[ "$output" != *"will prompt"* ]]
+}
+
+@test "an account with one rule that wants a password and one that does not is not asked" {
+  # `sudo -v` insists on a password unless every rule is NOPASSWD. With no
+  # terminal that is not a prompt, it is a failure - on a board where every
+  # command the run needs would have gone through untouched.
+  stub_body sudo <<'SH'
+[ "$*" = "-v" ] && exit 1
+[ "$*" = "-n -v" ] && exit 1
+exit 0
+SH
+  bootstrap
+  [ "$status" -eq 0 ]
+  refute ran "sudo -v"
+  [[ "$output" != *"sudo is required"* ]]
+}
+
+@test "with no way to run a command as root at all, it stops and says so" {
+  stub_body sudo <<'SH'
+case "$*" in "-n true" | "-n -k true" | "-v" | "-n -v") exit 1 ;; esac
+exit 0
+SH
+  bootstrap
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"sudo is required"* ]]
 }
 
 @test "a password still cached from a minute ago is kept alive like any other" {
@@ -219,6 +250,7 @@ SH
 @test "a refused password stops the run before anything is done" {
   stub_body sudo <<'SH'
 [ "$*" = "-n -k true" ] && exit 1
+[ "$*" = "-n true" ] && exit 1
 [ "$*" = "-v" ] && exit 1
 exit 0
 SH
@@ -226,4 +258,84 @@ SH
   [ "$status" -eq 1 ]
   [[ "$output" == *"sudo is required"* ]]
   refute ran_like '^bash .*/provision/'
+}
+
+# --- free space ---------------------------------------------------------------
+
+tight_disk() {
+  stub df 0 "Filesystem 1048576-blocks Used Available Capacity Mounted on
+/dev/x 8206 3910 3943 50% /home/arduino"
+}
+
+@test "a board with little room and everything still to download is warned" {
+  tight_disk
+  bootstrap
+  [[ "$output" == *"only 3943 MB free"* ]]
+}
+
+# installed <what>... - what a finished install leaves, by the steps' own tests.
+installed() {
+  for what in "$@"; do
+    case "$what" in
+      sdk)
+        mkdir -p "$HOME/zephyr-sdk-1.0.1/gnu/arm-zephyr-eabi/bin"
+        : >"$HOME/zephyr-sdk-1.0.1/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+        chmod +x "$HOME/zephyr-sdk-1.0.1/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+        ;;
+      old-sdk)
+        mkdir -p "$HOME/zephyr-sdk-0.17.0/gnu/arm-zephyr-eabi/bin"
+        : >"$HOME/zephyr-sdk-0.17.0/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+        chmod +x "$HOME/zephyr-sdk-0.17.0/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+        ;;
+      workspace) mkdir -p "$HOME/zephyrproject/modules/hal/stm32" ;;
+    esac
+  done
+}
+
+@test "a second run is not warned about room for what is already installed" {
+  # 3.9 GB free on a board that has just been set up is the workspace and the
+  # SDK being there, not a shortage. It warned, on every later run.
+  tight_disk
+  installed sdk workspace
+  bootstrap
+  [[ "$output" != *"only 3943 MB free"* ]]
+  [[ "$output" == *"already installed"* ]]
+}
+
+@test "a workspace with no SDK is not taken for a finished install" {
+  tight_disk
+  installed workspace
+  bootstrap
+  [[ "$output" == *"only 3943 MB free"* ]]
+}
+
+@test "an install interrupted part way is still warned" {
+  # The directories exist as soon as each step starts. The compiler and the
+  # modules, which are most of the download, come last.
+  tight_disk
+  mkdir -p "$HOME/zephyrproject/zephyr" "$HOME/zephyr-sdk-1.0.1"
+  bootstrap
+  [[ "$output" == *"only 3943 MB free"* ]]
+}
+
+@test "an older SDK lying about does not count as the one that will be downloaded" {
+  tight_disk
+  installed old-sdk workspace
+  bootstrap
+  [[ "$output" == *"only 3943 MB free"* ]]
+}
+
+# --- a reboot, after packages change ---------------------------------------------
+
+@test "a run that installed packages ends by saying a reboot finishes the job" {
+  # needrestart is suspended while these steps run, so nothing restarts the
+  # services that were running on libraries apt has just replaced.
+  : >"$UNOQ_RUN_DIR/unoq-packages-changed"
+  bootstrap
+  [[ "$output" == *"sudo reboot"* ]]
+}
+
+@test "a run that changed no packages says nothing about rebooting" {
+  bootstrap
+  [[ "$output" != *"sudo reboot"* ]]
 }

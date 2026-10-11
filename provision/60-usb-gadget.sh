@@ -277,20 +277,28 @@ if [ "$DEFERRED" = 1 ]; then
 ${P_BOLD}This adb shell closes in about ${HANDOVER_DELAY} seconds.${P_OFF} That is the hand-over, not a
 crash: adb's daemon gives up the USB port, and the board comes back on the same
 cable as a network adapter and a drive. From then on the way in is SSH, with
-the password you set for $TARGET_USER:
+the password you set for $TARGET_USER - the command is just below.
 
-  ssh $TARGET_USER@$(hostname).local
-
-What it did is in the journal:  journalctl -t unoq-usb-handover
+What the hand-over did is in the journal:  journalctl -t unoq-usb-handover
 EOF
 fi
+# Said the way things are. The first version told someone whose board was
+# already on the cable to plug it in, and offered a web page on port 8080 that
+# only exists with --with-learning.
+if [ "$DEFERRED" = 1 ] || [ -n "$(names "${UNOQ_UDC_DIR:-/sys/class/udc}"/*)" ]; then
+  echo
+  echo "The board is on the cable. From the computer at the other end:"
+else
+  echo
+  echo "Plug the board's USB-C port into a computer, then on that computer:"
+fi
+echo
+echo "  ssh $TARGET_USER@$(hostname).local"
+if systemctl is-enabled --quiet unoq-learn.service 2>/dev/null; then
+  echo "  http://$(hostname).local:8080/    the course, served by the board"
+fi
+echo "  the \"UNO-Q\" drive                 the course as files, no network needed"
 cat <<EOF
-
-Plug the board's USB-C port into your computer, then on the computer:
-
-  ssh $TARGET_USER@$(hostname).local
-  http://$(hostname).local:8080/    learning content + installers
-  the "UNO-Q" drive                 same files, no network needed
 
 The name is the address here. The board takes whatever address the computer
 leases it - Windows and macOS both insist on their own numbering when they

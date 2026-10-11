@@ -64,6 +64,13 @@ mask_unit fwupd.service
 # enabled for the first time, and this was why.
 # REVERT: systemctl unmask fwupd && systemctl enable --now fwupd-refresh.timer
 disable_unit fwupd-refresh.timer
+# Stopped as well, and before it is asked whether it failed. On a board that
+# has just got its clock from the network the timer has usually fired already,
+# so the service is RUNNING at this point: it was seen to start ten seconds
+# before this line, pass the check below as "not failed", and fail fifteen
+# seconds later because the daemon it talks to had just been masked. Asking a
+# unit that is still running whether it failed gets the answer "not yet".
+systemctl stop fwupd-refresh.service >/dev/null 2>&1 || true
 if systemctl is-failed --quiet fwupd-refresh.service 2>/dev/null; then
   systemctl reset-failed fwupd-refresh.service >/dev/null 2>&1
   did "cleared the failed state fwupd-refresh.service was left in"
@@ -132,8 +139,13 @@ else
   fi
   # Debian only creates this if something that needs a reboot was replaced.
   # Saying so is the whole job; rebooting a board mid-provision is not ours.
-  [ -f /var/run/reboot-required ] &&
-    warn "a package upgrade wants a reboot - finish provisioning first, then reboot"
+  # ...and needrestart, which would otherwise restart whatever was running on
+  # a library that has just been replaced, is suspended for these steps (see
+  # lib.sh). So after any upgrade a reboot is what puts every running process
+  # on the new code, whether or not Debian left its flag.
+  # Noted, not said here: bootstrap.sh says it once at the end, and a step
+  # run by hand says it in its own summary.
+  [ "${PENDING:-0}" -gt 0 ] && packages_changed
 fi
 
 # --- I2C access. Stock: PermissionError on /dev/i2c-{0,1,2} ----------------

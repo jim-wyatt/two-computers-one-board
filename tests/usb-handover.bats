@@ -31,7 +31,7 @@ setup() {
 
   FLAGS="$BATS_TEST_TMPDIR/flags"
   mkdir -p "$FLAGS/active" "$FLAGS/enabled" "$FLAGS/sticky" "$FLAGS/missing" \
-    "$FLAGS/broken" "$FLAGS/dies" "$FLAGS/clings"
+    "$FLAGS/broken" "$FLAGS/dies" "$FLAGS/clings" "$FLAGS/failed"
 
   # Root's copy of the hand-over, as 60-usb-gadget.sh would have installed it.
   # A fake: what is being tested from this side is whether it gets called.
@@ -66,6 +66,7 @@ SH
   # touching files. Two more directories describe the awkward cases:
   #   missing/<unit>  the unit does not exist on this board
   #   sticky/<unit>   stopping it does not work - something starts it again
+  #   failed/<unit>   systemd has it down as failed
   #   clings/<unit>   disabling it does not work - it stays enabled
   #   broken/<unit>   starting it fails, and systemctl says so
   #   dies/<unit>     starting it "works", and it is not running afterwards
@@ -96,6 +97,14 @@ case "$verb" in
       [ -e "$FLAGS/dies/$u" ] || touch "$FLAGS/active/$u"
     done ;;
   stop) for u in "${args[@]}"; do rm -f "$FLAGS/active/$u"; done ;;
+  reset-failed) for u in "${args[@]}"; do rm -f "$FLAGS/failed/$u"; done ;;
+  is-failed)
+    [ -e "$FLAGS/failed/${args[0]}" ]
+    exit ;;
+  list-units)
+    for f in "$FLAGS"/failed/*; do
+      [ -e "$f" ] && echo "$(basename "$f") loaded failed failed Something"
+    done ;;
 esac
 exit 0
 SH
@@ -123,6 +132,122 @@ load_lib() {
   run disable_unit arduino-app-cli.service
   [ "$status" -eq 0 ]
   [[ "$output" == *"arduino-app-cli.service stopped and disabled"* ]]
+}
+
+@test "a unit stopped on purpose is not left marked as failed" {
+  # socat exits 143 when told to stop, systemd calls that a failure, and LED 2
+  # blinks red for any failed unit: a perfect run ended with a red light.
+  running arduino-router-serial.service
+  touch "$FLAGS/failed/arduino-router-serial.service"
+  load_lib
+  run disable_unit arduino-router-serial.service
+  [ "$status" -eq 0 ]
+  ran "systemctl reset-failed arduino-router-serial.service"
+  [ ! -e "$FLAGS/failed/arduino-router-serial.service" ]
+}
+
+@test "a unit stopped by an earlier version has its old failed mark cleared" {
+  # Stopped and disabled already, so there is nothing to do to it - except
+  # that it has been showing as failed since the run that stopped it.
+  touch "$FLAGS/failed/arduino-router-serial.service"
+  load_lib
+  run disable_unit arduino-router-serial.service
+  [ "$status" -eq 0 ]
+  [ ! -e "$FLAGS/failed/arduino-router-serial.service" ]
+  [[ "$output" == *"cleared the failed state"* ]]
+}
+
+@test "a unit already stopped, disabled and not failed is simply left" {
+  load_lib
+  run disable_unit arduino-router-serial.service
+  [ "$status" -eq 0 ]
+  refute ran_like '^systemctl reset-failed'
+  [[ "$output" == *"already stopped and disabled"* ]]
+}
+
+@test "a unit that would not stop keeps its failed mark, because that is a real one" {
+  running arduino-router.service
+  touch "$FLAGS/sticky/arduino-router.service" "$FLAGS/failed/arduino-router.service"
+  load_lib
+  run disable_unit arduino-router.service
+  [ "$status" -ne 0 ]
+  refute ran "systemctl reset-failed arduino-router.service"
+}
+
+# --- packages changed, so a reboot is owed ---------------------------------------
+
+@test "installing a package leaves the note that a reboot is owed" {
+  export UNOQ_RUN_DIR="$BATS_TEST_TMPDIR/run"
+  mkdir -p "$UNOQ_RUN_DIR"
+  stub dpkg-query 1
+  stub apt-get
+  load_lib
+  run reboot_advised
+  [ "$status" -ne 0 ]
+  apt_install some-package
+  run reboot_advised
+  [ "$status" -eq 0 ]
+  run advise_reboot
+  [[ "$output" == *"sudo reboot"* ]]
+}
+
+@test "a package that was already installed leaves no note" {
+  export UNOQ_RUN_DIR="$BATS_TEST_TMPDIR/run"
+  mkdir -p "$UNOQ_RUN_DIR"
+  stub dpkg-query 0 "install ok installed"
+  load_lib
+  apt_install some-package
+  run reboot_advised
+  [ "$status" -ne 0 ]
+  run advise_reboot
+  [ -z "$output" ]
+}
+
+# --- warn_failed_units -----------------------------------------------------------
+
+@test "failed units are named at the end of a run, with what LED 2 is doing about them" {
+  touch "$FLAGS/failed/fwupd-refresh.service" "$FLAGS/failed/something-else.service"
+  load_lib
+  run warn_failed_units
+  [[ "$output" == *"fwupd-refresh.service"* ]]
+  [[ "$output" == *"something-else.service"* ]]
+  [[ "$output" == *"LED 2"* ]]
+  [[ "$output" == *"reset-failed"* ]]
+}
+
+@test "with nothing failed, nothing is said" {
+  load_lib
+  run warn_failed_units
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "the service that would re-flash the microcontroller at boot is switched off" {
+  # arduino-burn-bootloader runs at the first boot after the package upgrade
+  # and writes Arduino's bootloader over this project's firmware. It is a
+  # oneshot that reads as "active" after running, so it goes through the same
+  # disable as the rest and has to come out disabled.
+  running arduino-burn-bootloader.service
+  F="$PROJECT/provision/20-dev-tools.sh"
+  grep -q '^disable_unit arduino-burn-bootloader.service' "$F"
+  load_lib
+  run disable_unit arduino-burn-bootloader.service
+  [ "$status" -eq 0 ]
+  [ ! -e "$FLAGS/enabled/arduino-burn-bootloader.service" ]
+}
+
+@test "the firmware-update check is stopped before it is asked whether it failed" {
+  # It was caught running: "not failed" at the check, failed fifteen seconds
+  # later. Order in a file, because the race itself needs a board and a clock.
+  F="$PROJECT/provision/10-optimize-board.sh"
+  stop="$(grep -n '^systemctl stop fwupd-refresh.service' "$F" | cut -d: -f1)"
+  ask="$(grep -n '^if systemctl is-failed --quiet fwupd-refresh.service' "$F" | cut -d: -f1)"
+  [ -n "$stop" ] && [ -n "$ask" ]
+  [ "$stop" -lt "$ask" ]
+}
+
+@test "bootstrap reports failed units at its end" {
+  grep -q '^warn_failed_units$' "$PROJECT/bootstrap.sh"
 }
 
 @test "a unit that something starts again is not reported as stopped" {
@@ -255,6 +380,54 @@ load_lib() {
   ran "systemctl disable --now adbd.service"
   ran "systemctl restart unoq-usb-gadget.service"
   [ ! -e "$FLAGS/active/adbd.service" ]
+}
+
+@test "adbd, stopped on purpose, is not left marked as failed" {
+  # It exits with an error when stopped. Left alone that is a third failed
+  # unit and a red LED 2 at the end of a setup that worked.
+  running ssh.service
+  running adbd.service
+  touch "$FLAGS/failed/adbd.service"
+  run "$HANDOVER"
+  [ "$status" -eq 0 ]
+  ran "systemctl reset-failed adbd.service"
+}
+
+@test "an adbd stopped by an earlier hand-over has its old failed mark cleared" {
+  running ssh.service
+  touch "$FLAGS/failed/adbd.service"
+  run "$HANDOVER"
+  [ "$status" -eq 0 ]
+  [ ! -e "$FLAGS/failed/adbd.service" ]
+}
+
+@test "a gadget that has let go of the controller is not reported as holding it" {
+  # Every configfs file reports a size of 4096, so the old `-s` test was true
+  # of an empty one. Here the file exists and is empty, as adbd's is once it
+  # has stopped.
+  running ssh.service
+  mkdir -p "$(dirname "$UNOQ_GADGET_DIR")/g1"
+  : >"$(dirname "$UNOQ_GADGET_DIR")/g1/UDC"
+  run "$HANDOVER"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"still holds"* ]]
+}
+
+@test "a gadget that really does hold the controller is named" {
+  running ssh.service
+  mkdir -p "$(dirname "$UNOQ_GADGET_DIR")/g1"
+  echo "4e00000.usb" >"$(dirname "$UNOQ_GADGET_DIR")/g1/UDC"
+  run "$HANDOVER"
+  [[ "$output" == *"still holds 4e00000.usb"* ]]
+  [[ "$output" == *"/g1"* ]]
+}
+
+@test "our own gadget holding the controller is not reported as another" {
+  running ssh.service
+  echo "4e00000.usb" >"$UNOQ_GADGET_DIR/UDC"
+  run "$HANDOVER"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"still holds"* ]]
 }
 
 @test "the gadget is not built over an adbd that would not stop" {

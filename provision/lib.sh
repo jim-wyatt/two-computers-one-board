@@ -33,6 +33,34 @@ TARGET_USER="${UNOQ_USER:-${SUDO_USER:-$(stat -c %U "$PROJECT")}}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 export TARGET_USER TARGET_HOME
 
+# Debian's needrestart runs after every apt install and draws progress bars
+# ("Scanning processes...") straight onto the terminal, past any redirection:
+# four screens of them in a first run, none saying anything a reader can use.
+#
+# Suspending it is not only cosmetic, and the cost is paid for elsewhere:
+# needrestart is also what restarts services whose libraries were replaced
+# under them. With it off, a daemon that was running through an install keeps
+# the old code until it is restarted. So every apt transaction these steps
+# make leaves a note (packages_changed, below), and whoever ran them is told at
+# the end that a reboot is what finishes the job.
+export NEEDRESTART_SUSPEND=1
+
+# packages_changed / reboot_advised - "apt changed something since boot".
+#
+# A file under /run, because that is exactly the lifetime wanted: it is there
+# from the first package this boot until the reboot that makes it untrue.
+REBOOT_NOTE="${UNOQ_RUN_DIR:-/run}/unoq-packages-changed"
+packages_changed() { : >"$REBOOT_NOTE" 2>/dev/null || true; }
+# Debian's own flag as well: /var/run is /run, and some packages set it.
+reboot_advised() { [ -e "$REBOOT_NOTE" ] || [ -f "${UNOQ_RUN_DIR:-/run}/reboot-required" ]; }
+# advise_reboot - say so, once, if it applies. For the end of a run.
+advise_reboot() {
+  reboot_advised || return 0
+  warn "packages were installed or upgraded in this boot. Services that were"
+  warn "  already running keep the old versions until the board restarts:"
+  warn "      sudo reboot"
+}
+
 # --- output ----------------------------------------------------------------
 
 if [ -t 1 ]; then
@@ -71,6 +99,7 @@ summary() {
   # steps, most of which could do nothing about it, on a board that was in the
   # middle of being fixed.
   [ -n "${UNOQ_IN_BOOTSTRAP:-}" ] || warn_stale_root_units
+  [ -n "${UNOQ_IN_BOOTSTRAP:-}" ] || advise_reboot
 }
 
 need_root() {
@@ -95,6 +124,7 @@ apt_install() {
   apt-get update -qq
   DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${missing[@]}" >/dev/null ||
     fail "apt-get install ${missing[*]}"
+  packages_changed
   did "installed: ${missing[*]}"
 }
 
@@ -138,7 +168,14 @@ disable_unit() {
     fi
     if [ "$(systemctl is-enabled "$u" 2>/dev/null)" = "disabled" ] &&
       ! systemctl is-active --quiet "$u"; then
-      skip "$u already stopped and disabled"
+      # Already as it should be - but a board set up before the reset below
+      # existed still carries the failed mark from the day it was stopped.
+      if systemctl is-failed --quiet "$u" 2>/dev/null; then
+        systemctl reset-failed "$u" >/dev/null 2>&1 || true
+        did "$u already stopped and disabled; cleared the failed state it was left in"
+      else
+        skip "$u already stopped and disabled"
+      fi
       continue
     fi
     systemctl disable --now "$u" >/dev/null 2>&1
@@ -153,6 +190,12 @@ disable_unit() {
       warn "  why:  systemctl disable $u"
       rc=1
     else
+      # A unit stopped on purpose is not a failure, but systemd may record it
+      # as one: socat, which is all arduino-router-serial is, exits 143 when
+      # told to stop. LED 2 blinks red for any failed unit, so without this a
+      # run that went perfectly ended with a red light for the thing it had
+      # just been asked to switch off.
+      systemctl reset-failed "$u" >/dev/null 2>&1 || true
       did "$u stopped and disabled"
     fi
   done
@@ -355,6 +398,25 @@ unit_runs_as_root() {
     "" | root | 0) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+# warn_failed_units - say which systemd units have failed, if any.
+#
+# LED 2 blinks red when any unit is in the failed state, and a light cannot
+# say which. The end of a run is when somebody is looking at both the board
+# and the terminal, so this is where the two are joined up: the names, and what
+# to do about them. Silent when nothing has failed, which is the usual case.
+warn_failed_units() {
+  local failed
+  failed="$(systemctl list-units --state=failed --no-legend --plain 2>/dev/null | awk '{print $1}')"
+  [ -n "$failed" ] || return 0
+  warn "systemd reports failed units, and LED 2 blinks red while it does:"
+  local u
+  for u in $failed; do
+    warn "    $u"
+  done
+  warn "  why:    systemctl status <unit>"
+  warn "  clear:  sudo systemctl reset-failed <unit>    (once you know why)"
 }
 
 # warn_stale_root_units - name them, and say what fixes each.

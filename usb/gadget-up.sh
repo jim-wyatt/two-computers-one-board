@@ -207,7 +207,11 @@ else
     echo 0 >"$G/functions/mass_storage.0/lun.0/cdrom"
     echo "$IMG" >"$G/functions/mass_storage.0/lun.0/file" ||
       log "WARNING: could not attach $IMG - the drive will show as empty"
-    echo "UNO-Q Share" >"$G/functions/mass_storage.0/lun.0/inquiry_string" 2>/dev/null
+    # The inquiry string is two fixed-width fields run together: 8 characters
+    # of vendor, then 16 of product. Written as plain "UNO-Q Share" it was cut
+    # at the eighth character, and Windows showed the drive as "UNO-Q Sh are".
+    printf '%-8s%-16s\n' "UNO-Q" "Share" \
+      >"$G/functions/mass_storage.0/lun.0/inquiry_string" 2>/dev/null
   else
     log "WARNING: $IMG missing - build it with share/build-image.sh"
   fi

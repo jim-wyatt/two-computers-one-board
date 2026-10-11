@@ -27,9 +27,10 @@
 #     board, through reboots, and that is all: one can reset the board and the
 #     other edits the fstab entry it boots from, so --everything leaves both out
 #
-# TIME AND SPACE: about 25 minutes on a stock board over home broadband,
-# measured once, and before the download was cut by about 1.4 GB. The Zephyr
-# workspace (~2 GB) and SDK (~0.8 GB) are most of what is left. Make sure you have ~6 GB free: the builds and the drive image need
+# TIME AND SPACE: 20 minutes 25 seconds on a factory-restored board over home
+# broadband, timed once, with --with-cpu-bars --with-usb-gadget. The Zephyr
+# workspace (~2 GB) and SDK (~0.8 GB) are most of the download; 3.3 GB ends up
+# in the home directory. Make sure you have ~6 GB free: the builds and the drive image need
 # room as well.
 set -uo pipefail
 
@@ -192,7 +193,13 @@ if sudo -n -k true 2>/dev/null; then
 else
   echo "  sudo will prompt for your password, once."
 fi
-sudo -v || fail "sudo is required"
+# `sudo -n true` first: if a command already runs without a prompt, that is
+# the whole of what is needed, and `sudo -v` must not be asked. -v wants a
+# password unless EVERY rule for the account is NOPASSWD, so on a board with one
+# rule that needs a password and one that does not, it prompts on a terminal
+# and fails outright without one (over ssh, from a script) - for a run in which
+# nothing would have asked. Found by the second run on a real board.
+sudo -n true 2>/dev/null || sudo -v || fail "sudo is required"
 # -n, so that if the timestamp has lapsed anyway the refresher stops quietly
 # rather than putting a second prompt in the middle of somebody else's output;
 # the step that needs root will then ask, which is no worse than before. It
@@ -210,7 +217,23 @@ SUDO_KEEPALIVE=$!
 trap "kill $SUDO_KEEPALIVE 2>/dev/null" EXIT
 
 FREE_MB=$(df -Pm "$HOME" | awk 'NR==2 {print $4}')
-if [ "$FREE_MB" -lt 6000 ]; then
+# Asked only of a board that still has the downloading ahead of it. On a second
+# run the SDK and the workspace are already there, about 3 GB of them, and this
+# warned that there was not room for what was sitting on the disk.
+#
+# "Already there" is the test each step uses for itself, not a directory
+# existing: an SDK is its compiler, and a workspace is its modules, which are
+# the last and largest thing fetched. A run interrupted half way has the
+# directories and still has the downloading to do.
+INSTALLED_WS="${ZEPHYR_WORKSPACE:-$HOME/zephyrproject}"
+# The SDK that will be asked for, not any SDK: an older one lying about does
+# not save the download. Same default as provision/user/20-zephyr-sdk.sh.
+INSTALLED_SDK="$HOME/zephyr-sdk-${ZEPHYR_SDK_VERSION:-1.0.1}"
+if [ -d "$INSTALLED_WS/modules/hal/stm32" ] &&
+  { [ -x "$INSTALLED_SDK/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc" ] ||
+    [ -x "$INSTALLED_SDK/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc" ]; }; then
+  skip "${FREE_MB} MB free in $HOME (the SDK and workspace are already installed)"
+elif [ "$FREE_MB" -lt 6000 ]; then
   warn "only ${FREE_MB} MB free in $HOME - the SDK and workspace need ~3 GB, and the builds more"
 else
   skip "${FREE_MB} MB free in $HOME"
@@ -401,6 +424,10 @@ echo
 # what this invocation did not reach - typically the USB units, on a board that
 # has the gadget and was not asked for it again.
 warn_stale_root_units
+# And what the red light, if there is one, is about.
+warn_failed_units
+# And whether anything running is still the version from before the run.
+advise_reboot
 
 if [ -n "$FIRMWARE_PROBLEM" ]; then
   fail "everything above is in place, but $FIRMWARE_PROBLEM.

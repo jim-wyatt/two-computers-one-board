@@ -354,3 +354,25 @@ needs_a_partition_node() {
   [ ! -e "$UNOQ_SHARE_IMG.new" ]
   [ "$(grep -cx 'systemctl start unoq-learn.service' "$STUB_LOG")" -eq 1 ]
 }
+
+# --- the drive on a running gadget -------------------------------------------
+
+@test "refreshing the image on a running gadget keeps the drive's name in its two fields" {
+  # usb/gadget-up.sh writes the name when the gadget is built; this script
+  # writes it again whenever it puts a refreshed image back. It wrote plain
+  # "UNO-Q Share", which is cut after eight characters, and Windows went back
+  # to listing "UNO-Q Sh are" until the next reboot.
+  export UNOQ_GADGET_DIR="$BATS_TEST_TMPDIR/gadget"
+  lun="$UNOQ_GADGET_DIR/functions/mass_storage.0/lun.0"
+  mkdir -p "$lun"
+  echo "$UNOQ_SHARE_IMG" >"$lun/file"
+  run bash "$BUILD"
+  [ "$status" -eq 0 ]
+  name="$(cat "$lun/inquiry_string")"
+  [ "${#name}" -eq 24 ]
+  [ "${name:0:8}" = "UNO-Q   " ]
+  [ "${name:8:5}" = "Share" ]
+  # And the image is back in the drive, read-only.
+  [ "$(cat "$lun/file")" = "$UNOQ_SHARE_IMG" ]
+  [ "$(cat "$lun/ro")" = 1 ]
+}
