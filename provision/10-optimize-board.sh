@@ -192,7 +192,7 @@ apt_install "python${PYVER}-dev"
 # THIS HAS TO HAPPEN HERE, not in 55-purge-arduino.sh where it would sit more
 # naturally next to the rest of the Arduino teardown. `docker image rm` needs
 # the daemon, and the very next script - 15-dev-tools.sh - does
-# `systemctl disable --now docker.service`. By the time 40 runs there is no
+# `systemctl disable --now docker.service`. By the time 55 runs there is no
 # daemon to talk to and the images would be stranded on disk, still costing
 # 2 GB, with no obvious sign of why.
 #

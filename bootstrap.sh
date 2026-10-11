@@ -52,11 +52,11 @@ usage() {
   cat <<'EOF'
 
 Options:
-  --with-purge        also remove the Arduino Debian packages (40)
-  --with-cpu-bars     also run the LED-matrix demo at boot (50) - holds ttyHS1
-  --with-usb-gadget   also enable IP-over-USB + the fileshare (60)
+  --with-purge        also remove the Arduino Debian packages (55)
+  --with-cpu-bars     also run the LED-matrix demo at boot (65) - holds ttyHS1
+  --with-usb-gadget   also enable IP-over-USB + the fileshare (95)
                       WARNING: drops the USB host port and anything on it
-  --with-learning     also serve the learning content over HTTP (70)
+  --with-learning     also serve the learning content over HTTP (75)
   --everything        all of the above
 
 Each has been run on one board only, and is NOT part of --everything:

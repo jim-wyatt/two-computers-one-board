@@ -115,8 +115,8 @@ matches it.
 |---|---|---|---|
 | `UNOQ_LEARN_PORT` | `8080` | `provision/75-learning-web.sh` | The port that script *checks* after starting the server. It does not move the server: the port is named in `ExecStart` in [`python/unoq-learn.service`](../../python/unoq-learn.service). Change both, or neither. |
 | `UNOQ_SHARE_SIZE_MB` | `2600` | `share/build-image.sh` | Size of the FAT32 image that is both the USB drive and the web root. |
-| `UNOQ_SHARE_IMG` | `~/unoq-share.img` | `provision/60`, `provision/70`, `share/build-image.sh`, `usb/gadget-up.sh` | Where that image lives. If you move it, set this everywhere it is read, including `/etc/default/unoq-usb`. |
-| `UNOQ_SHARE_MOUNT` | `/srv/unoq-share` | `provision/70`, `share/build-image.sh` | Where the image is mounted for the web server. |
+| `UNOQ_SHARE_IMG` | `~/unoq-share.img` | `provision/95`, `provision/75`, `share/build-image.sh`, `usb/gadget-up.sh` | Where that image lives. If you move it, set this everywhere it is read, including `/etc/default/unoq-usb`. |
+| `UNOQ_SHARE_MOUNT` | `/srv/unoq-share` | `provision/75`, `share/build-image.sh` | Where the image is mounted for the web server. |
 | `UNOQ_SHARE` | `/var/lib/unoq-share` | `share/build-image.sh` | The staging directory the image is built from. |
 
 ## Provisioning switches
@@ -129,7 +129,7 @@ Set on the command line, for one run of `bootstrap.sh` or of the script named.
 | `UNOQ_TIER2` | `1` | `provision/10-optimize-board.sh` | `0` leaves Bluetooth and `udisks2` enabled. They are disabled by default, not removed. |
 | `UNOQ_KEEP_DOCKER_IMAGES` | `0` | `provision/10-optimize-board.sh` | `1` keeps the ~2 GB of Arduino container images. |
 | `UNOQ_KEEP_CACHES` | `0` | `provision/90-cleanup.sh` | `1` keeps apt's downloaded packages and the `uv` and `pip` caches, which the last step of a run otherwise clears. Worth it on a slow connection. |
-| `UNOQ_BACKUP` | `~/uno-q-backup` | `provision/10`, `provision/40` | Where the stock MCU firmware and the list of removed container images are saved. |
+| `UNOQ_BACKUP` | `~/uno-q-backup` | `provision/10`, `provision/55` | Where the stock MCU firmware and the list of removed container images are saved. |
 | `UNOQ_ALLOW_NO_STOCK_FW` | `0` | `bootstrap.sh`, `provision/55-purge-arduino.sh` | `1` lets the firmware be flashed, and the purge go ahead, with no copy of the stock firmware saved. Only for a board whose copy is already gone. |
 | `UNOQ_ALLOW_UNVERIFIED_SDK` | `0` | `provision/user/25-zephyr-sdk.sh` | `1` lets an SDK release chosen with `ZEPHYR_SDK_VERSION` be unpacked, and its `setup.sh` run, when the release publishes no checksum for it. It says so when it does. It has no effect on the pinned release, which is never unpacked unverified, and it never excuses a checksum that is published and does not match. |
 | `UNOQ_USER` | whoever ran `sudo` | `provision/lib.sh` | The account that owns the checkout and is written into the units. |
