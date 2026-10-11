@@ -382,6 +382,7 @@ needs_a_partition_node() {
   # as a warning on every default run, to someone who had done nothing wrong.
   run bash "$BUILD"
   [ "$status" -eq 0 ]
-  [[ "$output" != *"warn"* ]]
-  [[ "$output" == *"optional"* ]]
+  [[ "$output" != *"no installers found"* ]]
+  refute grep -q 'warn.*installers' <<<"$output"
+  [[ "$output" == *"no VS Code installers on the drive (optional"* ]]
 }

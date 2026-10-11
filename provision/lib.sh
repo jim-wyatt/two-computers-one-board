@@ -293,6 +293,32 @@ mask_unit() {
   did "$u masked"
 }
 
+# report_port_holders <device> <pids> - say who has the MCU's serial port.
+#
+# This project's own demo holding it, and nothing else, is the port being free
+# of everything it was meant to be freed from: one `ok` line. It used to be a
+# two-line warning on every run after the first, about a board in exactly the
+# state it was set up to be in.
+#
+# Anything else is a warning, and so is the demo PLUS anything else - that is
+# the case worth a test, because "unoq-cpu-bars is there, so it is fine" is how
+# a real second holder would be waved through.
+report_port_holders() {
+  local dev="$1" pids="$2" who other=""
+  local w
+  # fuser pads its output, and unquoted padding turns into empty ps arguments.
+  who="$(ps -o comm= -p "${pids// /,}" 2>/dev/null | tr '\n' ' ' | sed 's/ *$//')"
+  for w in $who; do
+    [ "$w" = "unoq-cpu-bars" ] || other="$other $w"
+  done
+  if [ -n "$who" ] && [ -z "$other" ]; then
+    skip "$dev is held by unoq-cpu-bars, this project's demo, and by nothing else"
+  else
+    warn "$dev held by PID(s) $pids: ${who:-<gone>}"
+    warn "  something other than this project's demo has the MCU's serial port"
+  fi
+}
+
 # ensure_group <group> - create as a system group if missing.
 ensure_group() {
   if getent group "$1" >/dev/null; then

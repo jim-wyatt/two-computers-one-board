@@ -117,8 +117,9 @@ chapters while it runs.
 > plain run installs it. Many of them start with
 > `sudo systemctl stop unoq-cpu-bars` and end by starting it again, because the
 > service holds the one wire to the microcontroller and you are about to borrow
-> it. If you set up with `--no-cpu-bars` or `--minimal`, run `./bootstrap.sh`
-> now; everything already done is skipped.
+> it. If you set up with `--no-cpu-bars` or `--minimal`, add the demo and
+> nothing else with
+> `sudo bash ~/two-computers-one-board/provision/65-cpu-bars.sh`.
 
 ## A warning that will save you an afternoon
 

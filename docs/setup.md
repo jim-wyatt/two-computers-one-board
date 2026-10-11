@@ -340,12 +340,16 @@ try. Then:
     - **The drive image.** Stage `70` renders the documentation onto it again
       each time.
 
-    For a run that is nothing but `ok`, leave the firmware out and do not ask
-    for the drive:
+    The USB step's hand-over also reports `changed`, because it rebuilds the
+    gadget each time. For a run that is nothing but `ok`, leave out the
+    firmware and the three things that go with the drive:
 
     ```bash
-    ./bootstrap.sh --skip-mcu
+    ./bootstrap.sh --minimal --skip-mcu
     ```
+
+    That changes nothing already installed; leaving something out of a later
+    run does not remove it.
 
 2. **Look at the four small LEDs**, in a row at the end of the board opposite
    the USB-C port. Steady green on all four is a healthy board. From the edge
@@ -431,7 +435,7 @@ something out, or for adding one of three things that are not for everybody.
 | `--no-cpu-bars` | The CPU-bars demo at boot. | You want the serial line to the microcontroller for yourself from the start. The course's exercises assume the demo is there. |
 | `--no-learning` | The web server on port 8080. | The board is on a network where a page with no password should not be. The same pages are still on the drive. |
 | `--no-usb-gadget` | The network link and drive over USB. | You want to keep `adb`, or you use the USB-C port for a dock, a keyboard or a network dongle. SSH is left as it was, which on a factory-fresh board is off. |
-| `--minimal` | All three. | You want the toolchain and the firmware and nothing running. |
+| `--minimal` | All three. | You want the toolchain, the firmware and the status LEDs, without the demo, the web server or the USB link. |
 | `--skip-mcu` | Building and flashing the firmware. | You want the microcontroller left exactly as it is. |
 
 If you ran the setup from `adb shell` without `--no-usb-gadget`, **that shell

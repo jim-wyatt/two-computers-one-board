@@ -133,7 +133,8 @@ waits ten seconds.
 Running the demo at boot claims the serial port, so the MCU shell stops working
 until you stop the service. The USB gadget turns the only USB port into a
 device, so nothing plugged into it works any more, and `adb` gives way to SSH.
-The one thing still opt-in is the one that is hard to undo.
+What still has to be asked for is the purge, because it is hard to undo, and
+the watchdog and the EFI lockdown, because each has been run on one board.
 
 > [!NOTE]
 > The web server serves the files on the drive image, so the image has to

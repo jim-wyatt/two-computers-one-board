@@ -72,7 +72,8 @@ link. The factory image ships `sshd` installed and off, and its way in is
 takes that cable, so the step enables `sshd` first and leaves it on: password
 login for `arduino`, on every network interface the board has, including wifi.
 The password is the one you chose with `arduino-passwd`, and it is now what
-stands between your network and a shell with `sudo`. See
+stands between your network and a shell with `sudo`. `--no-usb-gadget` leaves
+the USB port with `adb` and SSH as it was, which on a factory image is off. See
 [usb.md](docs/reference/usb.md#adb-is-disabled-and-ssh-is-switched-on).
 
 **The serial console is a login.** The board's own serial console offers a

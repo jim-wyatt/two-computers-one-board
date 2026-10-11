@@ -14,9 +14,9 @@ understanding rather than just using.
 > [!NOTE]
 > **You need** the USB link for the commands on this page. A plain
 > `./bootstrap.sh` sets it up. If you set up with `--no-usb-gadget` or
-> `--minimal`, add it with
-> `sudo bash ~/two-computers-one-board/provision/95-usb-gadget.sh`, and read
-> what it costs first: the board's only USB port stops being a host while it is
+> `--minimal`, add it and nothing else with
+> `./bootstrap.sh --no-cpu-bars --no-learning`, which builds the drive image
+> first and then hands the port over, and read what it costs first: the board's only USB port stops being a host while it is
 > plugged into a computer, and `adb` gives way to SSH. Without it there is no
 > gadget to look at; the explanations still read fine. With it, the gadget is
 > *defined* from boot, and
