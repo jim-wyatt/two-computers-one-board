@@ -98,6 +98,31 @@ disable_unit arduino-router-serial.path arduino-router-serial.service \
   arduino-router.service arduino-app-cli.service arduino-avahi-serial.service ||
   warn "the MCU's serial port (/dev/ttyHS1) may still be held - see above"
 
+# --- 2b. The service that would erase this project's firmware at the next boot.
+#
+# arduino-burn-bootloader.service writes Arduino's own Zephyr bootloader to the
+# microcontroller "on first boot", and knows it has done so by a flag file. The
+# factory image carries the flag at /var/lib/arduino-app-cli/. The package
+# upgrade in step 10 brings a newer unit that looks for it at
+# /var/lib/arduino-unoq-config/ instead - so at the first boot after this
+# project is installed, the unit finds no flag, decides the board is new, and
+# burns the stock bootloader over whatever is on the chip.
+#
+# Seen on a board set up from the factory image: everything working, a reboot,
+# and a dark LED matrix with LED 3 and LED 4 off, while Linux's own LEDs stayed
+# green and unoq-cpu-bars restarted forty-five times against a chip that no
+# longer had this firmware on it. Nine seconds into the boot, in the journal:
+# `arduino-cli burn-bootloader -b arduino:zephyr:unoq`.
+#
+# It is a oneshot that stays "active" once it has run, so stopping it does
+# nothing to the chip; disabling it is what keeps it from running again.
+# REVERT: systemctl enable arduino-burn-bootloader.service
+#         (and expect it to reflash the MCU at the next boot if its flag,
+#         /var/lib/arduino-unoq-config/bootloader_burned.flag, is missing)
+step "Arduino's bootloader burner"
+disable_unit arduino-burn-bootloader.service ||
+  warn "it may run at the next boot and replace the firmware on the MCU"
+
 # --- 3. Docker: exists only to run Arduino Brick container images. ~105 MB.
 # REVERT: systemctl enable --now docker docker.socket containerd
 step "Docker"

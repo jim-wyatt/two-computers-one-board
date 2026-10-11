@@ -139,8 +139,14 @@ else
   fi
   # Debian only creates this if something that needs a reboot was replaced.
   # Saying so is the whole job; rebooting a board mid-provision is not ours.
-  [ -f /var/run/reboot-required ] &&
-    warn "a package upgrade wants a reboot - finish provisioning first, then reboot"
+  # ...and needrestart, which would otherwise restart whatever was running on
+  # a library that has just been replaced, is suspended for these steps (see
+  # lib.sh). So after any upgrade a reboot is what puts every running process
+  # on the new code, whether or not Debian left its flag.
+  if [ -f /var/run/reboot-required ] || [ "${PENDING:-0}" -gt 0 ]; then
+    warn "packages were upgraded: reboot when provisioning has finished, so that"
+    warn "  everything running is running the new versions:  sudo reboot"
+  fi
 fi
 
 # --- I2C access. Stock: PermissionError on /dev/i2c-{0,1,2} ----------------

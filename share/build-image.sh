@@ -70,7 +70,7 @@ IMG="${UNOQ_SHARE_IMG:-$TARGET_HOME/unoq-share.img}"
 MOUNT="${UNOQ_SHARE_MOUNT:-/srv/unoq-share}"
 SIZE_MB="${UNOQ_SHARE_SIZE_MB:-2600}"
 STAGING="${UNOQ_SHARE:-/var/lib/unoq-share}"
-GADGET_LUN=/sys/kernel/config/usb_gadget/unoq/functions/mass_storage.0/lun.0/file
+GADGET_LUN="${UNOQ_GADGET_DIR:-/sys/kernel/config/usb_gadget/unoq}/functions/mass_storage.0/lun.0/file"
 # 2048 sectors x 512 bytes. The conventional first-partition offset, and what
 # every partitioning tool picks by default.
 PART_OFFSET=1048576
@@ -118,7 +118,10 @@ insert_gadget() {
   echo 1 >"$lun/removable" 2>/dev/null
   echo 1 >"$lun/ro" 2>/dev/null
   echo 0 >"$lun/cdrom" 2>/dev/null
-  echo "UNO-Q Share" >"$lun/inquiry_string" 2>/dev/null
+  # Same two fixed-width fields as usb/gadget-up.sh writes: 8 of vendor, 16 of
+  # product. Plain "UNO-Q Share" here put "UNO-Q Sh are" back in Windows every
+  # time the image was refreshed on a running gadget.
+  printf '%-8s%-16s\n' "UNO-Q" "Share" >"$lun/inquiry_string" 2>/dev/null
   echo "$IMG" >"$GADGET_LUN" 2>/dev/null &&
     did "gadget: medium re-inserted read-only ($IMG)"
 }

@@ -220,7 +220,14 @@ FREE_MB=$(df -Pm "$HOME" | awk 'NR==2 {print $4}')
 # Asked only of a board that still has the downloading ahead of it. On a second
 # run the SDK and the workspace are already there, about 3 GB of them, and this
 # warned that there was not room for what was sitting on the disk.
-if [ -d "$HOME/zephyrproject/zephyr" ] && [ -n "$(ls -d "$HOME"/zephyr-sdk-* 2>/dev/null)" ]; then
+#
+# "Already there" is the test each step uses for itself, not a directory
+# existing: an SDK is its compiler, and a workspace is its modules, which are
+# the last and largest thing fetched. A run interrupted half way has the
+# directories and still has the downloading to do.
+INSTALLED_WS="${ZEPHYR_WORKSPACE:-$HOME/zephyrproject}"
+if [ -d "$INSTALLED_WS/modules/hal/stm32" ] &&
+  ls "$HOME"/zephyr-sdk-*/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc >/dev/null 2>&1; then
   skip "${FREE_MB} MB free in $HOME (the SDK and workspace are already installed)"
 elif [ "$FREE_MB" -lt 6000 ]; then
   warn "only ${FREE_MB} MB free in $HOME - the SDK and workspace need ~3 GB, and the builds more"

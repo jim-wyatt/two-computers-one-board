@@ -268,11 +268,24 @@ tight_disk() {
   [[ "$output" == *"only 3943 MB free"* ]]
 }
 
+# installed <what>... - what a finished install leaves, by the steps' own tests.
+installed() {
+  for what in "$@"; do
+    case "$what" in
+      sdk)
+        mkdir -p "$HOME/zephyr-sdk-1.0.1/gnu/arm-zephyr-eabi/bin"
+        : >"$HOME/zephyr-sdk-1.0.1/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+        ;;
+      workspace) mkdir -p "$HOME/zephyrproject/modules/hal/stm32" ;;
+    esac
+  done
+}
+
 @test "a second run is not warned about room for what is already installed" {
   # 3.9 GB free on a board that has just been set up is the workspace and the
   # SDK being there, not a shortage. It warned, on every later run.
   tight_disk
-  mkdir -p "$HOME/zephyrproject/zephyr" "$HOME/zephyr-sdk-1.0.1"
+  installed sdk workspace
   bootstrap
   [[ "$output" != *"only 3943 MB free"* ]]
   [[ "$output" == *"already installed"* ]]
@@ -280,7 +293,16 @@ tight_disk() {
 
 @test "a workspace with no SDK is not taken for a finished install" {
   tight_disk
-  mkdir -p "$HOME/zephyrproject/zephyr"
+  installed workspace
+  bootstrap
+  [[ "$output" == *"only 3943 MB free"* ]]
+}
+
+@test "an install interrupted part way is still warned" {
+  # The directories exist as soon as each step starts. The compiler and the
+  # modules, which are most of the download, come last.
+  tight_disk
+  mkdir -p "$HOME/zephyrproject/zephyr" "$HOME/zephyr-sdk-1.0.1"
   bootstrap
   [[ "$output" == *"only 3943 MB free"* ]]
 }

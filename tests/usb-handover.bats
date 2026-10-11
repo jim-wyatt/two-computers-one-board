@@ -193,6 +193,20 @@ load_lib() {
   [ -z "$output" ]
 }
 
+@test "the service that would re-flash the microcontroller at boot is switched off" {
+  # arduino-burn-bootloader runs at the first boot after the package upgrade
+  # and writes Arduino's bootloader over this project's firmware. It is a
+  # oneshot that reads as "active" after running, so it goes through the same
+  # disable as the rest and has to come out disabled.
+  running arduino-burn-bootloader.service
+  F="$PROJECT/provision/20-dev-tools.sh"
+  grep -q '^disable_unit arduino-burn-bootloader.service' "$F"
+  load_lib
+  run disable_unit arduino-burn-bootloader.service
+  [ "$status" -eq 0 ]
+  [ ! -e "$FLAGS/enabled/arduino-burn-bootloader.service" ]
+}
+
 @test "the firmware-update check is stopped before it is asked whether it failed" {
   # It was caught running: "not failed" at the check, failed fifteen seconds
   # later. Order in a file, because the race itself needs a board and a clock.

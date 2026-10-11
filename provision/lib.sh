@@ -36,8 +36,12 @@ export TARGET_USER TARGET_HOME
 # Debian's needrestart runs after every apt install and draws progress bars
 # ("Scanning processes...") straight onto the terminal, past any redirection:
 # four screens of them in a first run, none saying anything a reader can use.
-# Suspended, apt still installs and services are still restarted by the steps
-# that mean to restart them.
+#
+# Suspending it is not only cosmetic, and the cost is paid for elsewhere:
+# needrestart is also what restarts services whose libraries were replaced
+# under them. With it off, a daemon that was running through the upgrade in
+# step 10 keeps the old code until it is restarted - so that step says, when it
+# has upgraded anything, that a reboot is what finishes the job.
 export NEEDRESTART_SUSPEND=1
 
 # --- output ----------------------------------------------------------------
