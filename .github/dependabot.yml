@@ -37,7 +37,9 @@ updates:
   # The Zephyr lock gets SECURITY updates only.
   #
   # open-pull-requests-limit: 0 switches off version updates and leaves
-  # security updates on. Version updates cannot work here, and opened the same
+  # security updates alone. (Those are a repository setting, not something
+  # this file turns on: Settings > Advanced Security > Dependabot security
+  # updates, which is enabled here.) Version updates cannot work here, and opened the same
   # broken pull request twice before this was understood: the file is compiled
   # from Zephyr's own requirement lists, which are not in this repository, so
   # Dependabot can move one pin but cannot re-resolve the rest around it. It
