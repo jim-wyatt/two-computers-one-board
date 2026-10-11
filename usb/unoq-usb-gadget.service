@@ -20,7 +20,7 @@ RemainAfterExit=yes
 
 # Whether the gadget may touch the default route, and the other settings listed
 # in docs/reference/configuration.md. The leading - means a board without the
-# file still works: every setting has a default. Created by provision/60-usb-gadget.sh,
+# file still works: every setting has a default. Created by provision/95-usb-gadget.sh,
 # and never rewritten by it, so an edit here survives re-provisioning.
 EnvironmentFile=-/etc/default/unoq-usb
 

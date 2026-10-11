@@ -198,8 +198,8 @@ SH
 @test "bootstrap runs it after everything that installs, and before the USB hand-over" {
   B="$PROJECT/bootstrap.sh"
   at="$(grep -n 'provision/90-cleanup.sh' "$B" | cut -d: -f1)"
-  gadget="$(grep -n 'run_step "60  USB gadget' "$B" | cut -d: -f1)"
-  last_other="$(grep -nE 'run_step "(1|2|3|4|5|6|7|8|u)[0-9]' "$B" | grep -v '"60 ' | tail -1 | cut -d: -f1)"
+  gadget="$(grep -n 'run_step "95  USB gadget' "$B" | cut -d: -f1)"
+  last_other="$(grep -nE 'run_step "[1-8][0-9] ' "$B" | tail -1 | cut -d: -f1)"
   [ -n "$at" ] && [ -n "$gadget" ] && [ -n "$last_other" ]
   [ "$last_other" -lt "$at" ]
   [ "$at" -lt "$gadget" ]

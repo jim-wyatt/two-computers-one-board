@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 # uv, and the host build tools it manages. Runs as YOU, not root.
 #
-#   bash ~/two-computers-one-board/provision/user/10-host-tools.sh
+#   bash ~/two-computers-one-board/provision/user/20-host-tools.sh
 #
 # Idempotent.
 #

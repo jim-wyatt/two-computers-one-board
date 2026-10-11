@@ -14,7 +14,7 @@ understanding rather than just using.
 > [!NOTE]
 > **You need** the USB extra for the commands on this page. It is not part of
 > the course setup. Add it with `./bootstrap.sh --with-usb-gadget` (or
-> `sudo bash ~/two-computers-one-board/provision/60-usb-gadget.sh`), and read
+> `sudo bash ~/two-computers-one-board/provision/95-usb-gadget.sh`), and read
 > what it costs first: the board's only USB port stops being a host while it is
 > plugged into a computer. Without the extra there is no gadget to look at; the
 > explanations still read fine. With it, the gadget is *defined* from boot, and

@@ -61,7 +61,7 @@ set -uo pipefail
 G="${UNOQ_GADGET_DIR:-/sys/kernel/config/usb_gadget/unoq}"
 CONFIGFS="$(dirname "$G")"
 # The image is in the home directory of whoever this board belongs to, which is
-# where provision/60-usb-gadget.sh and share/build-image.sh put it. It used to
+# where provision/95-usb-gadget.sh and share/build-image.sh put it. It used to
 # be spelled /home/arduino here and worked out there, so under any other
 # account provisioning reported the image present and the drive came up empty.
 #

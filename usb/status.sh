@@ -264,14 +264,14 @@ else
     echo "          ls -l $RUNTIME $RUNTIME/usb"
     echo "        A provisioning step replaces a linked script with a real copy,"
     echo "        and refuses a linked directory until it has been removed:"
-    echo "          sudo bash $SRC/provision/35-status-leds.sh"
+    echo "          sudo bash $SRC/provision/50-status-leds.sh"
   fi
   if [ -n "$differ" ]; then
     val "DIFFERENT from $SRC" "${differ# }"
     echo "  NOTE: root is running the older copy of those. Editing the checkout does"
     echo "        not change what the services run; a provisioning step does, and any"
     echo "        of them refreshes every copy:"
-    echo "          sudo bash $SRC/provision/35-status-leds.sh"
+    echo "          sudo bash $SRC/provision/50-status-leds.sh"
   fi
 fi
 

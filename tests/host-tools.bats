@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Jim Wyatt
 # SPDX-License-Identifier: MIT
 #
-# provision/user/10-host-tools.sh is the first thing to touch the network as
+# provision/user/20-host-tools.sh is the first thing to touch the network as
 # the user, on a board that has just been set up, so it is the first place a
 # flaky download shows. It once failed in two seconds with the single line
 # "FAILED  uv tool install cmake" and worked when run again by hand - which
@@ -14,7 +14,7 @@ setup() {
   stub_setup
 
   PROJECT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
-  STEP="$PROJECT/provision/user/10-host-tools.sh"
+  STEP="$PROJECT/provision/user/20-host-tools.sh"
   export HOME="$BATS_TEST_TMPDIR/home"
   mkdir -p "$HOME/.local/bin"
   UNOQ_USER="$(id -un)"

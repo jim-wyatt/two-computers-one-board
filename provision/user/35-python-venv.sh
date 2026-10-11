@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 # The MPU-side Python venv and the `unoq` package. Runs as YOU, not root.
 #
-#   bash ~/two-computers-one-board/provision/user/40-python-venv.sh
+#   bash ~/two-computers-one-board/provision/user/35-python-venv.sh
 #
 # Idempotent.
 #
@@ -19,7 +19,7 @@ set -uo pipefail
 export PATH="$HOME/.local/bin:$PATH"
 VENV="${UNOQ_VENV:-$PROJECT/.venv}"
 
-command -v uv >/dev/null 2>&1 || fail "uv missing - run provision/user/10-host-tools.sh first"
+command -v uv >/dev/null 2>&1 || fail "uv missing - run provision/user/20-host-tools.sh first"
 
 step "venv"
 if [ -x "$VENV/bin/python" ]; then
@@ -74,7 +74,7 @@ else
   uv pip install --python "$VENV/bin/python" -q $HW_PKGS ||
     fail "could not install the hardware libraries (missing:$MISSING)
         spidev is a C extension - if it failed to build, the board is missing
-        gcc or python3-dev. provision/20-dev-tools.sh installs both."
+        gcc or python3-dev. provision/15-dev-tools.sh installs both."
   STILL="$(hw_missing)"
   [ -z "$STILL" ] || fail "still missing after install:$STILL"
   did "hardware libraries installed ($MISSING)"

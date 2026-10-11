@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 # Serve the learning content and the VS Code installers over HTTP.
 #
-#   sudo bash ~/two-computers-one-board/provision/70-learning-web.sh
+#   sudo bash ~/two-computers-one-board/provision/75-learning-web.sh
 #
 # Idempotent. Safe to run at any time. It claims a TCP port and adds one line
 # to /etc/fstab, a read-only loop mount of the share image (nofail, so a board
@@ -32,7 +32,7 @@ if [ -x "$PROJECT/.venv/bin/unoq-learn" ]; then
   skip "unoq-learn entry point present"
 else
   fail "$PROJECT/.venv/bin/unoq-learn missing.
-  Build the venv first:  bash $PROJECT/provision/user/40-python-venv.sh
+  Build the venv first:  bash $PROJECT/provision/user/35-python-venv.sh
   (it is a new entry point, so an existing venv needs the editable
    install re-run:  uv pip install --python $PROJECT/.venv/bin/python -e $PROJECT/python)"
 fi
@@ -118,7 +118,7 @@ echo "Reachable at:"
 # (That was when the bridge still carried a fixed 10.55.0.1 as well; it no
 # longer does.) The leased address was the ONLY one a plugged-in computer could
 # reach; 10.55.0.1 needed a static route on the host, and docker0 is a bridge
-# whose daemon 20-dev-tools.sh disables. So the two addresses it offered were
+# whose daemon 15-dev-tools.sh disables. So the two addresses it offered were
 # the unreachable one and the meaningless one.
 #
 # $2 is the operational state in `ip -br` output, and it is DOWN for docker0

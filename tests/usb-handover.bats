@@ -10,7 +10,7 @@
 #   - "arduino-router stopped and disabled" was printed, and it was running. A
 #     .path unit had started it again; disable_unit reported what it had asked
 #     for, not what was true. The router kept the MCU's serial port.
-#   - provision/60-usb-gadget.sh stopped adbd half way down. `adb shell` is
+#   - provision/95-usb-gadget.sh stopped adbd half way down. `adb shell` is
 #     adbd's child, so that killed the script, before it had installed the
 #     gadget that was supposed to replace adb.
 #   - Nothing had switched SSH on. The stock image ships it off.
@@ -27,13 +27,13 @@ setup() {
 
   PROJECT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   HANDOVER="$PROJECT/usb/handover.sh"
-  GADGET_STEP="$PROJECT/provision/60-usb-gadget.sh"
+  GADGET_STEP="$PROJECT/provision/95-usb-gadget.sh"
 
   FLAGS="$BATS_TEST_TMPDIR/flags"
   mkdir -p "$FLAGS/active" "$FLAGS/enabled" "$FLAGS/sticky" "$FLAGS/missing" \
     "$FLAGS/broken" "$FLAGS/dies" "$FLAGS/clings" "$FLAGS/failed"
 
-  # Root's copy of the hand-over, as 60-usb-gadget.sh would have installed it.
+  # Root's copy of the hand-over, as 95-usb-gadget.sh would have installed it.
   # A fake: what is being tested from this side is whether it gets called.
   export UNOQ_RUNTIME_DIR="$BATS_TEST_TMPDIR/runtime"
   mkdir -p "$UNOQ_RUNTIME_DIR/usb"
@@ -228,7 +228,7 @@ load_lib() {
   # oneshot that reads as "active" after running, so it goes through the same
   # disable as the rest and has to come out disabled.
   running arduino-burn-bootloader.service
-  F="$PROJECT/provision/20-dev-tools.sh"
+  F="$PROJECT/provision/15-dev-tools.sh"
   grep -q '^disable_unit arduino-burn-bootloader.service' "$F"
   load_lib
   run disable_unit arduino-burn-bootloader.service
@@ -286,7 +286,7 @@ load_lib() {
   # Stop the router first and arduino-router-serial.path has it back before
   # the next line. This is an assertion about the order in a file, because the
   # only thing that can show the order WORKS is a stock board.
-  line="$(grep -A2 '^disable_unit arduino-router' "$PROJECT/provision/20-dev-tools.sh" | tr -d '\\\n')"
+  line="$(grep -A2 '^disable_unit arduino-router' "$PROJECT/provision/15-dev-tools.sh" | tr -d '\\\n')"
   path_at="${line%%arduino-router-serial.path*}"
   router_at="${line%%arduino-router.service*}"
   [ "${#path_at}" -lt "${#line}" ]

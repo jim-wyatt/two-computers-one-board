@@ -34,44 +34,48 @@ The reasoning behind the design is in
 
 ## The steps, in the order bootstrap runs them
 
+The number at the front of each file is its place in the run: `bootstrap.sh`
+runs them in number order, and prints the number in the banner above each
+one's output. One sequence covers both directories.
+
 Steps under `provision/user/` run as you and must **not** be run with `sudo`:
 they install into your home directory. The others need root.
 
 | Step | Run as | Does |
 |---|---|---|
 | `10-optimize-board.sh` | root | Switches off the X11 desktop (~218 MB of memory; nothing is uninstalled) and deletes the ~2 GB of Arduino container images. Disables ModemManager, fwupd and unattended apt. Runs the one `apt-get upgrade` a restored board needs. Adds the `i2c`, `spi` and `gpiod` group memberships and a spidev udev rule. Disables Bluetooth and udisks2. |
-| `20-dev-tools.sh` | root | Installs a host C compiler, `wget` and `clangd`. Disables the Arduino services and Docker (~210 MB), and checks `/dev/ttyHS1` has been released. |
-| `user/10-host-tools.sh` | you | `uv`, then `cmake`, `ninja` and `west` as uv tools, in `~/.local/bin`. |
-| `user/20-zephyr-sdk.sh` | you | The Zephyr SDK, `arm-zephyr-eabi` toolchain only. ~0.8 GB. |
+| `15-dev-tools.sh` | root | Installs a host C compiler, `wget` and `clangd`. Disables the Arduino services and Docker (~210 MB), and checks `/dev/ttyHS1` has been released. |
+| `user/20-host-tools.sh` | you | `uv`, then `cmake`, `ninja` and `west` as uv tools, in `~/.local/bin`. |
+| `user/25-zephyr-sdk.sh` | you | The Zephyr SDK, `arm-zephyr-eabi` toolchain only. ~0.8 GB. |
 | `user/30-zephyr-workspace.sh` | you | `west init` and `west update`, with a module filter, without git history, and with only the Python packages the build and tests import. ~2 GB. The long download. |
-| `user/40-python-venv.sh` | you | The project's `.venv`: the hardware libraries, the `unoq` package installed editable, and the development tools. |
-| `user/50-shell-env.sh` | you | Adds `env.sh` to `~/.bashrc`, and installs the git pre-commit hook. |
-| `30-mcu-link.sh` | root | Installs `tio`, refreshes [root's copies of the scripts](#what-root-runs), and installs `unoq-link.service`, which sets BOOT0 and the serial-link enable at every boot. **Without this the board looks dead after a reboot.** Runs after the venv exists, because it uses it to verify the lines. |
-| `35-status-leds.sh` | root | Refreshes [root's copies of the scripts](#what-root-runs) and installs `unoq-leds.service`, restarting it if the unit or a script changed. Not optional: the LEDs are the board's only output when the network is down. |
+| `user/35-python-venv.sh` | you | The project's `.venv`: the hardware libraries, the `unoq` package installed editable, and the development tools. |
+| `user/40-shell-env.sh` | you | Adds `env.sh` to `~/.bashrc`, and installs the git pre-commit hook. |
+| `45-mcu-link.sh` | root | Installs `tio`, refreshes [root's copies of the scripts](#what-root-runs), and installs `unoq-link.service`, which sets BOOT0 and the serial-link enable at every boot. **Without this the board looks dead after a reboot.** Runs after the venv exists, because it uses it to verify the lines. |
+| `50-status-leds.sh` | root | Refreshes [root's copies of the scripts](#what-root-runs) and installs `unoq-leds.service`, restarting it if the unit or a script changed. Not optional: the LEDs are the board's only output when the network is down. |
 
-Then the firmware is built with `mcu/zbuild.sh` and written with
-`mcu/flash-all.sh`: bootloader and application together, because a signed
+Then, as stage `60`, the firmware is built with `mcu/zbuild.sh` and written
+with `mcu/flash-all.sh`: bootloader and application together, because a signed
 application flashed by itself has no bootloader in front of it.
 `--skip-mcu` leaves both out.
 
-### The optional steps
+### The optional steps, and the clean-up that always runs
 
 | Step | Flag | Does |
 |---|---|---|
-| `40-purge-arduino.sh` | `--with-purge` | Removes the remaining Arduino packages. Backs up the stock MCU firmware first, and checks `/opt/openocd` survives before and after. |
-| `50-cpu-bars.sh` | `--with-cpu-bars` | Installs `unoq-cpu-bars.service`. Optional because it holds the serial port: see [mpu.md](mpu.md#at-every-boot). |
-| `share/build-image.sh` | either of the next two | Renders this documentation and builds the FAT32 image both of them hand out. `bootstrap.sh` runs it for you; run by hand, it has to come first. |
-| `70-learning-web.sh` | `--with-learning` | Serves the course, and the installers if you fetched them, on port 8080. No authentication, on every interface. Adds a read-only mount to `/etc/fstab`. |
-| `90-cleanup.sh` | always | Gives back what the run downloaded in order to install: apt's `.deb` files, and `uv`'s and `pip`'s download caches. Never the workspace, the SDK or a build directory. Prints free space before and after. `UNOQ_KEEP_CACHES=1` skips it. |
-| `60-usb-gadget.sh` | `--with-usb-gadget` | Network and the fileshare drive over USB. Refreshes [root's copies of the scripts](#what-root-runs), installs the four USB units, switches `sshd` on, then [hands the USB port over from `adbd`](usb.md#adb-is-disabled-and-ssh-is-switched-on). Always run last, because it takes the USB host port, and `adb shell`, down with it: see [usb.md](usb.md). |
+| `55-purge-arduino.sh` | `--with-purge` | Removes the remaining Arduino packages. Backs up the stock MCU firmware first, and checks `/opt/openocd` survives before and after. |
+| `65-cpu-bars.sh` | `--with-cpu-bars` | Installs `unoq-cpu-bars.service`. Optional because it holds the serial port: see [mpu.md](mpu.md#at-every-boot). |
+| `share/build-image.sh` (stage `70`) | `--with-learning` or `--with-usb-gadget` | Renders this documentation and builds the FAT32 image both of them hand out. `bootstrap.sh` runs it for you; run by hand, it has to come first. |
+| `75-learning-web.sh` | `--with-learning` | Serves the course, and the installers if you fetched them, on port 8080. No authentication, on every interface. Adds a read-only mount to `/etc/fstab`. |
 | `80-watchdog.sh` | `--with-watchdog` | Arms the hardware watchdog through a `systemd` drop-in (`RuntimeWatchdogSec=30s`) and re-executes `systemd` to read it. Costs: the board resets itself if `systemd` stalls for 30 seconds, though a clean firmware build with swap 80% full did not cause that on the one board it was tried on. Both timeouts are set to the same value, because this watchdog cannot count past 32 seconds and `systemd`'s ten-minute default for shutdown is refused. Not part of `--everything`. |
 | `85-esp-permissions.sh` | `--with-esp-lockdown` | Puts `fmask=0177,dmask=0077` at the end of the options on the `/boot/efi` line of `/etc/fstab` — last, because FAT reads them in order and a `umask=` after them would win — so the EFI partition is readable by root only, then remounts it and reads the result back. Costs: it edits the entry the board boots from (verified before it is installed, backed up to `/etc/fstab.unoq-esp.bak`), and anything that read `/boot/efi` without root no longer can. Run on one board, through a reboot: FAT ignored the new masks on a plain remount, so the step unmounted and mounted again, as it is written to. Not part of `--everything`. |
+| `90-cleanup.sh` | always | Gives back what the run downloaded in order to install: apt's `.deb` files, and `uv`'s and `pip`'s download caches. Never the workspace, the SDK or a build directory. Prints free space before and after. `UNOQ_KEEP_CACHES=1` skips it. |
+| `95-usb-gadget.sh` | `--with-usb-gadget` | Network and the fileshare drive over USB. Refreshes [root's copies of the scripts](#what-root-runs), installs the four USB units, switches `sshd` on, then [hands the USB port over from `adbd`](usb.md#adb-is-disabled-and-ssh-is-switched-on). Always run last, because it takes the USB host port, and `adb shell`, down with it: see [usb.md](usb.md). |
 
 Any of them can be added later, either by re-running `bootstrap.sh` with the
 flag or by running the step directly:
 
 ```bash
-sudo bash ~/two-computers-one-board/provision/50-cpu-bars.sh
+sudo bash ~/two-computers-one-board/provision/65-cpu-bars.sh
 ```
 
 A few steps read environment variables that change what they do. They are
@@ -105,7 +109,7 @@ that runs as root name `/usr/local/lib/unoq/…`. The two units that have
 environment, and still name the checkout. `Documentation=` lines name the
 checkout in every unit.
 
-**What installs the copies.** Steps `30`, `35` and `60` each copy the *whole*
+**What installs the copies.** Steps `45`, `50` and `95` each copy the *whole*
 set before they install a unit, and each removes anything in the directory
 that is not in the set. A step refuses to install a unit that names a script
 which is not there.
@@ -136,7 +140,7 @@ commands that need `sudo`, either copy works; the one under
 a step rewrites the units that step installs, and reloads `systemd`. Each step
 ends with a `warn` naming any root unit that still runs from the home
 directory, until none does. A plain `./bootstrap.sh` covers `unoq-link` and
-`unoq-leds`; the four USB units are rewritten by `60-usb-gadget.sh`, which
+`unoq-leds`; the four USB units are rewritten by `95-usb-gadget.sh`, which
 `bootstrap.sh` runs only with `--with-usb-gadget`.
 
 **To undo.** Remove the units (each step's `REVERT:` line), then
@@ -181,7 +185,7 @@ uv pip install --python .venv/bin/python west imgtool
 uv pip install --python .venv/bin/python -r zephyr/scripts/requirements.txt
 
 # 4. The Linux-side Python
-#    (plus the hardware libraries named in provision/user/40-python-venv.sh)
+#    (plus the hardware libraries named in provision/user/35-python-venv.sh)
 cd ~/two-computers-one-board && uv venv .venv
 uv pip install --python .venv/bin/python -e python
 

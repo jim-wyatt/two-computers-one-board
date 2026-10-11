@@ -32,7 +32,7 @@
 # Everything above the last section asks "is what is INSTALLED current?", which
 # only means something on the board. The last section asks a different
 # question: "is what this repository PINS current?" - the versions written into
-# install-dev-tools.sh, pyproject.toml, west.yml, 20-zephyr-sdk.sh and the
+# install-dev-tools.sh, pyproject.toml, west.yml, 25-zephyr-sdk.sh and the
 # workflows. Those drift silently, and nothing here is installed from them, so
 # `pins` runs that section alone and works on any machine with git and curl.
 #
@@ -246,13 +246,13 @@ pins() {
     pypi_row "$p" "$(pyproject_pin "$p")"
   done
 
-  echo "=== project pins: Zephyr (west.yml, provision/user/20-zephyr-sdk.sh) ==="
+  echo "=== project pins: Zephyr (west.yml, provision/user/25-zephyr-sdk.sh) ==="
   # west.yml only. 30-zephyr-workspace.sh repeats the version, and
   # check-zephyr-pin.sh already fails check.sh if the two disagree.
   tag_pin zephyr \
     "$(sed -n 's/^[[:space:]]*revision:[[:space:]]*\(v[0-9][0-9.]*\).*/\1/p' "$PROJECT/west.yml" 2>/dev/null | head -1)" \
     zephyrproject-rtos/zephyr
-  tag_pin zephyr-sdk "$(shell_pin SDK_VERSION "$PROJECT/provision/user/20-zephyr-sdk.sh")" \
+  tag_pin zephyr-sdk "$(shell_pin SDK_VERSION "$PROJECT/provision/user/25-zephyr-sdk.sh")" \
     zephyrproject-rtos/sdk-ng
 
   echo "=== project pins: GitHub Actions (.github/workflows) ==="

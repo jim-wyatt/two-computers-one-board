@@ -137,7 +137,7 @@ bootstrap() {
   : >"$FLAGS/flash-fails"
   bootstrap --with-learning
   [ "$status" -eq 1 ]
-  ran_like "^sudo -E bash $PROJECT/provision/70-learning-web\.sh\$"
+  ran_like "^sudo -E bash $PROJECT/provision/75-learning-web\.sh\$"
   [[ "$output" == *"########## done ##########"* ]]
 }
 

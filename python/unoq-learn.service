@@ -17,7 +17,7 @@ RequiresMountsFor=/srv/unoq-share
 # see. Ordering makes the snapshot worth taking.
 #
 # After= without Wants=/Requires= on purpose: the USB gadget is an OPTIONAL
-# feature (provision/60-usb-gadget.sh), and the learning site has to serve on a
+# feature (provision/95-usb-gadget.sh), and the learning site has to serve on a
 # board that never installed it. If the unit is absent or disabled this is a
 # no-op, which is exactly what is wanted - it must not pull the gadget in.
 #

@@ -30,7 +30,7 @@ not for the script. `bootstrap.sh` is the exception: it calls `sudo -E` for its
 own steps, so variables set in front of `bootstrap.sh` do reach them.
 
 `/etc/default/unoq-usb` is the one file on the board a person is expected to
-edit. `provision/60-usb-gadget.sh` writes it once, with the common settings
+edit. `provision/95-usb-gadget.sh` writes it once, with the common settings
 commented out, and never overwrites it afterwards. Four units read it:
 `unoq-usb-gadget`, `unoq-usb-bind`, `unoq-uplink-fallback` and `unoq-leds`.
 
@@ -87,7 +87,7 @@ These exist so that a board with wifi off cannot lock you out. Read
 | `UNOQ_UPLINK_INTERVAL` | `15` | Seconds between probes while waiting for it. |
 | `UNOQ_UPLINK_PROBE_IPS` | `1.1.1.1 8.8.8.8` | The addresses that count as "the internet" for that decision. |
 | `UNOQ_PROBE_IP` | `1.1.1.1` | The address `usb/wifi.sh off` pings through the cable first. No answer is a warning, not a refusal. |
-| `UNOQ_HANDOVER_DELAY` | `20` | Seconds between `60-usb-gadget.sh` finishing and the USB port changing hands, when the step was started from `adb shell` and so cannot do it itself. See [usb.md](usb.md#running-the-step-from-adb-shell). |
+| `UNOQ_HANDOVER_DELAY` | `20` | Seconds between `95-usb-gadget.sh` finishing and the USB port changing hands, when the step was started from `adb shell` and so cannot do it itself. See [usb.md](usb.md#running-the-step-from-adb-shell). |
 
 ## The status LEDs
 
@@ -113,7 +113,7 @@ matches it.
 
 | Variable | Default | Read by | What it does |
 |---|---|---|---|
-| `UNOQ_LEARN_PORT` | `8080` | `provision/70-learning-web.sh` | The port that script *checks* after starting the server. It does not move the server: the port is named in `ExecStart` in [`python/unoq-learn.service`](../../python/unoq-learn.service). Change both, or neither. |
+| `UNOQ_LEARN_PORT` | `8080` | `provision/75-learning-web.sh` | The port that script *checks* after starting the server. It does not move the server: the port is named in `ExecStart` in [`python/unoq-learn.service`](../../python/unoq-learn.service). Change both, or neither. |
 | `UNOQ_SHARE_SIZE_MB` | `2600` | `share/build-image.sh` | Size of the FAT32 image that is both the USB drive and the web root. |
 | `UNOQ_SHARE_IMG` | `~/unoq-share.img` | `provision/60`, `provision/70`, `share/build-image.sh`, `usb/gadget-up.sh` | Where that image lives. If you move it, set this everywhere it is read, including `/etc/default/unoq-usb`. |
 | `UNOQ_SHARE_MOUNT` | `/srv/unoq-share` | `provision/70`, `share/build-image.sh` | Where the image is mounted for the web server. |
@@ -130,10 +130,10 @@ Set on the command line, for one run of `bootstrap.sh` or of the script named.
 | `UNOQ_KEEP_DOCKER_IMAGES` | `0` | `provision/10-optimize-board.sh` | `1` keeps the ~2 GB of Arduino container images. |
 | `UNOQ_KEEP_CACHES` | `0` | `provision/90-cleanup.sh` | `1` keeps apt's downloaded packages and the `uv` and `pip` caches, which the last step of a run otherwise clears. Worth it on a slow connection. |
 | `UNOQ_BACKUP` | `~/uno-q-backup` | `provision/10`, `provision/40` | Where the stock MCU firmware and the list of removed container images are saved. |
-| `UNOQ_ALLOW_NO_STOCK_FW` | `0` | `bootstrap.sh`, `provision/40-purge-arduino.sh` | `1` lets the firmware be flashed, and the purge go ahead, with no copy of the stock firmware saved. Only for a board whose copy is already gone. |
-| `UNOQ_ALLOW_UNVERIFIED_SDK` | `0` | `provision/user/20-zephyr-sdk.sh` | `1` lets an SDK release chosen with `ZEPHYR_SDK_VERSION` be unpacked, and its `setup.sh` run, when the release publishes no checksum for it. It says so when it does. It has no effect on the pinned release, which is never unpacked unverified, and it never excuses a checksum that is published and does not match. |
+| `UNOQ_ALLOW_NO_STOCK_FW` | `0` | `bootstrap.sh`, `provision/55-purge-arduino.sh` | `1` lets the firmware be flashed, and the purge go ahead, with no copy of the stock firmware saved. Only for a board whose copy is already gone. |
+| `UNOQ_ALLOW_UNVERIFIED_SDK` | `0` | `provision/user/25-zephyr-sdk.sh` | `1` lets an SDK release chosen with `ZEPHYR_SDK_VERSION` be unpacked, and its `setup.sh` run, when the release publishes no checksum for it. It says so when it does. It has no effect on the pinned release, which is never unpacked unverified, and it never excuses a checksum that is published and does not match. |
 | `UNOQ_USER` | whoever ran `sudo` | `provision/lib.sh` | The account that owns the checkout and is written into the units. |
-| `UNOQ_VENV` | `<checkout>/.venv` | `provision/user/40-python-venv.sh`, `tools/` | The Python environment. |
+| `UNOQ_VENV` | `<checkout>/.venv` | `provision/user/35-python-venv.sh`, `tools/` | The Python environment. |
 | `UNOQ_WATCHDOG_SEC` | `30` | `provision/80-watchdog.sh` | Whole seconds without a ping from `systemd` before the hardware watchdog resets the board. Refused below `10`: a timeout that short resets a board that is merely busy, and does it again after every reboot. Only read with `--with-watchdog`. |
 
 ## The MCU control lines
@@ -158,13 +158,13 @@ command line for one run, for example `BUILD_DIR=/tmp/b zbuild`.
 |---|---|---|---|
 | `ZEPHYR_WORKSPACE` | `~/zephyrproject` | `provision/user/30-zephyr-workspace.sh`, `mcu/zbuild.sh`, `mcu/flash.sh`, `mcu/flash-all.sh`, `mcu/ztest.sh` | Where the west workspace is. If you move it, set this for every one of those scripts. |
 | `ZEPHYR_SDK` | `~/zephyr-sdk-1.0.1` | `mcu/zbuild.sh`, `mcu/flash-all.sh`, `mcu/ztest.sh` | Where the Zephyr SDK (the cross-compiler) is installed. |
-| `ZEPHYR_SDK_VERSION` | `1.0.1` | `provision/user/20-zephyr-sdk.sh` | Which SDK release that step downloads, into `~/zephyr-sdk-<version>`. A pin: see the note below. |
+| `ZEPHYR_SDK_VERSION` | `1.0.1` | `provision/user/25-zephyr-sdk.sh` | Which SDK release that step downloads, into `~/zephyr-sdk-<version>`. A pin: see the note below. |
 | `ZEPHYR_VERSION` | `v4.4.2` | `provision/user/30-zephyr-workspace.sh` | Which Zephyr release the workspace is created at. A pin: see the note below. |
 | `BOARD` | `arduino_uno_q` | `mcu/zbuild.sh`, `mcu/flash-all.sh` | The Zephyr board to build for. `env.sh` exports the same value. |
 | `BUILD_DIR` | `~/zephyrproject/build` for this project's app, `build-<name>` for any other | `mcu/zbuild.sh` | The build directory. With it set, `zflash` no longer finds the image by itself: name it, as `zbuild` prints at the end. |
 | `IMAGE_VERSION` | `0.0.0+<seconds since 1970>` | `mcu/zbuild.sh` | The version signed into the image, which `fota.images()` reports. The default makes every build distinguishable. |
 | `MCUBOOT_BUILD` | `~/zephyrproject/build-mcuboot` | `mcu/flash-all.sh` | Where the bootloader is built. |
-| `OCD_ROOT` | `/opt/openocd` | `mcu/flash.sh`, `provision/40-purge-arduino.sh` | The OpenOCD installation used for SWD. Point it at a rebuilt copy to try one without replacing the original. |
+| `OCD_ROOT` | `/opt/openocd` | `mcu/flash.sh`, `provision/55-purge-arduino.sh` | The OpenOCD installation used for SWD. Point it at a rebuilt copy to try one without replacing the original. |
 | `STOCK_FW` | `~/uno-q-backup/zephyr-arduino_uno_q_stm32u585xx.hex` | `mcu/restore-arduino-firmware.sh` | The Arduino firmware image that script flashes. |
 | `OPENOCD_COMMIT` | `da3920b0a52d` | `tools/build-openocd.sh` | The upstream OpenOCD commit that script builds. |
 | `OPENOCD_PREFIX` | `/opt/openocd-rebuilt` | `tools/build-openocd.sh` | Where that build is installed. |

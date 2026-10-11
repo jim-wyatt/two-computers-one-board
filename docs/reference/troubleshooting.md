@@ -399,7 +399,7 @@ provisioning step is run. `usb/status.sh` says whether the two differ, under
 *what root runs*. To refresh every copy:
 
 ```bash
-sudo bash ~/two-computers-one-board/provision/35-status-leds.sh
+sudo bash ~/two-computers-one-board/provision/50-status-leds.sh
 ```
 
 When each script then takes effect is listed in
@@ -408,7 +408,7 @@ When each script then takes effect is listed in
 **A provisioning step warns that units "still run as root from the checkout".**
 The board was set up before root had its own copies, and the step that
 installed those units has not been run since. Run the step the warning names.
-A plain `./bootstrap.sh` does not run `60-usb-gadget.sh`, so the four USB
+A plain `./bootstrap.sh` does not run `95-usb-gadget.sh`, so the four USB
 units need that step, or `./bootstrap.sh --with-usb-gadget`.
 
 **A service fails with `status=203/EXEC` after you move the checkout.**
@@ -426,7 +426,7 @@ rebuild it — do not try to repair it in place:
 
 ```bash
 rm -rf ~/two-computers-one-board/.venv
-bash  ~/two-computers-one-board/provision/user/40-python-venv.sh
+bash  ~/two-computers-one-board/provision/user/35-python-venv.sh
 bash  ~/two-computers-one-board/tools/install-dev-tools.sh    # dev extras
 sudo systemctl restart unoq-cpu-bars unoq-learn
 ```
@@ -466,7 +466,7 @@ on the end. The name is published by `avahi-daemon` on the board:
 systemctl is-active avahi-daemon
 ```
 
-`provision/60-usb-gadget.sh` installs and enables it. If it is active and the
+`provision/95-usb-gadget.sh` installs and enables it. If it is active and the
 name still does not resolve from your computer, connect by number instead:
 `~/two-computers-one-board/usb/status.sh` prints the board's address on the USB
 link, and `ip -br addr` prints all of them.
@@ -494,14 +494,14 @@ rebooting soon after doing so. Wifi has been turned back on so that you can
 reach it. Cause, how to look, and the two commands that clear it:
 [the bind guard](usb.md#the-bind-guard).
 
-**`/srv/unoq-share has no content`** from `provision/70-learning-web.sh` or
+**`/srv/unoq-share has no content`** from `provision/75-learning-web.sh` or
 `./bootstrap.sh --with-learning`. The web server serves the drive image, and
 the image has not been built. Build it, then run the step again:
 
 ```bash
 sudo bash ~/two-computers-one-board/share/fetch-vscode.sh     # ~1.8 GB, needs internet
 sudo bash ~/two-computers-one-board/share/build-image.sh
-sudo bash ~/two-computers-one-board/provision/70-learning-web.sh
+sudo bash ~/two-computers-one-board/provision/75-learning-web.sh
 ```
 
 ## Toolchain
@@ -543,7 +543,7 @@ Works even though `~/.arduino15` is gone, provided you copied the stock image
 off the board first. It is Arduino's build, so this repository does not ship it
 — see [third-party.md](../third-party.md). Point `STOCK_FW` at your copy.
 
-**`no stock MCU firmware found`** from `provision/40-purge-arduino.sh` or
+**`no stock MCU firmware found`** from `provision/55-purge-arduino.sh` or
 `./bootstrap.sh --with-purge`. The purge deletes the only copy of Arduino's
 firmware image on the board, so it refuses to run until one has been saved.
 Nothing has been removed. The message prints what to do; in short:
@@ -554,7 +554,7 @@ mkdir -p ~/uno-q-backup && cp <that file> ~/uno-q-backup/
 ```
 
 then run the purge again. If the image is already gone and you accept that,
-`sudo UNOQ_ALLOW_NO_STOCK_FW=1 bash ~/two-computers-one-board/provision/40-purge-arduino.sh`
+`sudo UNOQ_ALLOW_NO_STOCK_FW=1 bash ~/two-computers-one-board/provision/55-purge-arduino.sh`
 (the variable goes after `sudo`, or it does not reach the script).
 `bootstrap.sh` prints a shorter warning with the same first words during its
 preflight; that one is only a warning, and it carries on.

@@ -365,7 +365,7 @@ export RUNTIME_DIR
 # ONE set, installed whole by every step that installs a root unit, rather than
 # each step copying the files it thinks it needs. Three reasons:
 #
-#   - the steps overlap: leds.sh (step 35) asks usb/bind-guard.sh (step 60's)
+#   - the steps overlap: leds.sh (step 50) asks usb/bind-guard.sh (step 95's)
 #     whether the guard has given up, so "its own files" is not a clean split;
 #   - install_runtime removes what is not in the set it was given, and three
 #     steps each pruning down to a different subset would delete one another's
@@ -426,8 +426,8 @@ warn_stale_root_units() {
   [ -n "$stale" ] || return 0
   warn "these units still run as root from the checkout or the home directory:"
   warn "  $(tr '\n' ' ' <<<"$stale")"
-  warn "  re-run the step that installed each one - 30-mcu-link.sh for unoq-link,"
-  warn "  35-status-leds.sh for unoq-leds, 60-usb-gadget.sh for the others"
+  warn "  re-run the step that installed each one - 45-mcu-link.sh for unoq-link,"
+  warn "  50-status-leds.sh for unoq-leds, 95-usb-gadget.sh for the others"
 }
 
 # stale_root_units [dir] - installed unoq-* units that run as root and still
@@ -635,7 +635,7 @@ install_runtime() {
 # The scripts beside this file are root-owned copies of the ones in
 # UNOQ_CHECKOUT, and are what the unoq-* services that run as root execute.
 # Editing the checkout does not change them. Re-running a step does:
-#   sudo bash $PROJECT/provision/35-status-leds.sh
+#   sudo bash $PROJECT/provision/50-status-leds.sh
 UNOQ_OWNER_HOME=$TARGET_HOME
 UNOQ_CHECKOUT=$PROJECT
 EOF
@@ -876,7 +876,7 @@ install_unit() {
   This is what produces 203/EXEC while the script itself looks fine. If the
   interpreter is under .venv, the checkout has probably moved - a virtualenv
   is not relocatable, and its shebangs are absolute. Rebuild it:
-    bash \"$PROJECT/provision/user/40-python-venv.sh\""
+    bash \"$PROJECT/provision/user/35-python-venv.sh\""
         ;;
     esac
   done < <(grep -E '^Exec[A-Za-z]+=' <<<"$rendered" || true)
@@ -921,7 +921,7 @@ enable_unit() {
 # backup_stock_firmware - copy the stock MCU image aside, if it is still there.
 #
 # Returns 0 if a copy now exists, 1 if there was nothing to copy. The CALLER
-# decides what that means: bootstrap.sh warns and carries on, 40-purge-arduino.sh
+# decides what that means: bootstrap.sh warns and carries on, 55-purge-arduino.sh
 # refuses, because only one of them is about to delete the original.
 #
 # WHY IT LIVES HERE

@@ -38,7 +38,7 @@ FILTER_FILE="$PROJECT/west-project-filter"
 FILTER="$(grep -vE '^[[:space:]]*(#|$)' "$FILTER_FILE" | head -1)"
 [ -n "$FILTER" ] || fail "$FILTER_FILE has no filter line"
 
-command -v uv >/dev/null 2>&1 || fail "uv missing - run provision/user/10-host-tools.sh first"
+command -v uv >/dev/null 2>&1 || fail "uv missing - run provision/user/20-host-tools.sh first"
 
 step "workspace venv"
 mkdir -p "$WS"

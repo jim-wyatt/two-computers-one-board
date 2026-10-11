@@ -3,9 +3,9 @@
 # SPDX-License-Identifier: MIT
 # Remove the remaining Arduino Debian packages.
 #
-#   sudo bash ~/two-computers-one-board/provision/40-purge-arduino.sh
+#   sudo bash ~/two-computers-one-board/provision/55-purge-arduino.sh
 #
-# Their services are already disabled by 20-dev-tools.sh, so this only reclaims
+# Their services are already disabled by 15-dev-tools.sh, so this only reclaims
 # disk - it does not change behaviour. Run it when you are confident you will
 # not go back. Idempotent: a second run finds nothing to remove.
 #

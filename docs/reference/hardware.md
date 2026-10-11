@@ -179,7 +179,7 @@ needed. BOOT0 is only sampled at MCU reset, so set it *before* resetting.
 
 > `/etc/systemd/system/unoq-link.service` runs root's copy of `mcu/link-up.sh`,
 > at `/usr/local/lib/unoq/mcu/link-up.sh`. **Do not move or rename the script**
-> without re-running `provision/30-mcu-link.sh`, which makes the copy and
+> without re-running `provision/45-mcu-link.sh`, which makes the copy and
 > installs the unit. An edit to it reaches the board the same way.
 
 ### The I2C buses

@@ -73,7 +73,7 @@
 #         the options field of the /boot/efi line, then
 #         systemctl daemon-reload && umount /boot/efi && mount /boot/efi
 #         Copying the backup over /etc/fstab does the same ONLY if nothing else
-#         has edited fstab since - 70-learning-web.sh adds a line of its own.
+#         has edited fstab since - 75-learning-web.sh adds a line of its own.
 set -uo pipefail
 # shellcheck source=provision/lib.sh
 . "$(cd "$(dirname "$0")" && pwd)/lib.sh"

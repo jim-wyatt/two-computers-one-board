@@ -139,7 +139,7 @@ refute() {
 
 # fstab_with <efi line> - a realistic file around the line under test: a root
 # entry in spaces, comments that mention the mount point, an escaped space,
-# and the line 70-learning-web.sh adds. None of it may move.
+# and the line 75-learning-web.sh adds. None of it may move.
 fstab_with() {
   {
     printf '# /etc/fstab: static file system information.\n'

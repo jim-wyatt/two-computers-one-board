@@ -49,7 +49,7 @@ The reasoning behind the checks is the chapter
 Two paths are load-bearing inside a checkout and must not move: `python/` (the
 editable install target) and `provision/lib.sh` (every script sources it by
 relative path). `env.sh` and the scripts named in unit files may move *with*
-the checkout — `provision/user/50-shell-env.sh` repoints `~/.bashrc`, and
+the checkout — `provision/user/40-shell-env.sh` repoints `~/.bashrc`, and
 `install_unit` rewrites the unit paths — but not independently of it.
 
 ## Trying a script change on the board
@@ -62,23 +62,23 @@ consequence is one extra command.
 After editing anything under `usb/`, `status/leds.sh` or `mcu/link-up.sh`:
 
 ```bash
-sudo bash ~/two-computers-one-board/provision/35-status-leds.sh
+sudo bash ~/two-computers-one-board/provision/50-status-leds.sh
 ```
 
-Any of steps `30`, `35` and `60` refreshes every copy, and `35` is the one
+Any of steps `45`, `50` and `95` refreshes every copy, and `50` is the one
 that touches nothing else. It prints `changed  updated …` for each script it
 replaced, and restarts the LED service if anything changed. When the change
 takes effect depends on the script:
 
 | You edited | It takes effect |
 |---|---|
-| `status/leds.sh` | at once: step `35` restarts `unoq-leds` |
+| `status/leds.sh` | at once: step `50` restarts `unoq-leds` |
 | `usb/usb-dhcp.sh`, `usb-route.sh`, `usb-profile.sh` | at the next lease event |
 | `usb/gadget-up.sh`, `usb-net-up.sh`, `bind-guard.sh` | at the next cable plug or boot |
 | `usb/gadget-down.sh`, `uplink-fallback.sh` | at the next stop or boot |
 | `mcu/link-up.sh` | at the next boot |
 
-To put a USB change into effect at once, run `60-usb-gadget.sh` instead. It
+To put a USB change into effect at once, run `95-usb-gadget.sh` instead. It
 restarts the gadget, which drops the USB network for a few seconds.
 
 If the board is not doing what the script you are looking at says, compare the
@@ -351,7 +351,7 @@ OCD_ROOT=/opt/openocd-rebuilt zflash
 Two things on a provisioned board cannot be downloaded again, and neither is
 this project's to redistribute (see [third-party.md](../third-party.md)).
 `bootstrap.sh` copies the first aside for you; check both are there before
-running `provision/40-purge-arduino.sh`:
+running `provision/55-purge-arduino.sh`:
 
 ```bash
 ls ~/uno-q-backup/                                       # the stock MCU firmware (.hex)

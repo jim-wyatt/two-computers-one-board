@@ -5,7 +5,7 @@
 # after a reboot: BOOT0 floats and the STM32 runs its ROM bootloader instead of
 # your firmware.
 #
-#   sudo bash ~/two-computers-one-board/provision/30-mcu-link.sh
+#   sudo bash ~/two-computers-one-board/provision/45-mcu-link.sh
 #
 # Idempotent.
 set -uo pipefail
@@ -24,7 +24,7 @@ apt_install tio
 #                    boots its ROM bootloader and your firmware never runs)
 # gpiochip1 line 70 = UART link enable (low/floating -> /dev/ttyHS1 is silent)
 #
-# These were previously held by arduino-router, which 20-dev-tools.sh disables.
+# These were previously held by arduino-router, which 15-dev-tools.sh disables.
 #
 # The unit runs as root, so it runs root's own copy of mcu/link-up.sh and not
 # the one in this checkout - see "what root runs" in lib.sh. The copy is made
@@ -55,7 +55,7 @@ if [ -x "$PROJECT/.venv/bin/python" ]; then
     *) warn "link lines look wrong: $state" ;;
   esac
 else
-  skip "venv not built yet - run provision/user/40-python-venv.sh, then re-check"
+  skip "venv not built yet - run provision/user/35-python-venv.sh, then re-check"
 fi
 
 summary

@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 # The two board LEDs Linux can drive: connectivity, and whether anything failed.
 #
-#   sudo bash ~/two-computers-one-board/provision/35-status-leds.sh
+#   sudo bash ~/two-computers-one-board/provision/50-status-leds.sh
 #
 # Idempotent, and cheap: it installs one unit and starts it. Nothing here
 # touches the network, the USB port or the MCU.
@@ -11,7 +11,7 @@
 # WHY THIS IS NOT PART OF THE USB GADGET
 # --------------------------------------
 # It used to be. `leds.sh` lived in usb/ because the first thing it reported was
-# the USB link, so 60-usb-gadget.sh installed it - which meant the LEDs only
+# the USB link, so 95-usb-gadget.sh installed it - which meant the LEDs only
 # existed if you passed `--with-usb-gadget`.
 #
 # That is backwards. These LEDs are the board's ONLY output when the network is

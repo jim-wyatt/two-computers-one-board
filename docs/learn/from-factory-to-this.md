@@ -87,14 +87,14 @@ built and flashed again on every run, and says `changed` each time.)
 
 ```mermaid
 flowchart TD
-  P["preflight<br/><small>refuse early, not halfway</small>"] --> R1["10 board optimisation<br/>20 dev tools"]
-  R1 --> U["as YOU, not root:<br/>uv, Zephyr SDK, workspace,<br/>venv, shell env"]
-  U --> R3["30 MCU link GPIOs<br/>35 status LEDs"]
-  R3 --> E4["40 purge Arduino packages<br/><small>only with --with-purge</small>"]
-  E4 --> B["build + sign + flash<br/>the firmware"]
-  B --> O["opt-in extras, in this order:<br/>50 CPU bars at boot<br/>65 the drive image<br/>70 learning web server<br/>80 watchdog · 85 EFI permissions"]
+  P["preflight<br/><small>refuse early, not halfway</small>"] --> R1["10 board optimisation<br/>15 dev tools"]
+  R1 --> U["as YOU, not root:<br/>20 build tools · 25 Zephyr SDK<br/>30 Zephyr workspace<br/>35 venv · 40 shell env"]
+  U --> R3["45 MCU link GPIOs<br/>50 status LEDs"]
+  R3 --> E4["55 purge Arduino packages<br/><small>only with --with-purge</small>"]
+  E4 --> B["60 build + sign + flash<br/>the firmware"]
+  B --> O["opt-in extras, in this order:<br/>65 CPU bars at boot<br/>70 the drive image<br/>75 learning web server<br/>80 watchdog · 85 EFI permissions"]
   O --> C["90 disk space back<br/><small>downloads nobody needs again</small>"]
-  C --> E2["60 USB gadget<br/><small>always last</small>"]
+  C --> E2["95 USB gadget<br/><small>always last</small>"]
 ```
 
 The purge is an opt-in extra too, but it runs before the firmware is built
@@ -129,11 +129,11 @@ device, so nothing plugged into it works any more.
 > [!NOTE]
 > `--with-learning` serves the files on the drive image, so the image has to
 > exist first — and `bootstrap.sh` builds it first. Asked for the web server
-> or the USB gadget, it runs `share/build-image.sh` as stage 65, ahead of both,
+> or the USB gadget, it runs `share/build-image.sh` as stage 70, ahead of both,
 > with this documentation rendered onto it. It used not to, and a fresh board
-> stopped at stage 70 with `/srv/unoq-share has no content`. You will only see
-> that message now if you run `provision/70-learning-web.sh` by hand on a
-> board that has no image. The VS Code installers are not part of stage 65:
+> stopped at the web server's stage with `/srv/unoq-share has no content`. You will only see
+> that message now if you run `provision/75-learning-web.sh` by hand on a
+> board that has no image. The VS Code installers are not part of stage 70:
 > they are a large, separate download, `sudo bash share/fetch-vscode.sh`.
 
 This is a general principle worth taking away: **a setup script should not
@@ -199,7 +199,7 @@ You almost certainly do not want to re-provision a working board right now. Read
 one instead — they are written to be read:
 
 ```bash
-less ~/two-computers-one-board/provision/60-usb-gadget.sh
+less ~/two-computers-one-board/provision/95-usb-gadget.sh
 ```
 
 Look for four things: the `REVERT:` line at the top, the `step` headings, an
@@ -209,7 +209,7 @@ than restating the code.
 Then see what a second run looks like on something small and safe:
 
 ```bash
-sudo bash ~/two-computers-one-board/provision/30-mcu-link.sh
+sudo bash ~/two-computers-one-board/provision/45-mcu-link.sh
 ```
 
 It should be almost entirely `ok`, and end with a line counting how many things

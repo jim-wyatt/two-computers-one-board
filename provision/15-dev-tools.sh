@@ -3,12 +3,12 @@
 # SPDX-License-Identifier: MIT
 # Root-level steps for the west-based dev environment.
 #
-#   sudo bash ~/two-computers-one-board/provision/20-dev-tools.sh
+#   sudo bash ~/two-computers-one-board/provision/15-dev-tools.sh
 #
 # Idempotent. Every change has its revert in the comment above it.
 #
 # This frees /dev/ttyHS1 (arduino-router holds it) and installs clangd. It does
-# NOT purge the Arduino packages - that is 40-purge-arduino.sh, deliberately
+# NOT purge the Arduino packages - that is 55-purge-arduino.sh, deliberately
 # separate and later, because it is the step you cannot casually undo.
 set -uo pipefail
 # shellcheck source=provision/lib.sh
@@ -49,7 +49,7 @@ apt_install gcc make
 
 # The Zephyr SDK's setup.sh fetches the toolchain with wget and exits if it is
 # missing. Everything in this repo downloads with curl, so nothing here would
-# have noticed its absence until user/20-zephyr-sdk.sh, forty lines into a log.
+# have noticed its absence until user/25-zephyr-sdk.sh, forty lines into a log.
 #
 # REVERT: apt-get remove -y wget
 step "wget (the Zephyr SDK installer needs it)"
@@ -136,7 +136,7 @@ if [ ! -e /dev/ttyHS1 ]; then
 elif holder=$(fuser /dev/ttyHS1 2>/dev/null | tr -s ' ' ' ' | sed 's/^ *//;s/ *$//') && [ -n "$holder" ]; then
   # fuser pads its output, and unquoted padding turns into empty ps arguments.
   warn "/dev/ttyHS1 held by PID(s) $holder: $(ps -o comm= -p "${holder// /,}" 2>/dev/null | tr '\n' ' ')"
-  warn "  unoq-cpu-bars holding it is expected - see provision/50-cpu-bars.sh"
+  warn "  unoq-cpu-bars holding it is expected - see provision/65-cpu-bars.sh"
 else
   skip "/dev/ttyHS1 is free"
 fi
