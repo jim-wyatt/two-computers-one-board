@@ -32,12 +32,13 @@ case "$1 $2" in
   "--version ") echo "uv 0.0.0" ;;
   "tool list") for t in "$FLAGS"/installed-*; do [ -e "$t" ] && echo "${t##*installed-} v1.0"; done ;;
   "tool install")
-    if [ -e "$FLAGS/fail-$3" ]; then
-      echo "error: Failed to download \`$3\`" >&2
+    tool="${@: -1}"
+    if [ -e "$FLAGS/fail-$tool" ]; then
+      echo "error: Failed to download \`$tool\`" >&2
       echo "  Caused by: No space left on device (os error 28)" >&2
       exit 2
     fi
-    touch "$FLAGS/installed-$3" ;;
+    touch "$FLAGS/installed-$tool" ;;
 esac
 exit 0
 SH
@@ -47,9 +48,11 @@ SH
 @test "all three tools are installed on a board that has none" {
   run "$STEP"
   [ "$status" -eq 0 ]
-  ran "uv tool install cmake"
-  ran "uv tool install ninja"
-  ran "uv tool install west"
+  # Each at the version the lock file gives it.
+  L="$PROJECT/mcu/requirements-zephyr-lock.txt"
+  ran "uv tool install -c $L cmake"
+  ran "uv tool install -c $L ninja"
+  ran "uv tool install -c $L west"
 }
 
 @test "when uv cannot install a tool, what uv said is shown" {
@@ -63,7 +66,7 @@ SH
 @test "a failure stops the step there, not after the next tool" {
   touch "$FLAGS/fail-cmake"
   run "$STEP"
-  refute ran "uv tool install ninja"
+  refute ran_like "^uv tool install .* ninja\$"
 }
 
 @test "a second run installs nothing" {

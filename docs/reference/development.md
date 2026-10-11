@@ -121,6 +121,7 @@ that silently does nothing is worse than no gate.
 | | behaviour | `bats` | `tests/*.bats` — see [the suite's own guide](../../tests/README.md) |
 | | units | `tools/check-units.sh` | systemd accepts every unit file and udev rule as provisioning would install them, and everything they start exists — for a root unit, in the set of scripts that is copied for root |
 | `c` | version pin | `tools/check-zephyr-pin.sh` | the board and CI build the same Zephyr |
+| | lock files | `tools/check-constraints.sh` | every Python package the project names is pinned in a lock file, and the Zephyr lock matches the pinned Zephyr |
 | | format | `clang-format` | `mcu/**/*.[ch]`, in Zephyr's own style |
 | `docs` | build | `mkdocs --strict` | every internal link and anchor resolves |
 | | offline | `tools/check-diagram-assets.sh` | the diagram library is on disk, not at a CDN |
@@ -357,6 +358,28 @@ running `provision/55-purge-arduino.sh`:
 ls ~/uno-q-backup/                                       # the stock MCU firmware (.hex)
 mkdir -p ~/uno-q-backup && cp -a /opt/openocd ~/uno-q-backup/   # rebuildable, but slowly
 ```
+
+## Python versions are pinned
+
+Two lock files decide the version of every Python package this project
+installs, on the board and in CI:
+
+| File | Pins |
+|---|---|
+| `python/requirements-lock.txt` | this project's `.venv`: the hardware libraries, the docs tooling, the dev tools |
+| `mcu/requirements-zephyr-lock.txt` | the Zephyr workspace's `.venv`, and `cmake`, `ninja` and `west` |
+
+They are passed to every install as *constraints* (`-c`): each step still asks
+for what it wants by name, and the file only decides the version. That is why
+a board set up next month gets what a board set up today got.
+
+```bash
+tools/update-constraints.sh     # recompile both: after adding a dependency, or to take newer versions
+```
+
+Then run the gates, and bootstrap on a board: a new version of a package is a
+change like any other. Dependabot proposes updates to both once a month, as
+one pull request each.
 
 ## Recovery
 

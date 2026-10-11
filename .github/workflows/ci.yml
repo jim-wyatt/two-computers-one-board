@@ -135,7 +135,7 @@ jobs:
         # python and runs under the runner's python3.
         run: |
           uv venv .venv
-          uv pip install --python .venv/bin/python -q -e 'python[docs]'
+          uv pip install --python .venv/bin/python -q -c python/requirements-lock.txt -e 'python[docs]'
 
       - name: Install the pinned browser
         run: |
@@ -344,7 +344,7 @@ jobs:
           # reason; the run number is the CI equivalent.
           IMAGE_VERSION: 0.0.0+${{ github.run_number }}
         run: |
-          pip3 install --quiet imgtool
+          pip3 install --quiet -c mcu/requirements-zephyr-lock.txt imgtool
           # `west topdir`, not $ZEPHYR_BASE: the setup action exports that only
           # within its own steps. Asking west where the workspace is works from
           # any directory inside it.

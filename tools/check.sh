@@ -140,6 +140,9 @@ if wanted c; then
   # Static, instant, no network - so it runs here rather than in the mcu area,
   # which --fast skips and which is exactly when a version drift would land.
   run "zephyr version pin" "$PROJECT/tools/check-zephyr-pin.sh"
+  # Also static and instant: an unpinned dependency is added by editing a file
+  # here, never by the passing of time.
+  run "lock files cover the dependencies" "$PROJECT/tools/check-constraints.sh"
   mapfile -t CFILES < <(git ls-files 'mcu/**/*.c' 'mcu/**/*.h' 2>/dev/null)
   CF="$VENV/bin/clang-format"
   # Deliberately NO fallback to a clang-format on PATH. There used to be one,

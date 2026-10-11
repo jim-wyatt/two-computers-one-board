@@ -38,7 +38,9 @@ for tool in cmake ninja west; do
     # two seconds with nothing but its own name, worked when run again by
     # hand, and left no way of knowing which of the network, PyPI or uv it
     # had been.
-    if out="$(uv tool install "$tool" 2>&1)"; then
+    # At the version in the lock file, like every other Python package this
+    # project installs: see tools/update-constraints.sh.
+    if out="$(uv tool install -c "$PROJECT/mcu/requirements-zephyr-lock.txt" "$tool" 2>&1)"; then
       did "$tool installed"
     else
       printf '%s\n' "$out" | tail -15 >&2
