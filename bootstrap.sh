@@ -41,9 +41,8 @@
 #     board, through reboots, and that is all: one can reset the board and the
 #     other edits the fstab entry it boots from
 #
-# TIME AND SPACE: 20 minutes 25 seconds on a factory-restored board over home
-# broadband, timed once (before the web server joined the default; it adds a
-# few seconds). The Zephyr workspace (~2 GB) and SDK (~0.8 GB) are most of the
+# TIME AND SPACE: 18 minutes 59 seconds on a factory-restored board over home
+# broadband, with no options, timed on 2026-10-11. The Zephyr workspace (~2 GB) and SDK (~0.8 GB) are most of the
 # download, and 3.3 GB ends up in the home directory. Make sure you have ~6 GB
 # free: the builds and the drive image need room as well.
 set -uo pipefail

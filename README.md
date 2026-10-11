@@ -62,7 +62,7 @@ cd ~/two-computers-one-board && ./bootstrap.sh
 > put them back. The stock firmware is copied aside first. Read
 > [Set up a board](docs/setup.md) before you run it.
 
-That is the whole setup. It took 20 minutes on a factory-restored board over
+That is the whole setup. It took 19 minutes on a factory-restored board over
 home broadband. Most of the download is the Zephyr workspace (~2 GB) and SDK
 (~0.8 GB), and it needs about 6 GB free. It has been run on the 4 GB / 32 GB
 board; the 2 GB / 16 GB one is untested.
