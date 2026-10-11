@@ -192,7 +192,13 @@ if sudo -n -k true 2>/dev/null; then
 else
   echo "  sudo will prompt for your password, once."
 fi
-sudo -v || fail "sudo is required"
+# `sudo -n true` first: if a command already runs without a prompt, that is
+# the whole of what is needed, and `sudo -v` must not be asked. -v wants a
+# password unless EVERY rule for the account is NOPASSWD, so on a board with one
+# rule that needs a password and one that does not, it prompts on a terminal
+# and fails outright without one (over ssh, from a script) - for a run in which
+# nothing would have asked. Found by the second run on a real board.
+sudo -n true 2>/dev/null || sudo -v || fail "sudo is required"
 # -n, so that if the timestamp has lapsed anyway the refresher stops quietly
 # rather than putting a second prompt in the middle of somebody else's output;
 # the step that needs root will then ask, which is no worse than before. It

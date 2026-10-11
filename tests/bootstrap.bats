@@ -162,6 +162,7 @@ bootstrap() {
 needs_a_password() {
   stub_body sudo <<'SH'
 [ "$*" = "-n -k true" ] && exit 1
+[ "$*" = "-n true" ] && exit 1
 exit 0
 SH
 }
@@ -183,6 +184,31 @@ SH
   ran "sudo -n -v"
   [[ "$output" == *"without a password"* ]]
   [[ "$output" != *"will prompt"* ]]
+}
+
+@test "an account with one rule that wants a password and one that does not is not asked" {
+  # `sudo -v` insists on a password unless every rule is NOPASSWD. With no
+  # terminal that is not a prompt, it is a failure - on a board where every
+  # command the run needs would have gone through untouched.
+  stub_body sudo <<'SH'
+[ "$*" = "-v" ] && exit 1
+[ "$*" = "-n -v" ] && exit 1
+exit 0
+SH
+  bootstrap
+  [ "$status" -eq 0 ]
+  refute ran "sudo -v"
+  [[ "$output" != *"sudo is required"* ]]
+}
+
+@test "with no way to run a command as root at all, it stops and says so" {
+  stub_body sudo <<'SH'
+case "$*" in "-n true" | "-n -k true" | "-v" | "-n -v") exit 1 ;; esac
+exit 0
+SH
+  bootstrap
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"sudo is required"* ]]
 }
 
 @test "a password still cached from a minute ago is kept alive like any other" {
@@ -219,6 +245,7 @@ SH
 @test "a refused password stops the run before anything is done" {
   stub_body sudo <<'SH'
 [ "$*" = "-n -k true" ] && exit 1
+[ "$*" = "-n true" ] && exit 1
 [ "$*" = "-v" ] && exit 1
 exit 0
 SH
