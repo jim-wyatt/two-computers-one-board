@@ -167,9 +167,38 @@ if grep -q "^CONFIG_BOOTLOADER_MCUBOOT=y" "$BUILD/zephyr/.config" 2>/dev/null; t
     echo "no imgtool: not in $WS/.venv/bin and not on PATH - the image cannot be signed" >&2
     exit 1
   }
-  "$WEST" sign -t imgtool -d "$BUILD" -p "$IMGTOOL" -- \
-    --key "$WS/bootloader/mcuboot/root-rsa-2048.pem" \
-    --version "$VERSION" >/dev/null
+  # imgtool directly, not `west sign -t imgtool`: Zephyr has deprecated that,
+  # and its replacement rebuilds everything whenever the version changes -
+  # see mcu/sign-params.py, which reads the two numbers west sign used to.
+  KEY="$WS/bootloader/mcuboot/root-rsa-2048.pem"
+  PY="$WS/.venv/bin/python"
+  [ -x "$PY" ] || PY="$(command -v python3 || true)"
+  HEADER="$(sed -n 's/^CONFIG_ROM_START_OFFSET=//p' "$BUILD/zephyr/.config")"
+  # Word-split on purpose: it prints "--align N --slot-size N".
+  read -r -a FLASH_ARGS < <("$PY" "$PROJECT/mcu/sign-params.py" "$BUILD" "$WS/zephyr") || true
+  if [ -z "$HEADER" ] || [ "${#FLASH_ARGS[@]}" -ne 4 ]; then
+    echo "could not work out how to sign this image:" >&2
+    echo "  header size (CONFIG_ROM_START_OFFSET): ${HEADER:-<not in .config>}" >&2
+    echo "  from the devicetree: ${FLASH_ARGS[*]:-<nothing>}" >&2
+    exit 1
+  fi
+  for ext in bin hex; do
+    # Removed first, so a signing that fails cannot leave the previous
+    # build's signed image sitting there to be flashed as though it were new.
+    rm -f "$BUILD/zephyr/zephyr.signed.$ext"
+    "$IMGTOOL" sign --version "$VERSION" --header-size "$HEADER" \
+      "${FLASH_ARGS[@]}" --key "$KEY" \
+      "$BUILD/zephyr/zephyr.$ext" "$BUILD/zephyr/zephyr.signed.$ext" >/dev/null || {
+      echo "imgtool could not sign zephyr.$ext" >&2
+      exit 1
+    }
+  done
+  # And checked, because this is the image the bootloader will be asked to
+  # accept: signed with the key it holds, or it does not boot.
+  "$IMGTOOL" verify -k "$KEY" "$BUILD/zephyr/zephyr.signed.bin" >/dev/null || {
+    echo "the signed image does not verify against $KEY" >&2
+    exit 1
+  }
   echo "  -> $(basename "$BUILD")/zephyr/zephyr.signed.bin  (upload with unoq.fota)"
   echo "  -> $(basename "$BUILD")/zephyr/zephyr.signed.hex  (flash to slot0 with flash.sh)"
 fi
