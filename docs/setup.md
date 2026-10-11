@@ -72,7 +72,8 @@ says what you are trusting when you run it.
   downloads about 3 GB.
 - **About 6 GB of free space** in the board's home directory. A factory-fresh
   board has about 7 GB, and the script checks. It ends up using 3.3 GB.
-- **About 20 minutes**, most of which needs no attention.
+- **About 20 minutes**, most of which needs no attention: 19 the last time it
+  was timed.
   [How long each part took](#how-long-it-takes) is below.
 
 You do not need a screen, a keyboard or a network cable for the board, and you
@@ -135,6 +136,11 @@ The `arduino` user has no password yet, and the setup needs one for `sudo`.
 ```bash
 sudo arduino-passwd
 ```
+
+**It prints nothing and waits.** There is no prompt, and what you type does
+not appear. Type the password you want, once, and press Enter; you are back at
+the `$` prompt and it is set. It looks exactly like a command that has hung,
+and it has not.
 
 Choose one you will remember. You will type it once when the setup starts, and
 again whenever you log in over SSH later.
@@ -248,34 +254,36 @@ how to undo it.
 ### How long it takes
 
 One run, timed from start to finish: a board just restored to the factory
-image, on wifi to a home broadband connection, set up from `adb shell`. That
-run was made before the web server joined the default, so it has no row for
-stage `75`, which adds a few seconds. The board was
-sampled every five seconds.
-Yours will differ with your connection; use this to know which parts are slow
-and that a quiet terminal is normal.
+image, on wifi to a home broadband connection, set up from `adb shell` with a
+plain `./bootstrap.sh`. The board was sampled every five seconds. Yours will
+differ with your connection; use this to know which parts are slow and that a
+quiet terminal is normal.
 
 | Stage | Took |
 |---|---|
-| The notice, and typing the password | 20 seconds |
-| `10` switching things off and upgrading 144 packages | 7 minutes 21 seconds |
-| `15` a compiler, and Arduino's services off | 1 minute 24 seconds |
+| The notice, and typing the password | 30 seconds |
+| `10` switching things off and upgrading 144 packages | 6 minutes 35 seconds |
+| `15` a compiler, and Arduino's services off | 1 minute 13 seconds |
 | `20` build tools | 16 seconds |
-| `25` Zephyr SDK | 42 seconds |
-| `30` Zephyr | 2 minutes 21 seconds |
+| `25` Zephyr SDK | 21 seconds |
+| `30` Zephyr | 2 minutes 1 second |
 | `35`, `40` Python and shell | 37 seconds |
-| `45`, `50` control lines and LEDs | 32 seconds |
-| `60` building and signing the firmware | 2 minutes 50 seconds |
+| `45`, `50` control lines and LEDs | 31 seconds |
+| `60` building and signing the firmware | 2 minutes 45 seconds |
 | `60` building the bootloader and flashing both | 2 minutes 28 seconds |
-| `65` the demo service | 5 seconds |
+| `65` the demo service | 11 seconds |
 | `70` the drive image | 37 seconds |
-| `90` giving disk space back | 5 seconds |
-| `95` the USB gadget | 47 seconds |
-| **All of it** | **20 minutes 25 seconds** |
+| `75`, `90` the web server, and giving disk space back | 10 seconds |
+| `95` the USB gadget | 44 seconds |
+| **All of it** | **18 minutes 59 seconds** |
 
-Then, because it was started from `adb shell`: the shell closed 24 seconds
-after the run ended, and 21 seconds after that the board was back on the same
-cable as a network adapter and a drive.
+Then, because it was started from `adb shell`: the shell closed 25 seconds
+after the run ended, and 20 seconds after that the board was back on the same
+cable as a network adapter and a drive. The restart the run asks for took 42
+seconds until the board could be logged into again.
+
+An earlier run of the same kind, a day before and with two of the options given
+by hand, took 20 minutes 25 seconds. The stages were within seconds of these.
 
 The two long silences are `10`, while packages upgrade, and the firmware
 build. Neither prints much. Both are working.
