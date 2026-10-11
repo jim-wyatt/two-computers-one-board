@@ -70,7 +70,9 @@ HOME_BEFORE="$(free_mb "$TARGET_HOME")"
 step "apt's downloaded packages"
 have="$(kb "$APT_CACHE/archives")"
 if [ "${have:-0}" -gt "$WORTH_KB" ]; then
-  if apt-get clean; then
+  # Told which cache, so that what is cleaned is what was just measured: the
+  # two can only differ when UNOQ_APT_CACHE_DIR is set, and then they must not.
+  if apt-get -o "Dir::Cache=$APT_CACHE" clean; then
     did "removed ($((have / 1024)) MB of .deb files, all of them already installed)"
   else
     warn "apt-get clean failed - nothing lost, the space is just still in use"

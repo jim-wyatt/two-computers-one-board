@@ -74,7 +74,8 @@ fill() {
   fill "$UNOQ_APT_CACHE_DIR/archives" 3
   run "$CLEANUP"
   [ "$status" -eq 0 ]
-  ran "apt-get clean"
+  # The cache that was measured is the one that is cleaned.
+  ran "apt-get -o Dir::Cache=$UNOQ_APT_CACHE_DIR clean"
   [[ "$output" == *"3 MB of .deb files"* ]]
 }
 

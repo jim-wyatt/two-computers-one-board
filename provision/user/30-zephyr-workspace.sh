@@ -134,8 +134,11 @@ step "Zephyr's own python requirements"
 # checked on every pull request by the provisioning workflow. If a Zephyr
 # script you run by hand wants something more:
 #   uv pip install --python ~/zephyrproject/.venv/bin/python -r ~/zephyrproject/zephyr/scripts/requirements.txt
-if "$WS/.venv/bin/python" -c 'import pyelftools' 2>/dev/null ||
-  "$WS/.venv/bin/python" -c 'import elftools' 2>/dev/null; then
+# One import from each thing asked for below, so "already satisfied" is true of
+# all three. It used to ask only for elftools, which is in the base list: a
+# workspace with the base list and nothing else was reported complete, and
+# mcu/ztest.sh then failed on its first import.
+if "$WS/.venv/bin/python" -c 'import elftools, junitparser, natsort' 2>/dev/null; then
   skip "requirements already satisfied"
 else
   uv pip install --python "$WS/.venv/bin/python" -q \
