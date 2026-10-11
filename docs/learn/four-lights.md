@@ -90,6 +90,16 @@ Note how narrow that is. Almost everything on this board retries: the USB link
 comes back, the gadget rebinds, wifi falls back. Those are not worth a light.
 Red means the self-healing has been exhausted.
 
+The demo is the instructive case. `unoq-cpu-bars` retries when the
+microcontroller does not answer, because at boot and during a flash that is
+normal and lasts seconds. But it used to retry for ever, and a unit that is
+retrying is not a unit that has failed: when a microcontroller lost its
+firmware, the demo restarted forty-five times in ten minutes, nothing was
+"failed", and LED 2 stayed green over a dark matrix. Now it gives up after
+about two and a half minutes of silence, which makes it a failed unit, which
+makes this light red. Retrying for ever looks like resilience and is really a
+way of never saying that something is wrong.
+
 ### Green is not decoration
 
 A dark LED cannot distinguish "nothing is wrong" from "the thing that checks

@@ -195,6 +195,23 @@ sudo systemctl start unoq-cpu-bars
 To reject it, reset the MCU without confirming. See
 [mcu.md](mcu.md#update-over-serial-no-swd).
 
+**LED 3 and LED 4 are dark, and so is the matrix.**
+The microcontroller is not running this project's firmware: nothing is driving
+its two LEDs. Within about two and a half minutes LED 2 starts blinking red
+as well, because the demo gives up trying to reach it and
+`systemctl --failed` lists `unoq-cpu-bars.service`. Put the firmware back,
+then start the demo again:
+
+```bash
+~/two-computers-one-board/mcu/zbuild.sh && ~/two-computers-one-board/mcu/flash-all.sh
+sudo systemctl reset-failed unoq-cpu-bars && sudo systemctl start unoq-cpu-bars
+```
+
+The one known cause that is not something you did: Arduino's
+`arduino-burn-bootloader.service`, which writes the stock bootloader over the
+chip at boot. Setup disables it; `systemctl is-enabled arduino-burn-bootloader`
+should say `disabled`.
+
 **LED 3 is red.**
 A part of the firmware failed to start. At present that means the LED matrix:
 the MCU's boot output says `LED matrix unavailable`. See

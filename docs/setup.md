@@ -43,7 +43,7 @@ board used as a headless development machine, and each can be put back.
 | It does this | Because | To keep things as they were |
 |---|---|---|
 | **Replaces the firmware on the microcontroller** with this project's, behind a bootloader. Whatever sketch was running is gone. | It is what the course is taught on. The stock image is copied to `~/uno-q-backup` first, and if no copy can be made the flash is skipped and the run says so. | `./bootstrap.sh --skip-mcu` |
-| **Switches off the desktop.** The board boots to a text login; if you are sitting at a screen plugged into it, that session ends. | Nothing here uses it, and it is ~218 MB of memory. | Run it over SSH. To undo: the `REVERT:` line in `provision/10-optimize-board.sh` |
+| **Switches off the desktop.** The board boots to a text login; if you are sitting at a screen plugged into it, that session ends. | Nothing here uses it, and it is ~218 MB of memory. | It cannot be kept on. Use `adb` or SSH, not a screen plugged into the board. To undo afterwards: the `REVERT:` line in `provision/10-optimize-board.sh` |
 | **Switches off Arduino's services and Docker,** and deletes the Arduino container images (~2 GB). App Lab stops working. | They hold the serial port and the control lines this project needs. | `UNOQ_KEEP_DOCKER_IMAGES=1` keeps the images. The services cannot stay on. |
 | **Switches off automatic package updates** and the firmware updater. | Background work on a board with 3.6 GiB, competing with a compiler. | Updating is now yours to do: `sudo apt update && sudo apt upgrade` |
 | **Upgrades every installed package**, once. | A freshly restored board needs it. | `UNOQ_SKIP_APT_UPGRADE=1` |
@@ -318,42 +318,15 @@ what happened, either way, would settle the question for everyone after you.
 
 ## How to tell it worked
 
-The run ends with `########## done ##########` and a short list of things to
-try. Then:
+The run ends with `########## done ##########`. If you started it from
+`adb shell`, that shell then closes by itself, about twenty seconds later: the
+board is handing its USB port over from `adb` to the network link. Nothing has
+gone wrong. (With `--no-usb-gadget` or `--minimal` there is no hand-over: the
+shell stays open, `adb` goes on working, and step 3 below does not apply.)
 
-1. **Run it a second time.** This is the real test.
-
-    ```bash
-    ./bootstrap.sh
-    ```
-
-    On a correctly set up board every line of every provisioning stage — the
-    ones with a number in the banner — is `ok`, and each of them ends
-    `0 changed`. Those are idempotent: there is nothing to do, so they are
-    quick.
-
-    Two parts of the run are not, and report `changed` every time:
-
-    - **The firmware.** Stage `60` builds it and flashes it
-      again on every run, and says `changed` for each. That is deliberate: it
-      is how a board ends up running the firmware in the checkout.
-    - **The drive image.** Stage `70` renders the documentation onto it again
-      each time.
-
-    The USB step's hand-over also reports `changed`, because it rebuilds the
-    gadget each time. For a run that is nothing but `ok`, leave out the
-    firmware and the three things that go with the drive:
-
-    ```bash
-    ./bootstrap.sh --minimal --skip-mcu
-    ```
-
-    That changes nothing already installed; leaving something out of a later
-    run does not remove it.
-
-2. **Look at the four small LEDs**, in a row at the end of the board opposite
-   the USB-C port. Steady green on all four is a healthy board. From the edge
-   inwards:
+1. **Look at the four small LEDs**, in a row at the end of the board opposite
+   the USB-C port. You do not need to be logged in for this. Steady green on
+   all four is a healthy board. From the edge inwards:
 
     | | Steady green means |
     |---|---|
@@ -362,41 +335,80 @@ try. Then:
     | LED 2 | nothing on the Linux side has failed |
     | LED 1 | the board can reach the internet |
 
-    LED 4 is green because the CPU-bars demo is talking to the
-    microcontroller; set up with `--no-cpu-bars`, it blinks red, which is
-    correct. One
-   that blinks red is telling you something specific;
-   [Four lights](learn/four-lights.md) says what, or run
-   `~/two-computers-one-board/status/leds.sh explain`.
+    One that blinks red is telling you something specific:
+    [Four lights](learn/four-lights.md) says what. (Set up with
+    `--no-cpu-bars`, LED 4 blinks red, which is correct: nothing is talking to
+    the microcontroller.)
 
-3. **Look at the LED grid.** Four bars of
-   light on the LED grid, moving. That is Linux measuring its four processor
-   cores and the microcontroller drawing them: both halves working, and
-   talking.
+2. **Look at the LED grid.** Four bars of light, moving. That is Linux
+   measuring its four processor cores and the microcontroller drawing them:
+   both halves working, and talking.
 
-4. **Or ask the microcontroller directly**, if you set up with `--no-cpu-bars`. Open a new shell,
-   so the shortcuts are loaded, and:
+3. **Log back in, over the same cable**, unless you left the USB link out.
+   Your computer now sees the board as a
+   network adapter and a drive called `UNO-Q`. From a terminal on your
+   computer:
 
     ```bash
-    hpy -c "from unoq import MCU; print(MCU().status())"
+    ssh arduino@uno-q.local
     ```
 
+    The password is the one you set in step 0. The first time, `ssh` asks
+    whether you trust the board; answer `yes`. The course is in a browser on
+    the same computer, at `http://uno-q.local:8080/`.
+
+4. **Restart the board once.** The run upgraded the board's packages, and says
+   so in its last lines; a restart puts everything on the new versions.
+
+    ```bash
+    sudo reboot
     ```
-    {'uptime_ms': 12216, 'flip': 0, 'sweeps': 0}
+
+    It is back in about half a minute, and the LEDs and the grid should look
+    the same as before. That is worth looking for: it shows the setup survives
+    a restart, which is where a board is most likely to surprise you.
+
+5. **Run it a second time, if you want proof.**
+
+    ```bash
+    cd ~/two-computers-one-board && ./bootstrap.sh
     ```
 
-    That answer came from the other computer on the board. `uptime_ms` is how
-    long its firmware has been running; run the command again and it will have
-    gone up. `sweeps` counts redraws of the LED grid and stays at 0 until
-    something is drawn.
+    It takes a minute and a half. Every numbered stage reports `ok` and ends
+    `0 changed`, because there is nothing left to do, with three exceptions
+    that say `changed` on every run: the firmware (stage `60`, built and
+    flashed again each time, which is how a board ends up running the firmware
+    in the checkout), the drive image (stage `70`, rendered again), and the
+    USB hand-over (stage `95`, which rebuilds the link). For a run that is
+    nothing but `ok`:
 
-    (With the demo running this command says the port is busy, and names the
-    service holding it. That is correct: only one program can use the wire to
-    the microcontroller at a time, and the demo has it.)
+    ```bash
+    ./bootstrap.sh --minimal --skip-mcu
+    ```
 
-Either of the last two means both halves of the board work and can talk to
-each other.
-Go to [Start here](learn/start-here.md).
+    That changes nothing already installed; leaving something out of a later
+    run does not remove it.
+
+If you set up with `--no-cpu-bars`, there are no bars to look at. Ask the
+microcontroller directly instead. Open a new shell, so the shortcuts are
+loaded, and:
+
+```bash
+hpy -c "from unoq import MCU; print(MCU().status())"
+```
+
+```
+{'uptime_ms': 12216, 'flip': 0, 'sweeps': 0}
+```
+
+That answer came from the other computer on the board. `uptime_ms` is how long
+its firmware has been running; run the command again and it will have gone up.
+(With the demo running, the same command says the port is busy and names the
+service holding it. That is correct: only one program can use the wire to the
+microcontroller at a time, and the demo has it.)
+
+Green lights and moving bars mean both halves of the board work and can talk
+to each other. Go to [Start here](learn/start-here.md).
 
 ## When it stops
 
@@ -410,7 +422,7 @@ If the same step fails twice, the output tells you where to look:
   you can read: `25` is `provision/user/25-zephyr-sdk.sh`.
 - The line marked **`FAILED`** says what went wrong, and where the tool that
   failed had something to say, its own output is printed just above.
-- The firmware build and flash at the end keep their logs in
+- The firmware stage (`60`) keeps its build and flash logs in
   `/tmp/zbuild-bootstrap.log` and `/tmp/zflash-bootstrap.log`.
 
 Then look in [Troubleshooting](reference/troubleshooting.md), which is arranged

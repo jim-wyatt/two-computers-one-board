@@ -384,6 +384,21 @@ if [ "$SKIP_MCU" = 0 ]; then
   step "flash"
   # An MCUboot build must be flashed as the full chain the first time: the
   # signed app alone lands in slot0 with no bootloader in front of it.
+  # The demo is paused while the chip is written. It talks to the MCU twice a
+  # second and retries when it gets no answer, and it only has so many retries
+  # before systemd calls it failed (see python/unoq-cpu-bars.service): a flash
+  # was measured using seven of the twelve. Stopped, it uses none. It is
+  # started again below - by step 65 in the usual case, and here when this run
+  # was asked to leave the demo out but an earlier one installed it.
+  # "activating" as well as "active": between attempts the unit sits in
+  # activating (auto-restart) for RestartSec, and a run that began in that
+  # gap would have left it retrying through the whole flash.
+  DEMO_PAUSED=0
+  case "$(systemctl show unoq-cpu-bars.service -p ActiveState --value 2>/dev/null)" in
+    active | activating)
+      sudo systemctl stop unoq-cpu-bars.service && DEMO_PAUSED=1
+      ;;
+  esac
   # flash-all.sh derives the workspace itself.
   if bash "$PROJECT/mcu/flash-all.sh" >"$FLASH_LOG" 2>&1; then
     did "MCUboot + application flashed"
@@ -398,6 +413,13 @@ if [ "$SKIP_MCU" = 0 ]; then
         fixed, write both again:
           $PROJECT/mcu/flash-all.sh"
     warn "the microcontroller may be partly written. Recover with: $PROJECT/mcu/flash-all.sh"
+  fi
+  if [ "$DEMO_PAUSED" = 1 ] && [ "$WITH_CPU_BARS" = 0 ]; then
+    # The count of recent starts first, for the same reason step 65 clears it:
+    # a demo stopped on its last permitted attempt would be refused this start.
+    sudo systemctl reset-failed unoq-cpu-bars.service 2>/dev/null || true
+    sudo systemctl start unoq-cpu-bars.service ||
+      warn "could not start unoq-cpu-bars again - check: journalctl -u unoq-cpu-bars -n 20"
   fi
 fi
 

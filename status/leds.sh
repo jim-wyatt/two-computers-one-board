@@ -452,6 +452,9 @@ LED 2 - systemd's opinion of this board
   fast blink  red     SOMETHING NEEDS A HUMAN: a systemd unit has failed, or
                       the bind guard has refused to bind the gadget. Everything
                       else on this board recovers by itself; these do not.
+                      One unit worth knowing: unoq-cpu-bars fails after about
+                      two and a half minutes of a microcontroller that does not
+                      answer. Which unit it is:  systemctl --failed
 
 A lit, steady light is not decoration. A dark LED cannot tell you the
 difference between "nothing is wrong" and "the thing that checks is not

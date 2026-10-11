@@ -432,3 +432,72 @@ line_of() { grep -nE "$1" "$STUB_LOG" | head -1 | cut -d: -f1; }
   [ "$web" -lt "$clean" ]
   [ "$clean" -lt "$usb" ]
 }
+
+# --- the demo, while the chip is written --------------------------------------------
+
+# demo_in <state> - what systemd says the demo's ActiveState is.
+demo_in() {
+  echo "$1" >"$BATS_TEST_TMPDIR/demo-state"
+  stub_body systemctl <<SH
+[ "\$1" = show ] && { cat "$BATS_TEST_TMPDIR/demo-state"; exit 0; }
+exit 0
+SH
+}
+demo_running() { demo_in active; }
+
+@test "a running demo is stopped before the flash, so it spends none of its retries on it" {
+  demo_running
+  bootstrap
+  [ "$status" -eq 0 ]
+  stop="$(line_of '^sudo systemctl stop unoq-cpu-bars.service$')"
+  flash="$(line_of 'mcu/flash-all\.sh')"
+  [ -n "$stop" ] && [ -n "$flash" ]
+  [ "$stop" -lt "$flash" ]
+}
+
+@test "a demo caught between two retries is stopped as well" {
+  # activating (auto-restart): where the unit sits for RestartSec between
+  # attempts. Not "active", and still about to try again, all through the flash.
+  demo_in activating
+  bootstrap
+  ran "sudo systemctl stop unoq-cpu-bars.service"
+}
+
+@test "a demo that was not running is not stopped" {
+  demo_in inactive
+  bootstrap
+  refute ran_like '^sudo systemctl stop unoq-cpu-bars'
+}
+
+@test "left out of this run but installed by an earlier one, the demo is started again" {
+  # --no-cpu-bars skips the step that would have started it. Leaving a
+  # service this run did not install stopped would be a change nobody asked for.
+  demo_running
+  bootstrap --no-cpu-bars
+  [ "$status" -eq 0 ]
+  ran "sudo systemctl start unoq-cpu-bars.service"
+  # ...with its count of recent starts cleared first. Stopped on its last
+  # permitted attempt, it would otherwise be refused the start.
+  reset="$(line_of '^sudo systemctl reset-failed unoq-cpu-bars.service$')"
+  start="$(line_of '^sudo systemctl start unoq-cpu-bars.service$')"
+  [ -n "$reset" ] && [ "$reset" -lt "$start" ]
+}
+
+@test "in the usual run it is not started twice: the demo step does that" {
+  demo_running
+  bootstrap
+  refute ran "sudo systemctl start unoq-cpu-bars.service"
+  ran_step provision/65-cpu-bars.sh
+}
+
+@test "a demo that has already given up is not 'stopped': it is failed, and stays for step 65" {
+  demo_in failed
+  bootstrap
+  refute ran_like '^sudo systemctl stop unoq-cpu-bars'
+}
+
+@test "with --skip-mcu nothing is flashed and the demo is left alone" {
+  demo_running
+  bootstrap --skip-mcu
+  refute ran_like '^sudo systemctl stop unoq-cpu-bars'
+}
