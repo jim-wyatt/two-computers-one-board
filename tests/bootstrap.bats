@@ -476,6 +476,11 @@ demo_running() { demo_in active; }
   bootstrap --no-cpu-bars
   [ "$status" -eq 0 ]
   ran "sudo systemctl start unoq-cpu-bars.service"
+  # ...with its count of recent starts cleared first. Stopped on its last
+  # permitted attempt, it would otherwise be refused the start.
+  reset="$(line_of '^sudo systemctl reset-failed unoq-cpu-bars.service$')"
+  start="$(line_of '^sudo systemctl start unoq-cpu-bars.service$')"
+  [ -n "$reset" ] && [ "$reset" -lt "$start" ]
 }
 
 @test "in the usual run it is not started twice: the demo step does that" {

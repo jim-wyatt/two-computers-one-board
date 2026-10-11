@@ -415,6 +415,9 @@ if [ "$SKIP_MCU" = 0 ]; then
     warn "the microcontroller may be partly written. Recover with: $PROJECT/mcu/flash-all.sh"
   fi
   if [ "$DEMO_PAUSED" = 1 ] && [ "$WITH_CPU_BARS" = 0 ]; then
+    # The count of recent starts first, for the same reason step 65 clears it:
+    # a demo stopped on its last permitted attempt would be refused this start.
+    sudo systemctl reset-failed unoq-cpu-bars.service 2>/dev/null || true
     sudo systemctl start unoq-cpu-bars.service ||
       warn "could not start unoq-cpu-bars again - check: journalctl -u unoq-cpu-bars -n 20"
   fi

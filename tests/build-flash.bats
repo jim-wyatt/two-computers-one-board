@@ -461,3 +461,28 @@ SH
   [ "$status" -eq 1 ]
   never_ran openocd
 }
+
+# --- the demo, when flashing by hand has used up its retries -------------------
+
+@test "after a flash, a demo that has given up is pointed out, with the way to start it" {
+  built
+  stub_body systemctl <<'SH'
+[ "$1" = is-failed ] && exit 0
+exit 0
+SH
+  run "$PROJECT/mcu/flash.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"gave up retrying"* ]]
+  [[ "$output" == *"reset-failed unoq-cpu-bars"* ]]
+}
+
+@test "after a flash with the demo healthy, nothing is said about it" {
+  built
+  stub_body systemctl <<'SH'
+[ "$1" = is-failed ] && exit 1
+exit 0
+SH
+  run "$PROJECT/mcu/flash.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"gave up retrying"* ]]
+}
