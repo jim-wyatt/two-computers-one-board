@@ -62,10 +62,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install uv
-        # Exact tag, not @v9: astral-sh publish moving major tags only up
-        # to v7, so `@v9` does not resolve and the whole workflow fails to
-        # start. Bump this by hand - `latest release` and `latest major tag`
-        # are different questions for this action.
+        # Pinned to a commit, like every action here, with the release it is in
+        # the trailing comment: Dependabot reads that comment and moves both.
+        # The release is an exact one (v10.2.0), not a major: astral-sh publish
+        # moving major tags only up to v7, so `@v9` or `@v10` does not resolve
+        # and the whole workflow fails to start.
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           enable-cache: true
