@@ -30,7 +30,8 @@ setup() {
   export UNOQ_RUN_DIR="$BATS_TEST_TMPDIR/run"
   export UNOQ_NET_SYSFS="$BATS_TEST_TMPDIR/net"
   export UNOQ_STATE_DIR="$BATS_TEST_TMPDIR/state"
-  mkdir -p "$UNOQ_RUN_DIR" "$UNOQ_NET_SYSFS" "$UNOQ_STATE_DIR"
+  export UNOQ_PROC="$BATS_TEST_TMPDIR/proc"
+  mkdir -p "$UNOQ_RUN_DIR" "$UNOQ_NET_SYSFS" "$UNOQ_STATE_DIR" "$UNOQ_PROC"
   FLAGS="$BATS_TEST_TMPDIR/flags"
   mkdir -p "$FLAGS"
   export FLAGS
@@ -65,6 +66,12 @@ gadget_iface() {
     mkdir -p "$UNOQ_NET_SYSFS/br-usb"
     ln -s "$UNOQ_NET_SYSFS/br-usb" "$UNOQ_NET_SYSFS/$1/master"
   fi
+}
+
+# process <pid> <comm> - a process the script can see, as /proc would show it.
+process() {
+  mkdir -p "$UNOQ_PROC/$1"
+  echo "$2" >"$UNOQ_PROC/$1/comm"
 }
 
 # --- the bridge ------------------------------------------------------------------
@@ -152,14 +159,33 @@ A
 }
 
 @test "a DHCP client that is already running is not started a second time" {
-  echo "$$" >"$UNOQ_RUN_DIR/unoq-usb-udhcpc.pid"
+  echo 4321 >"$UNOQ_RUN_DIR/unoq-usb-udhcpc.pid"
+  process 4321 busybox
   run "$NETUP"
   [ "$status" -eq 0 ]
   refute ran_like '^busybox udhcpc'
 }
 
 @test "a pid file whose process has gone does not stop a new client starting" {
-  echo 999999 >"$UNOQ_RUN_DIR/unoq-usb-udhcpc.pid"
+  echo 4321 >"$UNOQ_RUN_DIR/unoq-usb-udhcpc.pid"
+  run "$NETUP"
+  [ "$status" -eq 0 ]
+  ran_like '^busybox udhcpc '
+}
+
+@test "a pid file whose number now belongs to something else does not either" {
+  # After a reboot the file is still there and the pid is somebody else's.
+  # Taking that for udhcpc leaves the link with no address and no client.
+  echo 4321 >"$UNOQ_RUN_DIR/unoq-usb-udhcpc.pid"
+  process 4321 sshd
+  run "$NETUP"
+  [ "$status" -eq 0 ]
+  ran_like '^busybox udhcpc '
+}
+
+@test "a pid file that does not hold a number is not trusted" {
+  echo "4321; reboot" >"$UNOQ_RUN_DIR/unoq-usb-udhcpc.pid"
+  process 4321 busybox
   run "$NETUP"
   [ "$status" -eq 0 ]
   ran_like '^busybox udhcpc '
@@ -178,10 +204,22 @@ A
   refute ran_like '^busybox udhcpc .*--request'
 }
 
+@test "every real address shape is accepted" {
+  for good in '0.0.0.0' '10.0.0.1' '169.254.7.9' '192.168.137.255' '255.255.255.255'; do
+    : >"$STUB_LOG"
+    printf '%s\n' "$good" >"$UNOQ_STATE_DIR/usb-dhcp-last"
+    run "$NETUP"
+    [ "$status" -eq 0 ]
+    ran_like "^busybox udhcpc .*--request=$good "
+  done
+}
+
 @test "a last-address file that does not hold an address is ignored" {
   # What is in this file ends up on udhcpc's command line. It is written by
   # this project's own DHCP handler, as root - but a file is a file.
-  for bad in '--script=/tmp/evil' '1.2.3.4;reboot' 'not-an-address' '1234' ''; do
+  for bad in '--script=/tmp/evil' '1.2.3.4;reboot' 'not-an-address' '1234' '' \
+    '999.999.999.999' '1.2.3.4.5' '...' '1.2.3' '1..2.3' '.1.2.3.4' '1.2.3.4.' \
+    '256.1.1.1' '1.2.3.4 5.6.7.8' '0001.2.3.4' '010.0.0.1' '1.2.3.00'; do
     : >"$STUB_LOG"
     printf '%s\n' "$bad" >"$UNOQ_STATE_DIR/usb-dhcp-last"
     run "$NETUP"
@@ -204,9 +242,25 @@ A
   sleep 30 &
   old=$!
   echo "$old" >"$UNOQ_RUN_DIR/unoq-usb-dnsmasq.pid"
+  process "$old" dnsmasq
   run "$NETUP"
   [ "$status" -eq 0 ]
   refute kill -0 "$old"
+  [ ! -e "$UNOQ_RUN_DIR/unoq-usb-dnsmasq.pid" ]
+}
+
+@test "whatever now has dnsmasq's old pid is NOT killed" {
+  # The pid file survives a reboot; the number in it is reused. This script
+  # runs as root at every boot, and used to kill whoever held it.
+  sleep 30 &
+  bystander=$!
+  echo "$bystander" >"$UNOQ_RUN_DIR/unoq-usb-dnsmasq.pid"
+  process "$bystander" sshd
+  run "$NETUP"
+  [ "$status" -eq 0 ]
+  kill -0 "$bystander"
+  kill "$bystander"
+  # And the stale file is gone, so the question is not asked again.
   [ ! -e "$UNOQ_RUN_DIR/unoq-usb-dnsmasq.pid" ]
 }
 
