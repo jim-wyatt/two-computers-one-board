@@ -182,3 +182,16 @@ SH
   [ "$status" -eq 0 ]
   [[ "$output" == *"WARNING: $OWNER/unoq-share.img missing - build it with share/build-image.sh"* ]]
 }
+
+# --- what the drive calls itself ---------------------------------------------
+
+@test "the drive's name fills the vendor and product fields it is split into" {
+  # 8 characters of vendor, 16 of product. "UNO-Q Share" written straight in
+  # was cut after the eighth, and Windows listed the drive as "UNO-Q Sh are".
+  run "$PROJECT/usb/gadget-up.sh" --build
+  [ "$status" -eq 0 ]
+  name="$(cat "$LUN/inquiry_string")"
+  [ "${#name}" -eq 24 ]
+  [ "${name:0:8}" = "UNO-Q   " ]
+  [ "${name:8:5}" = "Share" ]
+}

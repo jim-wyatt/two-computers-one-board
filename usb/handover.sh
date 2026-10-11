@@ -76,8 +76,15 @@ if systemctl cat adbd.service >/dev/null 2>&1; then
       log "adbd stopped but is still enabled - not building a gadget it would fight at boot"
       exit 1
     fi
+    # adbd exits with an error when it is stopped, and systemd then lists it as
+    # failed. It did not fail, it was asked to go - and LED 2 blinks red for
+    # any failed unit, which made the last thing a successful setup did the
+    # reason the board ended it showing a fault.
+    systemctl reset-failed adbd.service >/dev/null 2>&1 || true
     log "adbd stopped and disabled"
   else
+    # A board handed over before the reset above existed still has the mark.
+    systemctl reset-failed adbd.service >/dev/null 2>&1 || true
     log "adbd already stopped and disabled"
   fi
 fi
@@ -85,10 +92,17 @@ fi
 # adbd unbinds its gadget when it stops. If a definition that is not ours is
 # still holding a controller, ours cannot have it, and saying which one is
 # worth more than a bind that fails without a reason.
+#
+# Read, not tested with `-s`: every file in configfs reports a size of 4096
+# whatever is in it, so `-s` is true of an empty UDC file. On the first real
+# hand-over this announced that adbd's gadget still held the controller, about
+# a gadget that had already let go, twenty seconds before ours bound to it.
 for udc in "$CONFIGFS"/*/UDC; do
-  [ -s "$udc" ] || continue
+  [ -e "$udc" ] || continue
   [ "$udc" = "$G/UDC" ] && continue
-  log "another gadget still holds the controller: $(dirname "$udc")"
+  holds="$(cat "$udc" 2>/dev/null)"
+  [ -n "$holds" ] || continue
+  log "another gadget still holds $holds: $(dirname "$udc")"
 done
 
 # --- 3. the definition -----------------------------------------------------

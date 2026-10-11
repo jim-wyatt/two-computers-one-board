@@ -98,6 +98,9 @@ case "$verb" in
     done ;;
   stop) for u in "${args[@]}"; do rm -f "$FLAGS/active/$u"; done ;;
   reset-failed) for u in "${args[@]}"; do rm -f "$FLAGS/failed/$u"; done ;;
+  is-failed)
+    [ -e "$FLAGS/failed/${args[0]}" ]
+    exit ;;
   list-units)
     for f in "$FLAGS"/failed/*; do
       [ -e "$f" ] && echo "$(basename "$f") loaded failed failed Something"
@@ -141,6 +144,25 @@ load_lib() {
   [ "$status" -eq 0 ]
   ran "systemctl reset-failed arduino-router-serial.service"
   [ ! -e "$FLAGS/failed/arduino-router-serial.service" ]
+}
+
+@test "a unit stopped by an earlier version has its old failed mark cleared" {
+  # Stopped and disabled already, so there is nothing to do to it - except
+  # that it has been showing as failed since the run that stopped it.
+  touch "$FLAGS/failed/arduino-router-serial.service"
+  load_lib
+  run disable_unit arduino-router-serial.service
+  [ "$status" -eq 0 ]
+  [ ! -e "$FLAGS/failed/arduino-router-serial.service" ]
+  [[ "$output" == *"cleared the failed state"* ]]
+}
+
+@test "a unit already stopped, disabled and not failed is simply left" {
+  load_lib
+  run disable_unit arduino-router-serial.service
+  [ "$status" -eq 0 ]
+  refute ran_like '^systemctl reset-failed'
+  [[ "$output" == *"already stopped and disabled"* ]]
 }
 
 @test "a unit that would not stop keeps its failed mark, because that is a real one" {
@@ -315,6 +337,54 @@ load_lib() {
   ran "systemctl disable --now adbd.service"
   ran "systemctl restart unoq-usb-gadget.service"
   [ ! -e "$FLAGS/active/adbd.service" ]
+}
+
+@test "adbd, stopped on purpose, is not left marked as failed" {
+  # It exits with an error when stopped. Left alone that is a third failed
+  # unit and a red LED 2 at the end of a setup that worked.
+  running ssh.service
+  running adbd.service
+  touch "$FLAGS/failed/adbd.service"
+  run "$HANDOVER"
+  [ "$status" -eq 0 ]
+  ran "systemctl reset-failed adbd.service"
+}
+
+@test "an adbd stopped by an earlier hand-over has its old failed mark cleared" {
+  running ssh.service
+  touch "$FLAGS/failed/adbd.service"
+  run "$HANDOVER"
+  [ "$status" -eq 0 ]
+  [ ! -e "$FLAGS/failed/adbd.service" ]
+}
+
+@test "a gadget that has let go of the controller is not reported as holding it" {
+  # Every configfs file reports a size of 4096, so the old `-s` test was true
+  # of an empty one. Here the file exists and is empty, as adbd's is once it
+  # has stopped.
+  running ssh.service
+  mkdir -p "$(dirname "$UNOQ_GADGET_DIR")/g1"
+  : >"$(dirname "$UNOQ_GADGET_DIR")/g1/UDC"
+  run "$HANDOVER"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"still holds"* ]]
+}
+
+@test "a gadget that really does hold the controller is named" {
+  running ssh.service
+  mkdir -p "$(dirname "$UNOQ_GADGET_DIR")/g1"
+  echo "4e00000.usb" >"$(dirname "$UNOQ_GADGET_DIR")/g1/UDC"
+  run "$HANDOVER"
+  [[ "$output" == *"still holds 4e00000.usb"* ]]
+  [[ "$output" == *"/g1"* ]]
+}
+
+@test "our own gadget holding the controller is not reported as another" {
+  running ssh.service
+  echo "4e00000.usb" >"$UNOQ_GADGET_DIR/UDC"
+  run "$HANDOVER"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"still holds"* ]]
 }
 
 @test "the gadget is not built over an adbd that would not stop" {

@@ -33,6 +33,13 @@ TARGET_USER="${UNOQ_USER:-${SUDO_USER:-$(stat -c %U "$PROJECT")}}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 export TARGET_USER TARGET_HOME
 
+# Debian's needrestart runs after every apt install and draws progress bars
+# ("Scanning processes...") straight onto the terminal, past any redirection:
+# four screens of them in a first run, none saying anything a reader can use.
+# Suspended, apt still installs and services are still restarted by the steps
+# that mean to restart them.
+export NEEDRESTART_SUSPEND=1
+
 # --- output ----------------------------------------------------------------
 
 if [ -t 1 ]; then
@@ -138,7 +145,14 @@ disable_unit() {
     fi
     if [ "$(systemctl is-enabled "$u" 2>/dev/null)" = "disabled" ] &&
       ! systemctl is-active --quiet "$u"; then
-      skip "$u already stopped and disabled"
+      # Already as it should be - but a board set up before the reset below
+      # existed still carries the failed mark from the day it was stopped.
+      if systemctl is-failed --quiet "$u" 2>/dev/null; then
+        systemctl reset-failed "$u" >/dev/null 2>&1 || true
+        did "$u already stopped and disabled; cleared the failed state it was left in"
+      else
+        skip "$u already stopped and disabled"
+      fi
       continue
     fi
     systemctl disable --now "$u" >/dev/null 2>&1
