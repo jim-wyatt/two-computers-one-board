@@ -135,8 +135,17 @@ if [ ! -e /dev/ttyHS1 ]; then
   warn "/dev/ttyHS1 does not exist - is this an UNO Q?"
 elif holder=$(fuser /dev/ttyHS1 2>/dev/null | tr -s ' ' ' ' | sed 's/^ *//;s/ *$//') && [ -n "$holder" ]; then
   # fuser pads its output, and unquoted padding turns into empty ps arguments.
-  warn "/dev/ttyHS1 held by PID(s) $holder: $(ps -o comm= -p "${holder// /,}" 2>/dev/null | tr '\n' ' ')"
-  warn "  unoq-cpu-bars holding it is expected - see provision/65-cpu-bars.sh"
+  who="$(ps -o comm= -p "${holder// /,}" 2>/dev/null | tr '\n' ' ' | sed 's/ *$//')"
+  # This project's own demo holding the port is the port being free of
+  # everything it was meant to be freed from. It used to be a two-line warning
+  # on every run after the first - now the default run - about a board in
+  # exactly the state it was set up to be in.
+  if [ "$who" = "unoq-cpu-bars" ]; then
+    skip "/dev/ttyHS1 is held by unoq-cpu-bars, this project's demo, and by nothing else"
+  else
+    warn "/dev/ttyHS1 held by PID(s) $holder: $who"
+    warn "  something other than this project's demo has the MCU's serial port"
+  fi
 else
   skip "/dev/ttyHS1 is free"
 fi

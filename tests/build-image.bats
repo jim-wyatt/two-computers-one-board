@@ -376,3 +376,12 @@ needs_a_partition_node() {
   [ "$(cat "$lun/file")" = "$UNOQ_SHARE_IMG" ]
   [ "$(cat "$lun/ro")" = 1 ]
 }
+
+@test "a drive without the optional installers is not a warning" {
+  # The VS Code installers are a separate download. Their absence was printed
+  # as a warning on every default run, to someone who had done nothing wrong.
+  run bash "$BUILD"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"warn"* ]]
+  [[ "$output" == *"optional"* ]]
+}
