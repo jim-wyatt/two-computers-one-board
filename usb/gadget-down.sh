@@ -15,16 +15,50 @@
 # strings, then configs, then functions, then the gadget.
 set -uo pipefail
 
-CONFIGFS=/sys/kernel/config/usb_gadget
-G="$CONFIGFS/unoq"
+G="${UNOQ_GADGET_DIR:-/sys/kernel/config/usb_gadget/unoq}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BRIDGE="${UNOQ_USB_BRIDGE:-br-usb}"
-UDHCPC_PID=/run/unoq-usb-udhcpc.pid
-DNSMASQ_PID=/run/unoq-usb-dnsmasq.pid
+RUN_DIR="${UNOQ_RUN_DIR:-/run}"
+PROC="${UNOQ_PROC:-/proc}"
+UDHCPC_PID="$RUN_DIR/unoq-usb-udhcpc.pid"
+DNSMASQ_PID="$RUN_DIR/unoq-usb-dnsmasq.pid"
 PURGE=0
 [ "${1:-}" = "--purge" ] && PURGE=1
 
 log() { echo "unoq-gadget: $*"; }
+
+# pid_is <pidfile> <acceptable comm>... - is THAT daemon running, not just
+# something with its number?
+#
+# This script kills what the pid files name, as root. It used to ask
+# `kill -0 "$(cat pidfile)"` first, which only asks whether any process has the
+# number: with a stale file, whatever had been given that pid since was killed
+# in the daemon's place. Same check as usb-net-up.sh, wifi.sh and status.sh.
+pid_is() {
+  local pidfile="$1" pid comm want
+  shift
+  pid="$(cat "$pidfile" 2>/dev/null)"
+  case "$pid" in '' | *[!0-9]*) return 1 ;; esac
+  comm="$(cat "$PROC/$pid/comm" 2>/dev/null)" || return 1
+  for want in "$@"; do
+    [ "$comm" = "$want" ] && return 0
+  done
+  return 1
+}
+
+# is_udhcpc <pidfile> - the DHCP client, and not another BusyBox applet: every
+# applet started as `busybox <name>` is called "busybox" by the kernel, so the
+# command line has to have udhcpc as one of its words.
+is_udhcpc() {
+  local pid arg
+  pid_is "$1" udhcpc && return 0
+  pid_is "$1" busybox || return 1
+  pid="$(cat "$1" 2>/dev/null)"
+  while IFS= read -r -d '' arg; do
+    case "$arg" in udhcpc | */udhcpc) return 0 ;; esac
+  done <"$PROC/$pid/cmdline" 2>/dev/null
+  return 1
+}
 
 [ "$(id -u)" = 0 ] || {
   echo "must run as root" >&2
@@ -34,7 +68,10 @@ log() { echo "unoq-gadget: $*"; }
 # --- unbind ----------------------------------------------------------------
 
 if [ -d "$G" ]; then
-  if [ -s "$G/UDC" ]; then
+  # Read, not tested with `-s`: every configfs file reports a size of 4096, so
+  # `-s` was true of an empty one and this said "unbound" of a gadget that was
+  # not bound.
+  if [ -n "$(cat "$G/UDC" 2>/dev/null)" ]; then
     echo "" >"$G/UDC" 2>/dev/null && log "unbound from the UDC"
   else
     log "already unbound"
@@ -50,15 +87,17 @@ fi
 # running against an interface that no longer exists is not harmless: the next
 # plug-in creates br-usb again, and the survivor is then a second daemon on it,
 # defending or renewing an address the new one knows nothing about.
-if [ -f "$UDHCPC_PID" ] && kill -0 "$(cat "$UDHCPC_PID")" 2>/dev/null; then
+if is_udhcpc "$UDHCPC_PID"; then
   kill "$(cat "$UDHCPC_PID")" 2>/dev/null
-  rm -f "$UDHCPC_PID"
   # udhcpc does not run its script on SIGTERM, so the leased address and the
   # route it installed would outlive it. Run the teardown by hand, which also
   # hands /etc/resolv.conf back to NetworkManager.
   interface="$BRIDGE" "$HERE/usb-dhcp.sh" deconfig >/dev/null 2>&1
   log "udhcpc stopped"
+elif [ -e "$UDHCPC_PID" ]; then
+  log "stale udhcpc pid file removed - nothing was killed"
 fi
+rm -f "$UDHCPC_PID"
 
 AUTOIPD="${UNOQ_AUTOIPD:-/usr/sbin/avahi-autoipd}"
 if [ -x "$AUTOIPD" ] && "$AUTOIPD" --check "$BRIDGE" 2>/dev/null; then
@@ -68,10 +107,11 @@ fi
 # Left over from the old server mode, where the board ran dnsmasq on this
 # bridge. Kept only so that a board updated in place does not keep answering
 # DHCP on a wire it no longer owns.
-if [ -f "$DNSMASQ_PID" ] && kill -0 "$(cat "$DNSMASQ_PID")" 2>/dev/null; then
-  kill "$(cat "$DNSMASQ_PID")" && rm -f "$DNSMASQ_PID"
+if pid_is "$DNSMASQ_PID" dnsmasq; then
+  kill "$(cat "$DNSMASQ_PID")" 2>/dev/null
   log "dnsmasq stopped (left over from server mode)"
 fi
+rm -f "$DNSMASQ_PID"
 
 # --- bridge ----------------------------------------------------------------
 

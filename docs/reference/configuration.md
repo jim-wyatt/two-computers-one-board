@@ -200,7 +200,7 @@ and setting one will mostly make a script look in the wrong place.
 | `UNOQ_FSTAB` | `/etc/fstab` | The mount table `85-esp-permissions.sh` edits. Its backup is written beside it. |
 | `UNOQ_RUN_DIR` | `/run` | Where `usb-net-up.sh` keeps the DHCP client's pid file, and where provisioning notes that packages changed in this boot. |
 | `UNOQ_NET_SYSFS` | `/sys/class/net` | Where `usb-net-up.sh` looks for the gadget's network interfaces. |
-| `UNOQ_PROC` | `/proc` | Where `usb-net-up.sh` checks that a pid file names the daemon it claims to. |
+| `UNOQ_PROC` | `/proc` | Where `usb-net-up.sh` and `gadget-down.sh` check that a pid file names the daemon it claims to. |
 | `UNOQ_APT_CACHE_DIR` | `/var/cache/apt` | Where `90-cleanup.sh` looks for downloaded packages. |
 | `UNOQ_UDC_DIR` | `/sys/class/udc` | Where `usb/handover.sh` looks for a USB controller to bind to. |
 | `UNOQ_SSH_DIR` | `/etc/ssh` | Where provisioning looks for SSH host keys before switching `sshd` on. |
