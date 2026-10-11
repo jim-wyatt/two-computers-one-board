@@ -252,7 +252,7 @@ run_step "20  dev tools (root)" sudo "$PROJECT/provision/20-dev-tools.sh"
 
 run_step "u10 host tools: uv, cmake, ninja, west" user "$PROJECT/provision/user/10-host-tools.sh"
 run_step "u20 Zephyr SDK" user "$PROJECT/provision/user/20-zephyr-sdk.sh"
-run_step "u30 Zephyr workspace (~3.3 GB, slow)" user "$PROJECT/provision/user/30-zephyr-workspace.sh"
+run_step "u30 Zephyr workspace (the long download)" user "$PROJECT/provision/user/30-zephyr-workspace.sh"
 run_step "u40 python venv + unoq package" user "$PROJECT/provision/user/40-python-venv.sh"
 run_step "u50 shell env + git hook" user "$PROJECT/provision/user/50-shell-env.sh"
 
@@ -368,6 +368,9 @@ fi
   run_step "80  hardware watchdog (root)" sudo "$PROJECT/provision/80-watchdog.sh"
 [ "$WITH_ESP_LOCKDOWN" = 1 ] &&
   run_step "85  EFI partition permissions (root)" sudo "$PROJECT/provision/85-esp-permissions.sh"
+# Always, and after everything that downloads or installs: what the run
+# fetched in order to build things is not needed once they are built.
+run_step "90  disk space back (root)" sudo "$PROJECT/provision/90-cleanup.sh"
 # Last, always: it takes the USB host port down with it.
 [ "$WITH_USB_GADGET" = 1 ] &&
   run_step "60  USB gadget (root)" sudo "$PROJECT/provision/60-usb-gadget.sh"
