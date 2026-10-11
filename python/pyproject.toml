@@ -15,7 +15,8 @@ dependencies = ["pyserial", "gpiod", "smpclient"]
 unoq-cpu-bars = "unoq.cpubars:main"
 unoq-learn = "unoq.learn:main"
 
-# Install with:  uv pip install --python ~/two-computers-one-board/.venv/bin/python -e 'python[dev]'
+# Install with:  tools/install-dev-tools.sh   (it passes the lock file; a bare
+# `uv pip install -e` would take whatever versions are newest)
 # Everything below is also what tools/check.sh runs.
 [project.urls]
 Homepage = "https://jim-wyatt.github.io/two-computers-one-board/"
@@ -40,6 +41,10 @@ dev = ["pytest>=8", "pytest-cov", "mypy", "ruff", "clang-format==22.1.8"]
 # migration path; this site uses three plugins and a theme. Revisit when the
 # situation is clearer, not when the version number goes up.
 docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9.7,<10"]
+# What the board's REPL has beyond what `unoq` itself imports: the Qwiic and SPI
+# headers. provision/user/35-python-venv.sh installs these by name; they are
+# listed here so that python/requirements-lock.txt pins them with the rest.
+board = ["smbus2", "spidev"]
 
 [build-system]
 requires = ["hatchling"]

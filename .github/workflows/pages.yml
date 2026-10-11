@@ -36,6 +36,7 @@ on:
       - 'tools/build-docs.sh'
       - 'tools/mkdocs_hooks.py'
       - 'python/pyproject.toml'
+      - 'python/requirements-lock.txt'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -75,7 +76,7 @@ jobs:
       - name: Install the docs toolchain
         run: |
           uv venv .venv
-          uv pip install --python .venv/bin/python -e 'python[docs]'
+          uv pip install --python .venv/bin/python -c python/requirements-lock.txt -b python/requirements-lock.txt -e 'python[docs]'
 
       - name: Build (strict)
         # The same script the board runs, so a site that builds here builds

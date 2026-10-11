@@ -34,7 +34,7 @@ else
   fail "$PROJECT/.venv/bin/unoq-learn missing.
   Build the venv first:  bash $PROJECT/provision/user/35-python-venv.sh
   (it is a new entry point, so an existing venv needs the editable
-   install re-run:  uv pip install --python $PROJECT/.venv/bin/python -e $PROJECT/python)"
+   install re-run, which that step does)"
 fi
 
 if mountpoint -q "$MOUNT"; then

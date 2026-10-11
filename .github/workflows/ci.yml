@@ -135,7 +135,7 @@ jobs:
         # python and runs under the runner's python3.
         run: |
           uv venv .venv
-          uv pip install --python .venv/bin/python -q -e 'python[docs]'
+          uv pip install --python .venv/bin/python -q -c python/requirements-lock.txt -b python/requirements-lock.txt -e 'python[docs]'
 
       - name: Install the pinned browser
         run: |
@@ -254,7 +254,7 @@ jobs:
           # Everything a page is made from: the pages, the site's configuration
           # and its hooks and gates under tools/, the versions of mkdocs and
           # the theme, and this workflow.
-          if grep -qE '^(docs/|mkdocs\.yml|tools/|python/pyproject\.toml|\.github/workflows/ci\.yml)' <<<"$files"; then
+          if grep -qE '^(docs/|mkdocs\.yml|tools/|python/pyproject\.toml|python/requirements-lock\.txt|\.github/workflows/ci\.yml)' <<<"$files"; then
             echo "diagrams=true" >>"$GITHUB_OUTPUT"
             echo "site inputs changed - rendering the diagrams"
           else
@@ -344,7 +344,9 @@ jobs:
           # reason; the run number is the CI equivalent.
           IMAGE_VERSION: 0.0.0+${{ github.run_number }}
         run: |
-          pip3 install --quiet imgtool
+          # As an environment variable, because that is the form pip also
+          # applies inside the isolated environment it builds a package in.
+          PIP_CONSTRAINT=mcu/requirements-zephyr-lock.txt pip3 install --quiet imgtool
           # `west topdir`, not $ZEPHYR_BASE: the setup action exports that only
           # within its own steps. Asking west where the workspace is works from
           # any directory inside it.

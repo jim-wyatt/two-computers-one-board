@@ -30,16 +30,28 @@ else
 fi
 
 step "host build tools"
+ZLOCK="$PROJECT/mcu/requirements-zephyr-lock.txt"
 for tool in cmake ninja west; do
-  if uv tool list 2>/dev/null | grep -q "^$tool "; then
-    skip "$tool present: $(uv tool list 2>/dev/null | awk -v t="$tool" '$1==t {print $2}')"
+  # Present AT THE VERSION THE LOCK GIVES IT, not merely present: otherwise a
+  # board set up before a pin moved keeps the old tool for good.
+  want="$(lock_pin "$ZLOCK" "$tool")"
+  have="$(uv tool list 2>/dev/null | awk -v t="$tool" '$1==t {print $2}' | sed 's/^v//')"
+  if [ -n "$have" ] && { [ -z "$want" ] || [ "$have" = "$want" ]; }; then
+    skip "$tool present: v$have"
   else
     # What uv said is kept and shown when it fails. This line once failed in
     # two seconds with nothing but its own name, worked when run again by
     # hand, and left no way of knowing which of the network, PyPI or uv it
     # had been.
-    if out="$(uv tool install "$tool" 2>&1)"; then
-      did "$tool installed"
+    # At the version in the lock file, like every other Python package this
+    # project installs: see tools/update-constraints.sh. Asked for by version
+    # as well, because that is what makes uv replace one already installed.
+    if out="$(uv tool install -c "$ZLOCK" -b "$ZLOCK" "$tool${want:+==$want}" 2>&1)"; then
+      if [ -n "$have" ]; then
+        did "$tool brought to v$want (was v$have)"
+      else
+        did "$tool installed"
+      fi
     else
       printf '%s\n' "$out" | tail -15 >&2
       fail "uv tool install $tool - what it said is above. If it was the network, run this again."

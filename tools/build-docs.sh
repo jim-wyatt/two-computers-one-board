@@ -28,7 +28,7 @@ $MKDOCS is missing.
 
 The site needs mkdocs-material, which lives in the 'docs' extra:
 
-  uv pip install --python $VENV/bin/python -e '$PROJECT/python[dev,docs]'
+  uv pip install --python $VENV/bin/python -c $PROJECT/python/requirements-lock.txt -b $PROJECT/python/requirements-lock.txt -e '$PROJECT/python[dev,docs]'
 
 or run $PROJECT/provision/user/35-python-venv.sh again.
 EOF

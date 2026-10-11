@@ -43,6 +43,13 @@ on:
       - 'west-project-filter'
       - 'mcu/zbuild.sh'
       - 'mcu/ztest.sh'
+      # What the user-level steps install, and at which versions. A pull request
+      # that only moves a pin - Dependabot's, usually - is exactly the one that
+      # needs a fresh install on both architectures.
+      - 'python/pyproject.toml'
+      - 'python/requirements-lock.txt'
+      - 'mcu/requirements-zephyr-lock.txt'
+      - 'tools/update-constraints.sh'
       - '.github/workflows/provision.yml'
   schedule:
     # Mondays, 05:17 UTC. Off the hour, where the scheduler is less crowded.

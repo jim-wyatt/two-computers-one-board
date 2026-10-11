@@ -19,3 +19,27 @@ updates:
       interval: monthly
     commit-message:
       prefix: ci
+
+  # The two lock files (tools/update-constraints.sh). One grouped pull request
+  # a month for each, not one per package: every one of these runs the
+  # fresh-install job on two architectures, and thirty of them would be thirty
+  # runs to learn what one run says. What merges still wants a bootstrap on a
+  # board - a new version of a package is a change like any other.
+  - package-ecosystem: pip
+    directory: /python
+    schedule:
+      interval: monthly
+    groups:
+      python-lock:
+        patterns: ["*"]
+    commit-message:
+      prefix: deps
+  - package-ecosystem: pip
+    directory: /mcu
+    schedule:
+      interval: monthly
+    groups:
+      zephyr-lock:
+        patterns: ["*"]
+    commit-message:
+      prefix: deps
