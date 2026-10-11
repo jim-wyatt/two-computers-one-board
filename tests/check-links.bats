@@ -75,7 +75,7 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"2 links: 2 ok, 0 unverifiable, 0 dead"* ]]
   # The local one was answered from the checkout, not by asking GitHub.
-  ! ran_like 'github\.com/jim-wyatt'
+  refute ran_like 'github\.com/jim-wyatt'
 }
 
 @test "one dead link among live ones is still reported as dead" {

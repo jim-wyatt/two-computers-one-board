@@ -47,7 +47,7 @@ it works with no network at all.
 You need an UNO Q running the Debian image it shipped with, a USB-C cable that
 carries data, and a terminal on the board as the `arduino` user.
 [Step 0](docs/setup.md#step-0-get-a-terminal-on-the-board) gets you that
-terminal from a factory-fresh board, over the USB cable, in four commands.
+terminal from a factory-fresh board, over the USB cable, in four steps.
 Then, on the board:
 
 ```bash
@@ -62,9 +62,10 @@ cd ~/two-computers-one-board && ./bootstrap.sh
 > put them back. The stock firmware is copied aside first. Read
 > [Set up a board](docs/setup.md) before you run it.
 
-That is the whole setup. It took about 25 minutes on a stock board over home
-broadband, most of it downloading the Zephyr workspace (~2 GB) and SDK
-(~0.8 GB), and it needs about 6 GB free.
+That is the whole setup. The one timed run took about 25 minutes on a stock
+board over home broadband, and that was before the download was cut by about
+1.4 GB, so expect that or less. Most of it is fetching the Zephyr workspace
+(~2 GB) and SDK (~0.8 GB), and it needs about 6 GB free.
 Run it as yourself; it asks for `sudo` where it needs it.
 
 **If it stops, run it again.** Every step reports `changed` or `ok`, and a

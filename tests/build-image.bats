@@ -150,7 +150,7 @@ learn_active() { : >"$FLAGS/learn-active"; }
   run bash "$BUILD"
   [ "$status" -eq 0 ]
   ran "systemctl is-active --quiet unoq-learn.service"
-  ! ran_like '^systemctl (stop|start|restart) '
+  refute ran_like '^systemctl (stop|start|restart) '
   [[ "$output" != *"unoq-learn"* ]]
 }
 
@@ -185,7 +185,7 @@ learn_active() { : >"$FLAGS/learn-active"; }
   : >"$FLAGS/remount-ro-fails"
   run bash "$BUILD"
   [ "$status" -ne 0 ]
-  ! ran_like '^systemctl (stop|start) '
+  refute ran_like '^systemctl (stop|start) '
 }
 
 @test "a unoq-learn that will not start again fails the run and says how to start it" {
@@ -221,9 +221,9 @@ learn_active() { : >"$FLAGS/learn-active"; }
   # Exactly the one plain attempt, and no flag on it of any kind.
   [ "$(grep -c '^umount' "$STUB_LOG")" -eq 1 ]
   ran "umount $UNOQ_SHARE_MOUNT"
-  ! ran_like '^umount( .*)? (-[a-zA-Z]*[lf][a-zA-Z]*|--lazy|--force)( |$)'
+  refute ran_like '^umount( .*)? (-[a-zA-Z]*[lf][a-zA-Z]*|--lazy|--force)( |$)'
   # And nothing written to an image that could not be remounted.
-  ! ran_like '^mount -o loop,rw'
+  refute ran_like '^mount -o loop,rw'
   never_ran rsync
 }
 
@@ -242,7 +242,7 @@ learn_active() { : >"$FLAGS/learn-active"; }
   run bash "$BUILD"
   [ "$status" -ne 0 ]
   [[ "$output" == *"byobu-shell"* ]]
-  ! ran_like '^systemctl (stop|start) '
+  refute ran_like '^systemctl (stop|start) '
 }
 
 # --- the two branches that replace what is under the mount -------------------
@@ -299,7 +299,7 @@ needs_a_partition_node() {
   never_ran sfdisk
   never_ran losetup
   never_ran mkfs.vfat
-  ! ran_like '^umount( .*)? (-[a-zA-Z]*[lf][a-zA-Z]*|--lazy|--force)( |$)'
+  refute ran_like '^umount( .*)? (-[a-zA-Z]*[lf][a-zA-Z]*|--lazy|--force)( |$)'
 }
 
 @test "formatting a new image stops unoq-learn before the unmount, like the remount does" {
@@ -334,7 +334,7 @@ needs_a_partition_node() {
   [ "$(cat "$UNOQ_SHARE_IMG")" = "the image the board is serving" ]
   [ -f "$UNOQ_SHARE_IMG.new" ]
   [ "$(grep -cx "umount $UNOQ_SHARE_MOUNT" "$STUB_LOG")" -eq 1 ]
-  ! ran_like '^umount( .*)? (-[a-zA-Z]*[lf][a-zA-Z]*|--lazy|--force)( |$)'
+  refute ran_like '^umount( .*)? (-[a-zA-Z]*[lf][a-zA-Z]*|--lazy|--force)( |$)'
   [ "$(grep -cx 'systemctl start unoq-learn.service' "$STUB_LOG")" -eq 1 ]
 }
 

@@ -63,7 +63,7 @@ SH
 @test "a failure stops the step there, not after the next tool" {
   touch "$FLAGS/fail-cmake"
   run "$STEP"
-  ! ran "uv tool install ninja"
+  refute ran "uv tool install ninja"
 }
 
 @test "a second run installs nothing" {
@@ -71,6 +71,6 @@ SH
   : >"$STUB_LOG"
   run "$STEP"
   [ "$status" -eq 0 ]
-  ! ran_like "^uv tool install"
+  refute ran_like "^uv tool install"
   [[ "$output" == *"0 changed"* ]]
 }

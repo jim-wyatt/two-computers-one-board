@@ -109,7 +109,7 @@ bootstrap() {
   [[ "$output" == *"Nothing was written to the microcontroller"* ]]
   [[ "$output" == *"ninja: build stopped"* ]]
   # And nothing was: the flash was never started.
-  ! ran_like 'mcu/flash-all\.sh'
+  refute ran_like 'mcu/flash-all\.sh'
   [[ "$output" != *"DO NOT ASSUME"* ]]
 }
 
@@ -140,7 +140,7 @@ bootstrap() {
   : >"$FLAGS/flash-fails"
   bootstrap --skip-mcu
   [ "$status" -eq 0 ]
-  ! ran_like 'mcu/(zbuild|flash-all)\.sh'
+  refute ran_like 'mcu/(zbuild|flash-all)\.sh'
 }
 
 @test "--help is the header and the options, and not the first lines of the script" {
@@ -225,5 +225,5 @@ SH
   bootstrap
   [ "$status" -eq 1 ]
   [[ "$output" == *"sudo is required"* ]]
-  ! ran_like '^bash .*/provision/'
+  refute ran_like '^bash .*/provision/'
 }

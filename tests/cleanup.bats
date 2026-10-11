@@ -111,7 +111,7 @@ fill() {
   mkdir -p "$UV_CACHE"
   run "$CLEANUP"
   [ "$status" -eq 0 ]
-  ! ran_like "^uv cache clean"
+  refute ran_like "^uv cache clean"
 }
 
 @test "a board with no uv is not an error" {
@@ -148,7 +148,7 @@ fill() {
   UNOQ_KEEP_CACHES=1 run "$CLEANUP"
   [ "$status" -eq 0 ]
   never_ran "apt-get"
-  ! ran_like "^uv cache clean"
+  refute ran_like "^uv cache clean"
   [ -e "$UV_CACHE/blob" ]
   [ -e "$FAKE_HOME/.cache/pip/blob" ]
   [[ "$output" == *"kept"* ]]
@@ -173,8 +173,13 @@ fill() {
 @test "the workspace, the SDK and the build directories are never named for removal" {
   # In the file: the step's promise is a list of what it does not touch, and
   # the cheapest way to break it is one more rm.
-  ! grep -nE '^[^#]*\brm\b' "$CLEANUP" | grep -v 'rm -rf -- "\$PIP_CACHE"'
-  ! grep -nE '^[^#]*(zephyrproject|zephyr-sdk|/build)' "$CLEANUP"
+  # Every line that runs rm, with comments left out. There is exactly one, and
+  # it names the pip cache and nothing else.
+  run grep -E '^[^#]*\brm\b' "$CLEANUP"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | wc -l)" -eq 1 ]
+  [[ "$output" == *'rm -rf -- "$PIP_CACHE"'* ]]
+  refute grep -nE '^[^#]*(zephyrproject|zephyr-sdk|/build)' "$CLEANUP"
 }
 
 @test "it refuses to run as anyone but root" {

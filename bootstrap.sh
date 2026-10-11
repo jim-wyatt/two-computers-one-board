@@ -28,8 +28,8 @@
 #     other edits the fstab entry it boots from, so --everything leaves both out
 #
 # TIME AND SPACE: about 25 minutes on a stock board over home broadband,
-# measured once. The Zephyr workspace (~2 GB) and SDK (~0.8 GB) are most of the
-# download. Make sure you have ~6 GB free: the builds and the drive image need
+# measured once, and before the download was cut by about 1.4 GB. The Zephyr
+# workspace (~2 GB) and SDK (~0.8 GB) are most of what is left. Make sure you have ~6 GB free: the builds and the drive image need
 # room as well.
 set -uo pipefail
 

@@ -48,6 +48,7 @@ board used as a headless development machine, and each can be put back.
 | **Switches off Bluetooth and `udisks2`.** | Nothing here uses them. | `UNOQ_TIER2=0` |
 | **Installs services that run at every boot**, as root: the control lines to the microcontroller, and the status LEDs. They run copies of this checkout's scripts, kept in `/usr/local/lib/unoq/` and owned by root. | Without the first, the microcontroller looks dead after a reboot. The copies are so that changing a file in your home directory does not change what root runs. | — |
 | **Pings `1.1.1.1` about once a minute.** | It is how the status LED knows whether there is a route out. | `UNOQ_LED_PROBE_IP`, in [What you can change](reference/configuration.md) |
+| **Deletes what it downloaded in order to install**: apt's package files, and the download caches of `uv` and `pip`. Nothing that is installed, and nothing of yours. | The home partition is 8 GB, and none of it is needed again. | `UNOQ_KEEP_CACHES=1` |
 | **Adds a line to `~/.bashrc`**, a git pre-commit hook in the checkout, and VS Code machine settings if there are none. | The shell shortcuts, and settings that suit a small board. | Delete the line. |
 
 [SECURITY.md](https://github.com/jim-wyatt/two-computers-one-board/blob/main/SECURITY.md)
@@ -64,8 +65,9 @@ says what you are trusting when you run it.
   downloads about 3 GB.
 - **About 6 GB of free space** in the board's home directory. A factory-fresh
   board has about 7 GB, and the script checks.
-- **About 25 minutes**, most of which needs no attention.
-  [How long each part takes](#how-long-it-takes) is below.
+- **About 25 minutes**, most of which needs no attention. That is one timed
+  run, made before the download got smaller, so it should be an upper figure.
+  [How long each part took](#how-long-it-takes) is below.
 
 You do not need a screen, a keyboard or a network cable for the board, and you
 do not need to install anything from Arduino.
@@ -250,12 +252,16 @@ is normal.
 | Building the bootloader and flashing both | 2½ minutes |
 | `50` the demo service | 10 seconds |
 | `65` the drive image | 40 seconds |
-| **All of it** | **about 24 minutes** |
+| `90` giving disk space back | not timed: added after this run |
+| `60` the USB hand-over | not timed: it did not finish in this run |
+| **All of it, without the last two** | **about 24 minutes** |
 
-Two honest notes on those numbers. They were read by watching the board every
-fifteen seconds, so each is good to about that. And `u30` has got shorter since:
-that run downloaded about 3.4 GB for it and the same step now downloads about
-2 GB, which has not been timed on a board yet.
+Three honest notes on those numbers. They were read by watching the board
+every fifteen seconds, so each is good to about that. `u30` has got shorter
+since: that run downloaded about 3.4 GB for it and the same step now downloads
+about 2 GB, which has not been timed on a board yet. And the last step of that
+run, `60`, is where it found a fault that has since been fixed; a run of it
+from start to finish is still to be made.
 
 The two long silences are `10`, while packages upgrade, and `u30`, while Zephyr
 downloads. Neither prints much. Both are working.

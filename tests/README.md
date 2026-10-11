@@ -42,7 +42,7 @@ SH
 
 run "$PROJECT/usb/usb-route.sh" add 192.168.137.1
 [ "$status" -eq 0 ]
-! ran_like 'ip route'
+refute ran_like 'ip route'
 ```
 
 Everything else is environment variables the scripts already accept —
@@ -107,3 +107,17 @@ board nobody can reach".
 
 That last step is not optional. The suites here were each checked that way
 before being committed: break the script, watch the right test go red.
+
+5. **Write "this must not happen" as `refute`, never as `!`.**
+
+    ```bash
+    refute ran "systemctl stop adbd"      # fails the test if it ran
+    ! ran "systemctl stop adbd"           # does nothing, unless it is the last line
+    ```
+
+    A test fails when one of its lines fails, and bash does not count a line
+    negated with `!` as failing. So `! something` in the middle of a test
+    passes whatever happened. Thirty-seven assertions here were written that
+    way, and step 4 did not catch them, because a test with several
+    assertions still goes red when a *different* one of them trips.
+    `refute`, in `helpers/stub.bash`, is an ordinary command that returns 1.

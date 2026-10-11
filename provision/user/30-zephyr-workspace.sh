@@ -100,7 +100,7 @@ step "west update"
 if [ -d "$WS/modules/hal/stm32" ]; then
   skip "modules already checked out (delete $WS/modules to force a refresh)"
 else
-  echo "  west update (downloads ~1.3 GB of modules - this is the slow step)..."
+  echo "  west update (the modules: about 1.3 GB on disk - this is the slow step)..."
   (cd "$WS" && "$WS/.venv/bin/west" update --narrow -o=--depth=1) >/dev/null 2>&1 ||
     fail "west update failed"
   did "modules checked out"
