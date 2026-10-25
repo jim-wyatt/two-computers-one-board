@@ -226,7 +226,12 @@ else
   # second one is not a free fallback but the loss of the drive.
   mkdir -p "$G/configs/c.1/strings/0x409"
   echo "$CFG_NAME" >"$G/configs/c.1/strings/0x409/configuration"
-  echo 250 >"$G/configs/c.1/MaxPower" # mA, i.e. 500mA
+  # Milliamps, as configfs takes them. The kernel halves the number itself when
+  # it encodes bMaxPower (in 2 mA units) into the descriptor. This was 250 with
+  # a comment that read it as the encoded value, so the board asked the host
+  # for 250 mA - on a board whose main failure is browning out during a bind,
+  # and a host that budgets power per port is entitled to hold it to that.
+  echo 500 >"$G/configs/c.1/MaxPower"
   ln -sf "$G/functions/$NET_FN" "$G/configs/c.1/"
   ln -sf "$G/functions/mass_storage.0" "$G/configs/c.1/"
 
