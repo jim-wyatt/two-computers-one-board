@@ -165,4 +165,28 @@ ZTEST(status_leds, test_counter_wrap_does_not_cut_a_blink_short)
 	}
 }
 
+ZTEST(status_leds, test_led4_is_not_green_before_anything_has_arrived)
+{
+	/* Freshness used to be `now - last < STALE` with last starting at 0, so
+	 * for the first four seconds after a reset, with nothing received, LED 4
+	 * read green. The checks at 1, 2 and 3 s are the ones that lied. */
+	for (int64_t now = 0; now <= 2 * STATUS_LINK_STALE_MS; now += 1000) {
+		zassert_false(status_link_fresh(false, now, 0),
+			      "green at %lld ms with nothing heard", (long long)now);
+	}
+}
+
+ZTEST(status_leds, test_led4_follows_the_last_message)
+{
+	const int64_t at = 10000;
+
+	zassert_true(status_link_fresh(true, at, at), "just heard is fresh");
+	zassert_true(status_link_fresh(true, at + STATUS_LINK_STALE_MS - 1, at),
+		     "fresh until the timeout");
+	zassert_false(status_link_fresh(true, at + STATUS_LINK_STALE_MS, at),
+		      "stale at the timeout");
+	/* A message in the first instant after reset is still a message. */
+	zassert_true(status_link_fresh(true, 0, 0), "heard at 0 ms is fresh at 0 ms");
+}
+
 ZTEST_SUITE(status_leds, NULL, NULL, NULL, NULL, NULL);
