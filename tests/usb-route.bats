@@ -269,3 +269,14 @@ SH
     never_ran ip
   done
 }
+
+@test "an address-shaped string that is not an address is refused too" {
+  # The pattern was [0-9]*.[0-9]*.[0-9]*.[0-9]*, which every one of these
+  # matches. They come off the wire and go to ip(8) as root (#115).
+  for bad in 999.1.1.1 1.2.3.4.5 256.0.0.1 010.0.0.1 1.2.3.4x; do
+    : >"$STUB_LOG"
+    lease add "$bad"
+    [ "$status" -eq 0 ]
+    never_ran ip
+  done
+}

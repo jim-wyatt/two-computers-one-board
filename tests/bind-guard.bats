@@ -217,3 +217,43 @@ seed_previous_boots() {
   [ "$status" -eq 1 ]
   never_ran nmcli
 }
+
+# --- a count it cannot write -------------------------------------------------
+#
+# The write before the bind went to /dev/null if it failed, and the bind went
+# ahead. Repeated brownouts are a good way to get a filesystem remounted
+# read-only, and then the count never advanced, the guard never tripped, and
+# the reboot loop it exists to stop ran for ever (#115).
+
+@test "a bind whose attempt cannot be recorded is refused" {
+  [ "$(id -u)" != 0 ] || skip "root can write to a read-only directory"
+  mkdir -p "$UNOQ_STATE_DIR"
+  chmod 555 "$UNOQ_STATE_DIR"
+  run "$GUARD" check
+  chmod 755 "$UNOQ_STATE_DIR"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"REFUSING to bind: could not record this attempt"* ]]
+}
+
+@test "the count is replaced whole, never left half written" {
+  seed_previous_boots 1
+  run "$GUARD" check
+  [ "$status" -eq 0 ]
+  [ "$(cat "$COUNTER")" = "$BOOT_ID 2" ]
+  [ ! -e "$COUNTER.tmp" ]
+}
+
+@test "a count that cannot be written turns wifi back on, as a trip does" {
+  [ "$(id -u)" != 0 ] || skip "root can write to a read-only directory"
+  export UNOQ_GUARD_WIFI_RESCUE=1
+  stub_body nmcli <<'SH'
+case "$*" in "radio wifi") echo disabled ;; esac
+exit 0
+SH
+  mkdir -p "$UNOQ_STATE_DIR"
+  chmod 555 "$UNOQ_STATE_DIR"
+  run "$GUARD" check
+  chmod 755 "$UNOQ_STATE_DIR"
+  [ "$status" -ne 0 ]
+  ran "nmcli radio wifi on"
+}

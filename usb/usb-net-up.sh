@@ -81,68 +81,9 @@ die() {
 
 [ "$(id -u)" = 0 ] || die "must run as root"
 
-PROC="${UNOQ_PROC:-/proc}"
-
-# pid_is <pidfile> <acceptable comm>... - is THAT daemon running, not just
-# something with its number?
-#
-# This used to be `kill -0 "$(cat pidfile)"`, which asks whether any process
-# has the pid. A daemon that dies without tidying up leaves its pid file
-# behind, and pids are reused: with a stale file naming a pid that now belongs
-# to something else, this script decided udhcpc was already running and did not
-# start it, and the link sat there with no address. (/run is emptied at boot,
-# so it takes a daemon dying, not a reboot. Rare, and silent when it happens.) The other use was worse - it KILLED whatever
-# held the pid in dnsmasq's old file. Same check as usb/wifi.sh and
-# usb/status.sh, for the same reason.
-pid_is() {
-  local pidfile="$1" pid comm want
-  shift
-  pid="$(cat "$pidfile" 2>/dev/null)"
-  case "$pid" in '' | *[!0-9]*) return 1 ;; esac
-  comm="$(cat "$PROC/$pid/comm" 2>/dev/null)" || return 1
-  for want in "$@"; do
-    [ "$comm" = "$want" ] && return 0
-  done
-  return 1
-}
-
-# is_udhcpc <pidfile> - is the process in that file the DHCP client?
-#
-# comm alone cannot say. udhcpc is a BusyBox applet: started as
-# `busybox udhcpc`, the kernel calls the process "busybox", and so it calls
-# every other applet started that way. So the command line is read as well, and
-# one of its words has to be udhcpc. (Started through a `udhcpc` symlink, comm
-# is udhcpc and that is enough.)
-is_udhcpc() {
-  local pid arg
-  pid_is "$1" udhcpc && return 0
-  pid_is "$1" busybox || return 1
-  pid="$(cat "$1" 2>/dev/null)"
-  while IFS= read -r -d '' arg; do
-    case "$arg" in udhcpc | */udhcpc) return 0 ;; esac
-  done <"$PROC/$pid/cmdline" 2>/dev/null
-  return 1
-}
-
-# is_ipv4 <string> - four numbers, each 0 to 255, and nothing else.
-# What it guards is a command line: the last address is read from a file and
-# handed to udhcpc as --request=<it>. "Digits and dots" let through
-# 999.999.999.999, 1.2.3.4.5 and "...", none of which is an address, and any of
-# which makes udhcpc refuse to start on a link that would otherwise have come
-# up without one.
-is_ipv4() {
-  local o
-  local -a parts
-  case "$1" in '' | *[!0-9.]* | .* | *. | *..*) return 1 ;; esac
-  IFS=. read -r -a parts <<<"$1"
-  [ "${#parts[@]}" -eq 4 ] || return 1
-  for o in "${parts[@]}"; do
-    # No leading zeros: inet_aton reads 010 as octal, so "010.0.0.1" is a
-    # different address to different programs.
-    case "$o" in 0 | [1-9] | [1-9][0-9] | [1-9][0-9][0-9]) ;; *) return 1 ;; esac
-    [ "$o" -le 255 ] || return 1
-  done
-}
+# pid_is, is_udhcpc and is_ipv4 are shared by the scripts in usb/.
+# shellcheck source=usb/common.sh
+. "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 # --- migration: no dnsmasq on this link any more ----------------------------
 #

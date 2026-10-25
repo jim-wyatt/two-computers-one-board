@@ -104,6 +104,17 @@ modprobe libcomposite 2>/dev/null
 
 # --- build -----------------------------------------------------------------
 
+# Checked before anything is created. This used to be checked after
+# `mkdir "$G"`, so a typo in UNOQ_GADGET_PRIMARY died with a gadget directory
+# half built - which every later run then called "already defined" and left
+# alone, until somebody knew to run gadget-down.sh --purge.
+PRIMARY="${UNOQ_GADGET_PRIMARY:-ncm}"
+case "$PRIMARY" in
+  ncm) NET_FN=ncm.usb0 CFG_NAME="NCM + fileshare" ;;
+  rndis) NET_FN=rndis.usb0 CFG_NAME="RNDIS + fileshare" ;;
+  *) die "UNOQ_GADGET_PRIMARY must be ncm or rndis, not '$PRIMARY'" ;;
+esac
+
 if [ -d "$G" ]; then
   log "gadget already defined at $G"
   # Say so when UNOQ_GADGET_PRIMARY asks for something the built gadget is not.
@@ -113,13 +124,11 @@ if [ -d "$G" ]; then
   # like it should switch NCM<->RNDIS and does absolutely nothing. Silently
   # ignoring the one setting somebody reaches for while troubleshooting a host
   # that will not bind is the worst possible time to be quiet about it.
-  want_fn="ncm.usb0"
-  [ "${UNOQ_GADGET_PRIMARY:-ncm}" = rndis ] && want_fn="rndis.usb0"
-  if [ ! -d "$G/functions/$want_fn" ]; then
-    log "WARNING: this gadget has no $want_fn, and an existing definition is"
+  if [ ! -d "$G/functions/$NET_FN" ]; then
+    log "WARNING: this gadget has no $NET_FN, and an existing definition is"
     log "  never rebuilt. To actually switch, purge it first:"
     log "    sudo $(dirname "$0")/gadget-down.sh --purge"
-    log "    sudo UNOQ_GADGET_PRIMARY=${UNOQ_GADGET_PRIMARY:-ncm} $0"
+    log "    sudo UNOQ_GADGET_PRIMARY=$PRIMARY $0"
   fi
 else
   mkdir -p "$G" || die "could not create $G"
@@ -184,12 +193,7 @@ else
   #
   # Set UNOQ_GADGET_PRIMARY=rndis for a host with no NCM driver: a Windows
   # older than 1903, or a newer one where NCM will not attach.
-  PRIMARY="${UNOQ_GADGET_PRIMARY:-ncm}"
-  case "$PRIMARY" in
-    ncm) NET_FN=ncm.usb0 CFG_NAME="NCM + fileshare" ;;
-    rndis) NET_FN=rndis.usb0 CFG_NAME="RNDIS + fileshare" ;;
-    *) die "UNOQ_GADGET_PRIMARY must be ncm or rndis, not '$PRIMARY'" ;;
-  esac
+  # (PRIMARY, NET_FN and CFG_NAME are set, and checked, before the build.)
 
   # --- functions ---
   mkdir -p "$G/functions/$NET_FN"

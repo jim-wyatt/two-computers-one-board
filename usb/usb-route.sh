@@ -53,7 +53,8 @@
 # anywhere near USB.
 #
 # Higher metric = lower priority, so 700 loses to wifi's 600 and to ethernet's
-# 100, while still beating the 1024 the kernel hands an unconfigured route. If
+# 100. It also loses to a default route added with no metric at all: for IPv4
+# that is metric 0, the best there is (1024 is IPv6's default, not IPv4's). If
 # you would rather it never touched the default route at all, the escape hatch
 # is UNOQ_USB_DEFAULT_ROUTE=0.
 #
@@ -98,12 +99,12 @@ case "$ACTION" in
   *) exit 0 ;;
 esac
 
-# An address is required, and it must look like one - this runs as root with a
-# value that came off the wire, so it goes nowhere near a shell unquoted.
-case "$HOST_IP" in
-  [0-9]*.[0-9]*.[0-9]*.[0-9]*) ;;
-  *) exit 0 ;;
-esac
+# An address is required, and it must be one - this runs as root with a
+# value that came off the wire. The pattern here was [0-9]*.[0-9]*.[0-9]*.[0-9]*,
+# which 999.1.1.1 and 1.2.3.4.5.6 both match.
+# shellcheck source=usb/common.sh
+. "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+is_ipv4 "$HOST_IP" || exit 0
 
 # Only act while the bridge is actually there; on shutdown it may already be
 # gone and every ip(8) call would just print noise into the journal.

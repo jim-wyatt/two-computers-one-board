@@ -19,7 +19,6 @@ G="${UNOQ_GADGET_DIR:-/sys/kernel/config/usb_gadget/unoq}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BRIDGE="${UNOQ_USB_BRIDGE:-br-usb}"
 RUN_DIR="${UNOQ_RUN_DIR:-/run}"
-PROC="${UNOQ_PROC:-/proc}"
 UDHCPC_PID="$RUN_DIR/unoq-usb-udhcpc.pid"
 DNSMASQ_PID="$RUN_DIR/unoq-usb-dnsmasq.pid"
 PURGE=0
@@ -27,38 +26,9 @@ PURGE=0
 
 log() { echo "unoq-gadget: $*"; }
 
-# pid_is <pidfile> <acceptable comm>... - is THAT daemon running, not just
-# something with its number?
-#
-# This script kills what the pid files name, as root. It used to ask
-# `kill -0 "$(cat pidfile)"` first, which only asks whether any process has the
-# number: with a stale file, whatever had been given that pid since was killed
-# in the daemon's place. Same check as usb-net-up.sh, wifi.sh and status.sh.
-pid_is() {
-  local pidfile="$1" pid comm want
-  shift
-  pid="$(cat "$pidfile" 2>/dev/null)"
-  case "$pid" in '' | *[!0-9]*) return 1 ;; esac
-  comm="$(cat "$PROC/$pid/comm" 2>/dev/null)" || return 1
-  for want in "$@"; do
-    [ "$comm" = "$want" ] && return 0
-  done
-  return 1
-}
-
-# is_udhcpc <pidfile> - the DHCP client, and not another BusyBox applet: every
-# applet started as `busybox <name>` is called "busybox" by the kernel, so the
-# command line has to have udhcpc as one of its words.
-is_udhcpc() {
-  local pid arg
-  pid_is "$1" udhcpc && return 0
-  pid_is "$1" busybox || return 1
-  pid="$(cat "$1" 2>/dev/null)"
-  while IFS= read -r -d '' arg; do
-    case "$arg" in udhcpc | */udhcpc) return 0 ;; esac
-  done <"$PROC/$pid/cmdline" 2>/dev/null
-  return 1
-}
+# pid_is, is_udhcpc and is_ipv4 are shared by the scripts in usb/.
+# shellcheck source=usb/common.sh
+. "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 [ "$(id -u)" = 0 ] || {
   echo "must run as root" >&2

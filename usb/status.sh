@@ -93,21 +93,10 @@ for i in /sys/class/net/*/master; do
 done
 val "bridge ports" "${ports# }"
 # Liveness from /proc, not `kill -0`: this script is meant to run without root,
-# and kill -0 against a root-owned daemon fails with EPERM for a normal user -
-# it would report every one of these as stopped. The comm check also stops a
-# stale pidfile with a recycled number reading as a running daemon.
-pid_is() {
-  local pid comm want
-  pid="$(cat "$1" 2>/dev/null)"
-  shift
-  case "$pid" in '' | *[!0-9]*) return 1 ;; esac
-  comm="$(cat "/proc/$pid/comm" 2>/dev/null)" || return 1
-  for want in "$@"; do
-    [ "$comm" = "$want" ] && return 0
-  done
-  return 1
-}
-if pid_is /run/unoq-usb-udhcpc.pid busybox udhcpc; then
+# and kill -0 against a root-owned daemon fails with EPERM for a normal user.
+# shellcheck source=usb/common.sh
+. "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+if is_udhcpc /run/unoq-usb-udhcpc.pid; then
   val "dhcp" "udhcpc is asking the host for an address"
   val "leased address" "$(awk '{print $1}' /run/unoq-usb-dhcp.state 2>/dev/null)"
   val "gateway" "$(awk '{print $2}' /run/unoq-usb-dhcp.state 2>/dev/null)"

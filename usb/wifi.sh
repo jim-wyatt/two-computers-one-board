@@ -42,29 +42,12 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BRIDGE="${UNOQ_USB_BRIDGE:-br-usb}"
 METRIC="${UNOQ_USB_ROUTE_METRIC:-700}"
-UDHCPC_PID=/run/unoq-usb-udhcpc.pid
+UDHCPC_PID="${UNOQ_RUN_DIR:-/run}/unoq-usb-udhcpc.pid"
 G="${UNOQ_GADGET_DIR:-/sys/kernel/config/usb_gadget/unoq}"
 
-# pid_is <pidfile> <acceptable comm>... - is that daemon actually running?
-#
-# /proc rather than `kill -0`, because kill -0 against a root-owned process
-# fails with EPERM for an ordinary user: it would report a perfectly healthy
-# daemon as stopped in exactly the read-only paths that are meant to need no
-# privileges. The comm check is what makes a stale pidfile safe - a recycled pid
-# is not far-fetched on a board that reboots as often as this one - and it is
-# also why this does not go looking for command lines with pgrep, which matched
-# udhcpc's own --interface=br-usb when it went hunting for dnsmasq's.
-pid_is() {
-  local pidfile="$1" pid comm want
-  shift
-  pid="$(cat "$pidfile" 2>/dev/null)"
-  case "$pid" in '' | *[!0-9]*) return 1 ;; esac
-  comm="$(cat "/proc/$pid/comm" 2>/dev/null)" || return 1
-  for want in "$@"; do
-    [ "$comm" = "$want" ] && return 0
-  done
-  return 1
-}
+# pid_is, is_udhcpc and is_ipv4 are shared by the scripts in usb/.
+# shellcheck source=usb/common.sh
+. "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 FORCE=0
 ACTION=""
@@ -242,7 +225,7 @@ reconnect_address() {
 }
 
 pid_mode() {
-  if pid_is "$UDHCPC_PID" busybox udhcpc; then
+  if is_udhcpc "$UDHCPC_PID"; then
     echo "udhcpc - asking the host for an address"
   else
     echo "<udhcpc not running>"
@@ -281,7 +264,12 @@ case "$ACTION" in
 
     # NM has just rewritten resolv.conf without our nameservers. A renew makes
     # usb-dhcp.sh reassert address, route and DNS now rather than in days.
-    if pid_is "$UDHCPC_PID" busybox udhcpc; then
+    #
+    # is_udhcpc, not `pid_is ... busybox udhcpc`: every applet started as
+    # `busybox <name>` is called busybox, so a stale pid file whose pid had
+    # since gone to another applet got SIGUSR1 - from root - and for most
+    # applets that is the default action, which ends them.
+    if is_udhcpc "$UDHCPC_PID"; then
       kill -USR1 "$(cat "$UDHCPC_PID")" 2>/dev/null &&
         say "asked udhcpc to renew, so DNS comes back on this link"
       sleep 2
