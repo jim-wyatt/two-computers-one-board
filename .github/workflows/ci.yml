@@ -41,6 +41,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# The uv release setup-uv installs. The same number as UV_VERSION in
+# provision/user/20-host-tools.sh, which is what the board runs, and
+# tools/check-zephyr-pin.sh fails if the two disagree.
+env:
+  UV_VERSION: "0.13.5"
+
 jobs:
   checks:
     # A named release, not ubuntu-latest. That label moves to Ubuntu 26 on
@@ -61,6 +67,7 @@ jobs:
         # and the whole workflow fails to start.
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
 
       - name: Set up Python
@@ -125,6 +132,7 @@ jobs:
         # An exact release, pinned by commit, for the reason given in `checks`.
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
 
       - name: Set up Python

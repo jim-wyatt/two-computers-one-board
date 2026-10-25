@@ -122,7 +122,7 @@ that silently does nothing is worse than no gate.
 | | format | `shfmt -i 2 -ci` | every tracked `*.sh` |
 | | behavior | `bats` | `tests/*.bats` — see [the suite's own guide](../../tests/README.md) |
 | | units | `tools/check-units.sh` | systemd accepts every unit file and udev rule as provisioning would install them, and everything they start exists — for a root unit, in the set of scripts that is copied for root |
-| `c` | version pin | `tools/check-zephyr-pin.sh` | the board and CI build the same Zephyr |
+| `c` | version pin | `tools/check-zephyr-pin.sh` | the board and CI build the same Zephyr, and install the same uv |
 | | lock files | `tools/check-constraints.sh` | every Python package the project names is pinned in a lock file, and the Zephyr lock matches the pinned Zephyr |
 | | format | `clang-format` | `mcu/**/*.[ch]`, in Zephyr's own style |
 | `docs` | build | `mkdocs --strict` | every internal link and anchor resolves |

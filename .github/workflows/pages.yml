@@ -46,6 +46,12 @@ permissions:
   contents: read
 
 
+# The uv release setup-uv installs. The same number as UV_VERSION in
+# provision/user/20-host-tools.sh, which is what the board runs, and
+# tools/check-zephyr-pin.sh fails if the two disagree.
+env:
+  UV_VERSION: "0.13.5"
+
 jobs:
   build:
     # A newer commit makes an unfinished build pointless, so it is canceled.
@@ -69,6 +75,7 @@ jobs:
         # and the whole workflow fails to start.
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
 
       - name: Set up Python

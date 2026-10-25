@@ -1,7 +1,8 @@
 #!/bin/bash
 # Copyright (c) 2026 Jim Wyatt
 # SPDX-License-Identifier: MIT
-# The Zephyr version is written down twice. Fail if the two disagree.
+# The Zephyr version is written down twice, and so is uv's. Fail if either
+# pair disagrees.
 #
 #   tools/check-zephyr-pin.sh
 #
@@ -99,3 +100,37 @@ done
 [ "$fail" = 0 ] || exit 1
 
 echo "module filter shared from west-project-filter by the board and CI"
+
+# --- uv ----------------------------------------------------------------------
+#
+# Not Zephyr, and the same shape of problem: the board installs uv with
+# provision/user/20-host-tools.sh, CI with setup-uv, and uv is what resolves
+# every lock file here. Two uv releases resolve differently, so the two must be
+# the same release. Each workflow that uses setup-uv says which in its env.
+HOST_TOOLS="$PROJECT/provision/user/20-host-tools.sh"
+# UV_VERSION="${UV_VERSION:-0.13.5}"
+uv_board="$(sed -n 's/^UV_VERSION=.*:-\([0-9][0-9.]*\)}.*/\1/p' "$HOST_TOOLS" | head -1)"
+if [ -z "$uv_board" ]; then
+  echo "could not read UV_VERSION from $HOST_TOOLS" >&2
+  exit 1
+fi
+fail=0
+for wf in "$PROJECT"/.github/workflows/*.yml; do
+  grep -q 'astral-sh/setup-uv@' "$wf" || continue
+  #   UV_VERSION: "0.13.5"
+  uv_ci="$(sed -n 's/^[[:space:]]*UV_VERSION:[[:space:]]*"\{0,1\}\([0-9][0-9.]*\)"\{0,1\}.*/\1/p' "$wf" | head -1)"
+  # Every setup-uv step must be told; one without `version:` takes the latest.
+  uses="$(grep -c 'astral-sh/setup-uv@' "$wf")"
+  told="$(grep -cE '^[[:space:]]*version:[[:space:]]*\$\{\{[[:space:]]*env\.UV_VERSION[[:space:]]*\}\}' "$wf")"
+  if [ "$uv_ci" != "$uv_board" ]; then
+    echo "${wf#"$PROJECT"/} sets UV_VERSION ${uv_ci:-(not at all)}; the board installs $uv_board ($HOST_TOOLS)" >&2
+    fail=1
+  fi
+  if [ "$told" -lt "$uses" ]; then
+    echo "${wf#"$PROJECT"/}: $uses setup-uv step(s), $told given version: \${{ env.UV_VERSION }} - the rest install the latest uv" >&2
+    fail=1
+  fi
+done
+[ "$fail" = 0 ] || exit 1
+
+echo "uv pinned at $uv_board on the board and in every workflow that installs it"
