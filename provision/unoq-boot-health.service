@@ -5,14 +5,24 @@ Description=Mark a kernel on trial good once the board is up and SSH answers
 Documentation=file:/home/arduino/two-computers-one-board/provision/82-boot-counting.sh
 
 # Part of systemd-boot's boot counting (see 82-boot-counting.sh). A boot entry
-# installed with a try counter (...+3.conf) is good only once
-# boot-complete.target is reached; systemd-bless-boot then drops the counter.
-# This is the check boot-complete.target waits for, and the only one.
+# installed with a try counter (...+3.conf) is marked good by
+# systemd-bless-boot.service, and this is what that waits for.
 #
-# Only on a counted boot. boot-complete.target is pulled in by
-# systemd-bless-boot.service, which its generator adds only when systemd-boot
-# reports the entry has a counter. On an ordinary boot this unit never runs.
-Before=boot-complete.target
+# NOT boot-complete.target, which is where systemd's documentation puts a check
+# like this. On this board boot-complete.target is also what qbootctl.service
+# waits for before it marks the Qualcomm boot slot (boot_a/boot_b) successful,
+# and it is pulled in on every boot. A check there would gate the FIRMWARE
+# slot: a boot without SSH would leave the slot unmarked, and enough of those
+# make the Qualcomm boot chain fall back to the other slot - the layer of
+# issue #93 that is to be looked at and never touched. So this gates only the
+# blessing of the kernel's entry, and boot-complete.target, and qbootctl with
+# it, are exactly as the stock image has them.
+#
+# Only on a counted boot. systemd-boot sets LoaderBootCountPath when the entry
+# it booted has a counter; without it the condition fails, which systemd
+# treats as nothing to do rather than as a failure.
+ConditionPathExists=/sys/firmware/efi/efivars/LoaderBootCountPath-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f
+Before=systemd-bless-boot.service
 After=multi-user.target ssh.service
 
 [Service]
@@ -30,4 +40,4 @@ ExecStart=/bin/sleep 60
 ExecStart=/usr/bin/systemctl is-active --quiet ssh.service
 
 [Install]
-RequiredBy=boot-complete.target
+RequiredBy=systemd-bless-boot.service

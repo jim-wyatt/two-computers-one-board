@@ -22,9 +22,19 @@
 #      attempt: +2-1, +1-2, +0-3. An entry at +0 is "bad", sorted below every
 #      good one, and the previous kernel boots instead - with nobody at the
 #      board.
-#   3. unoq-boot-health.service is what boot-complete.target waits for: the
+#   3. unoq-boot-health.service is what systemd-bless-boot waits for: the
 #      boot finished and sshd is up, a minute in. When it passes,
 #      systemd-bless-boot drops the counter and the entry is an ordinary one.
+#
+# NOT boot-complete.target, where systemd's own documentation hangs such a
+# check. On this board qbootctl.service also waits for that target, to mark
+# the Qualcomm boot slot (boot_a/boot_b) successful, and it is pulled in on
+# every boot. The first version of this hung the check there, and found that
+# out on the board before any reboot: a boot without SSH would have left the
+# FIRMWARE slot unmarked as well as the kernel, and enough of those make the
+# Qualcomm boot chain fall back to its other slot. The check gates the kernel
+# entry's blessing and nothing else; boot-complete.target and qbootctl are as
+# the stock image has them.
 #
 # The hardware watchdog (80-watchdog.sh, --with-watchdog) is what turns a
 # kernel that hangs rather than panics into a counted attempt. Without it a
@@ -76,14 +86,17 @@ esac
 
 # REVERT: rm /etc/kernel/tries
 step "tries for new kernels"
-echo "$TRIES" | write_file 0644 "$KERNEL_CONF/tries" || true
+# A here-string, not `echo |`: a pipe runs write_file in a subshell, and the
+# changed/ok it counts would be lost from the summary.
+write_file 0644 "$KERNEL_CONF/tries" <<<"$TRIES" || true
 
 # REVERT: systemctl disable unoq-boot-health.service && rm /etc/systemd/system/unoq-boot-health.service
 step "health check"
 install_unit "$PROJECT/provision/unoq-boot-health.service"
-# Enabled, not started. It is wired to boot-complete.target, which is only
-# pulled in on a counted boot; starting it now would sleep a minute and prove
-# nothing about any kernel.
+# Enabled, not started. It is wired to systemd-bless-boot.service, which is
+# only pulled in on a counted boot, and it does nothing on any other boot (its
+# condition is the variable systemd-boot sets on one). Starting it now would
+# sleep a minute and prove nothing about any kernel.
 if systemctl is-enabled --quiet unoq-boot-health.service 2>/dev/null; then
   skip "unoq-boot-health.service already enabled"
 else

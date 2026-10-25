@@ -56,7 +56,7 @@ UNIT() { echo "$UNOQ_UNIT_DIR/unoq-boot-health.service"; }
 }
 
 @test "the health check is installed and enabled, and not started" {
-  # It is wired to boot-complete.target, which only a counted boot pulls in.
+  # It is wired to systemd-bless-boot, which only a counted boot pulls in.
   # Started now it would sleep a minute and prove nothing about any kernel.
   run "$STEP"
   [ "$status" -eq 0 ]
@@ -67,8 +67,9 @@ UNIT() { echo "$UNOQ_UNIT_DIR/unoq-boot-health.service"; }
 
 @test "the health check asks for a finished boot and sshd, and nothing else" {
   run "$STEP"
-  grep -qx "Before=boot-complete.target" "$(UNIT)"
-  grep -qx "RequiredBy=boot-complete.target" "$(UNIT)"
+  grep -qx "Before=systemd-bless-boot.service" "$(UNIT)"
+  grep -qx "RequiredBy=systemd-bless-boot.service" "$(UNIT)"
+  grep -qx "ConditionPathExists=/sys/firmware/efi/efivars/LoaderBootCountPath-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f" "$(UNIT)"
   grep -qx "After=multi-user.target ssh.service" "$(UNIT)"
   grep -qx "ExecStart=/usr/bin/systemctl is-active --quiet ssh.service" "$(UNIT)"
   # Not the network, not the microcontroller: a board with no cable, or a
@@ -104,4 +105,19 @@ UNIT() { echo "$UNOQ_UNIT_DIR/unoq-boot-health.service"; }
     [ "$status" -ne 0 ]
     [ ! -e "$UNOQ_KERNEL_CONF_DIR/tries" ]
   done
+}
+
+@test "the check never stands between the board and its Qualcomm boot slot" {
+  # qbootctl.service waits for boot-complete.target before it marks boot_a or
+  # boot_b successful, and the target is pulled in on every boot. The first
+  # version of this unit hung off it, so a boot without SSH would have left
+  # the firmware slot unmarked too. Found on the board, before any reboot.
+  run "$STEP"
+  refute grep -qE "^[^#]*boot-complete\.target" "$(UNIT)"
+}
+
+@test "the summary counts every change" {
+  run "$STEP"
+  [[ "$output" == *"changed  wrote $UNOQ_KERNEL_CONF_DIR/tries"* ]]
+  refute grep -q "^0 changed" <<<"$(tail -1 <<<"$output")"
 }
