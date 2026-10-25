@@ -10,6 +10,7 @@
 #include <zephyr/dfu/mcuboot.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
+#include <zephyr/sys/atomic.h>
 
 /* Node labels rather than the led0/led1 aliases: the aliases cover only two of
  * the six channels (led3_green and led3_red), and color is the whole point.
@@ -36,7 +37,21 @@ enum {
 static bool ready;
 static bool faulted;
 static bool confirmed_seen;
-static int64_t last_seen_ms;
+
+/* How the shell thread tells the work queue something arrived.
+ *
+ * It was an int64_t timestamp, written by the shell thread and read by the
+ * work queue. On a Cortex-M33 that is two 32-bit accesses, so a read could
+ * land between them and see half of each. Now the shell only bumps a counter,
+ * which is one atomic word; the work queue notes WHEN it saw the counter move,
+ * and that time is never touched by anything else. It costs up to a second of
+ * resolution on a four-second timeout, which the once-a-second poll already
+ * had.
+ */
+static atomic_t link_msgs;
+static atomic_val_t link_msgs_seen;
+static bool link_ever;
+static int64_t link_last_ms;
 
 /* What each LED is showing, and the beat it is shown on. Dark until told
  * otherwise - STATUS_OFF is zero.
@@ -107,9 +122,15 @@ static void on_tick(struct k_work *work)
 
 	tick++;
 	if (ready && (tick % STATUS_TICKS_PER_CHECK) == 0) {
-		bool fresh = (k_uptime_get() - last_seen_ms) < STATUS_LINK_STALE_MS;
+		int64_t now = k_uptime_get();
+		atomic_val_t msgs = atomic_get(&link_msgs);
 
-		look4 = status_led4_look(fresh);
+		if (msgs != link_msgs_seen) {
+			link_msgs_seen = msgs;
+			link_ever = true;
+			link_last_ms = now;
+		}
+		look4 = status_led4_look(status_link_fresh(link_ever, now, link_last_ms));
 
 		/* Re-read the image state rather than trusting the value taken
 		 * at boot.
@@ -154,7 +175,6 @@ void status_leds_init(void)
 	 * would be an optimistic lie for the first four seconds. */
 	look4 = status_led4_look(false);
 	show(led4, look4);
-	last_seen_ms = 0;
 	(void)k_work_reschedule(&tick_work, K_MSEC(STATUS_TICK_MS));
 }
 
@@ -165,7 +185,7 @@ bool status_leds_present(void)
 
 void status_leds_link_seen(void)
 {
-	last_seen_ms = k_uptime_get();
+	(void)atomic_inc(&link_msgs);
 }
 
 void status_leds_set_image_confirmed(bool confirmed)

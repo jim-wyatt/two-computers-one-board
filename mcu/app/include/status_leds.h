@@ -149,6 +149,19 @@ static inline struct status_look status_led3_look(bool faulted, bool confirmed)
 	return (struct status_look){STATUS_GREEN, STATUS_STEADY};
 }
 
+/** LED 4's question: has the MPU been heard from, recently?
+ *
+ * `ever` is the half that was missing. Freshness was `now - last < STALE` with
+ * `last` starting at 0, which is true for the first four seconds after a reset
+ * with nothing received at all - so LED 4 went steady green on a board nobody
+ * was talking to, and only then turned red. A link that has never carried a
+ * byte is not fresh at any age.
+ */
+static inline bool status_link_fresh(bool ever, int64_t now_ms, int64_t last_ms)
+{
+	return ever && (now_ms - last_ms) < STATUS_LINK_STALE_MS;
+}
+
 /** LED 4. Two states, so two rhythms and no slow blink: silence is not a
  *  degraded link, it is no link.
  */
