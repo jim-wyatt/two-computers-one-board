@@ -159,6 +159,7 @@ command line for one run, for example `BUILD_DIR=/tmp/b zbuild`.
 | `ZEPHYR_WORKSPACE` | `~/zephyrproject` | `bootstrap.sh`, `provision/user/30-zephyr-workspace.sh`, `mcu/zbuild.sh`, `mcu/flash.sh`, `mcu/flash-all.sh`, `mcu/ztest.sh`, `tools/update-constraints.sh` | Where the west workspace is. If you move it, set this for every one of those scripts. |
 | `ZEPHYR_SDK` | `~/zephyr-sdk-1.0.1` | `mcu/zbuild.sh`, `mcu/flash-all.sh`, `mcu/ztest.sh` | Where the Zephyr SDK (the cross-compiler) is installed. |
 | `ZEPHYR_SDK_VERSION` | `1.0.1` | `provision/user/25-zephyr-sdk.sh` | Which SDK release that step downloads, into `~/zephyr-sdk-<version>`. A pin: see the note below. |
+| `UV_VERSION` | `0.13.5` | `provision/user/20-host-tools.sh` | Which uv release that step installs, or brings an existing uv to. A pin: see the note below. |
 | `ZEPHYR_VERSION` | `v4.4.2` | `provision/user/30-zephyr-workspace.sh` | Which Zephyr release the workspace is created at. A pin: see the note below. |
 | `BOARD` | `arduino_uno_q` | `mcu/zbuild.sh`, `mcu/flash-all.sh` | The Zephyr board to build for. `env.sh` exports the same value. |
 | `BUILD_DIR` | `~/zephyrproject/build` for this project's app, `build-<name>` for any other | `mcu/zbuild.sh` | The build directory. With it set, `zflash` no longer finds the image by itself: name it, as `zbuild` prints at the end. |
@@ -170,9 +171,10 @@ command line for one run, for example `BUILD_DIR=/tmp/b zbuild`.
 | `OPENOCD_PREFIX` | `/opt/openocd-rebuilt` | `tools/build-openocd.sh` | Where that build is installed. |
 
 > [!NOTE]
-> `ZEPHYR_VERSION` and `ZEPHYR_SDK_VERSION` can be overridden, and should not
-> be changed casually. The Zephyr version is also written in `west.yml` for CI,
-> and a gate fails when the two disagree; the SDK path is written into
+> `ZEPHYR_VERSION`, `ZEPHYR_SDK_VERSION` and `UV_VERSION` can be overridden,
+> and should not be changed casually. The Zephyr version is also written in
+> `west.yml` for CI, and the uv version in the workflows' `env:`, and a gate
+> fails when either pair disagrees; the SDK path is written into
 > `env.sh` and the `ZEPHYR_SDK` defaults above. Changing either is an upgrade
 > with its own checklist: see [mcu.md](mcu.md#upgrading-zephyr).
 

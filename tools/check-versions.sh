@@ -250,6 +250,9 @@ pins() {
   tag_pin bats "$(shell_pin BATS_VERSION "$tools")" bats-core/bats-core
   tag_pin actionlint "$(shell_pin ACTIONLINT_VERSION "$tools")" rhysd/actionlint
 
+  echo "=== project pins: uv (provision/user/20-host-tools.sh) ==="
+  tag_pin uv "$(shell_pin UV_VERSION "$PROJECT/provision/user/20-host-tools.sh")" astral-sh/uv
+
   echo "=== project pins: python (python/pyproject.toml) ==="
   for p in clang-format mkdocs mkdocs-material; do
     pypi_row "$p" "$(pyproject_pin "$p")"

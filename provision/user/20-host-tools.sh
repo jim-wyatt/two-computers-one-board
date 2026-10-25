@@ -18,15 +18,32 @@ set -uo pipefail
 
 export PATH="$HOME/.local/bin:$PATH"
 
+# The one tool everything else is installed WITH, so it is pinned like the
+# rest. It was the latest release, from an unversioned installer URL, and
+# `uv pip compile` output and resolution change between uv releases: a board
+# set up next month ran a different resolver from the one that wrote the lock.
+# CI reads the same number: .github/workflows set UV_VERSION, and
+# tools/check-zephyr-pin.sh fails if they disagree with this line.
+UV_VERSION="${UV_VERSION:-0.13.5}"
+
 step "uv"
-if command -v uv >/dev/null 2>&1; then
-  skip "uv present: $(uv --version)"
+have="$(uv --version 2>/dev/null | awk '{print $2}')"
+if [ "$have" = "$UV_VERSION" ]; then
+  skip "uv $have"
+elif [ -n "$have" ] && out="$(uv self update "$UV_VERSION" 2>&1)"; then
+  # A uv the installer put there can move itself, either way.
+  did "uv brought to $UV_VERSION (was $have)"
 else
-  # The official installer; it drops uv into ~/.local/bin and needs no root.
-  curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1 ||
-    fail "uv install failed - check network access"
-  command -v uv >/dev/null 2>&1 || fail "uv installed but not on PATH"
-  did "uv installed: $(uv --version)"
+  # Not there, or not able to update itself (one that came from pip or apt).
+  # The installer for this release, which puts it in ~/.local/bin - first on
+  # PATH, above - and needs no root.
+  [ -n "$have" ] && printf '%s\n' "$out" | tail -5 >&2
+  curl -LsSf "https://astral.sh/uv/$UV_VERSION/install.sh" | sh >/dev/null 2>&1 ||
+    fail "uv $UV_VERSION install failed - check network access"
+  now="$(uv --version 2>/dev/null | awk '{print $2}')"
+  [ "$now" = "$UV_VERSION" ] ||
+    fail "installed uv $UV_VERSION, but the uv on PATH is ${now:-missing}: $(command -v uv || echo none)"
+  did "uv $UV_VERSION installed${have:+ (was $have)}"
 fi
 
 step "host build tools"
