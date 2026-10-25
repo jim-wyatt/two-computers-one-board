@@ -88,18 +88,51 @@ partitioned() {
   [ "$(blkid -p -o value -s PTTYPE "$1" 2>/dev/null)" = dos ]
 }
 
+# partition_fs <file> - the filesystem type inside the partition, or nothing.
+# Exit status is blkid's: 0 found one, 2 found none, anything else could not
+# tell.
+#
+# Asked of the partition at $PART_OFFSET, not of the file. `blkid -s TYPE` on
+# the whole image reads sector 0, where there is a partition table and never a
+# filesystem, so it printed nothing for every image there has ever been and
+# "partition formatted" was never true. Harmless on a good image, which took
+# the "MBR present" branch instead; fatal on one left by a run that stopped
+# between sfdisk and mkfs.vfat, which every later run also called "MBR present"
+# and then failed to mount, for ever.
+partition_fs() {
+  blkid -p -O "$PART_OFFSET" -o value -s TYPE "$1" 2>/dev/null
+}
+
 # eject_gadget / insert_gadget - the mass-storage function keeps the backing
 # file open. Swapping the file underneath it is a media change, which is a
 # supported thing to do to a removable LUN and does not need a re-bind - so
 # the network half of the gadget, and any ssh session running over it, stays
 # up while the drive is replaced.
+#
+# forced_eject where the kernel has it (5.13 on). A plain write of "" to `file`
+# is refused with EBUSY while the host has asked for the medium to be locked
+# in, which a mounted drive on Windows usually has - and then the drive was
+# written to underneath a host still reading it. FAT cannot tell a host that
+# its blocks changed, so the host's view goes stale or worse.
 eject_gadget() {
   [ -w "$GADGET_LUN" ] || return 0
   [ -s "$GADGET_LUN" ] || return 0
-  echo "" >"$GADGET_LUN" 2>/dev/null && did "gadget: medium ejected while we work"
+  local forced
+  forced="$(dirname "$GADGET_LUN")/forced_eject"
+  if [ -w "$forced" ] && echo 1 >"$forced" 2>/dev/null; then
+    did "gadget: medium ejected while we work"
+  elif echo "" >"$GADGET_LUN" 2>/dev/null; then
+    did "gadget: medium ejected while we work"
+  else
+    warn "gadget: could not eject the drive; the computer will see a stale copy until it is replugged"
+  fi
 }
+# Returns 1 only when there is a gadget and the medium did not go back in.
 insert_gadget() {
-  [ -w "$GADGET_LUN" ] || return 0
+  [ -w "$GADGET_LUN" ] || {
+    skip "gadget not bound - nothing to re-insert"
+    return 0
+  }
   # The whole attribute set, not just the file.
   #
   # gadget-up.sh sets these when it builds the gadget, but ONLY inside
@@ -273,11 +306,19 @@ else
 fi
 
 step "partition table + filesystem"
-if partitioned "$IMG" && blkid -o value -s TYPE "$IMG" 2>/dev/null | grep -q . 2>/dev/null; then
-  skip "MBR present, partition formatted"
-elif partitioned "$IMG"; then
-  skip "MBR present"
+FSTYPE="$(partition_fs "$IMG")"
+FSPROBE=$?
+if partitioned "$IMG" && [ -n "$FSTYPE" ]; then
+  skip "MBR present, partition formatted ($FSTYPE)"
+elif partitioned "$IMG" && [ "$FSPROBE" -ne 2 ]; then
+  # Not "nothing there" but "could not tell". Formatting on a guess is how the
+  # installers that took an hour to download get erased.
+  fail "could not tell whether the partition in $IMG is formatted (blkid exit $FSPROBE) - not formatting it"
 else
+  # Partitioned and empty is a run that stopped between sfdisk and mkfs.vfat.
+  # There is nothing in it to keep, so it is finished the same way a new one is.
+  partitioned "$IMG" &&
+    warn "MBR present but no filesystem in it - an earlier run stopped part way. Formatting it."
   # Same rule as the migration above, and it had the same hole: a busy unmount
   # was ignored and the image was partitioned and formatted underneath a live
   # mount. Nothing is written to $IMG until $MOUNT has let go of it.
@@ -292,6 +333,12 @@ fi
 # --- mount -----------------------------------------------------------------
 
 step "mount"
+# Out of the drive before anything on it changes, and back in at the end.
+# Without this a refresh rewrote the documentation underneath a computer that
+# had the drive open, which kept showing what it had cached, and read whatever
+# it had not cached from blocks that had moved. Formatting above already did
+# this, and a second eject finds the LUN empty and does nothing.
+eject_gadget
 if mountpoint -q "$MOUNT"; then
   mount -o remount,rw "$MOUNT" 2>/dev/null || {
     unmount_share
@@ -390,7 +437,16 @@ else
 fi
 
 step "gadget"
-insert_gadget || skip "gadget not bound - nothing to re-insert"
+# Not with --rw: the board has the filesystem mounted read-write, and handing
+# it to the computer as well is the two-writers case the header describes.
+# insert_gadget used to say "not bound" when the write FAILED on a bound gadget,
+# and nothing at all when there was no gadget: the message was on the wrong
+# side of the ||.
+if [ "$LEAVE_RW" = 1 ]; then
+  skip "drive left ejected while $MOUNT is writable; run this again without --rw to hand it back"
+else
+  insert_gadget || warn "gadget: the drive did not go back in - replug the cable, or: echo $IMG | sudo tee $GADGET_LUN"
+fi
 
 if [ "$LEARN_STOPPED" = 1 ]; then
   step "web server"

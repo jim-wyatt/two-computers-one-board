@@ -51,11 +51,22 @@ SH
 
   # Packages present, image already partitioned and formatted: the run goes
   # straight to the mount step, which is the one under test.
+  #
+  # TYPE is answered only for the partition (-O, an offset). The whole image
+  # has nothing at sector 0 but the partition table, so real blkid prints no
+  # TYPE for it - and a stub that answered vfat for the whole file is how the
+  # script's "already formatted" check passed here while never once being true
+  # on a board.
   stub dpkg-query 0 "install ok installed"
   stub_body blkid <<'SH'
 case "$*" in
   *PTTYPE*) [ -e "$FLAGS/no-partition-table" ] || echo dos ;;
-  *TYPE*) echo vfat ;;
+  *-O*TYPE*)
+    [ -e "$FLAGS/probe-fails" ] && exit 8
+    [ -e "$FLAGS/no-filesystem" ] && exit 2
+    echo vfat
+    ;;
+  *TYPE*) exit 2 ;;
 esac
 exit 0
 SH
@@ -385,4 +396,118 @@ needs_a_partition_node() {
   [[ "$output" != *"no installers found"* ]]
   refute grep -q 'warn.*installers' <<<"$output"
   [[ "$output" == *"no VS Code installers on the drive (optional"* ]]
+}
+
+# --- an image left half-built -------------------------------------------------
+#
+# A run that stops between sfdisk and mkfs.vfat leaves a partition table with
+# nothing in it. The check for "already formatted" asked blkid about the whole
+# file, where no filesystem ever is, so it was never true; the half-built image
+# took the "MBR present" branch on every later run and failed to mount, and
+# re-running bootstrap - the documented way back - could not repair it.
+
+@test "the filesystem is looked for inside the partition, not at sector 0" {
+  run bash "$BUILD"
+  [ "$status" -eq 0 ]
+  ran "blkid -p -O 1048576 -o value -s TYPE $UNOQ_SHARE_IMG"
+  [[ "$output" == *"MBR present, partition formatted (vfat)"* ]]
+  never_ran mkfs.vfat
+}
+
+@test "a partition table with no filesystem in it is formatted, not mounted as it is" {
+  formatting_tools
+  needs_a_partition_node
+  : >"$FLAGS/no-filesystem"
+  run bash "$BUILD"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no filesystem in it - an earlier run stopped part way"* ]]
+  table="$(line_of '^sfdisk ')"
+  fs="$(line_of '^mkfs\.vfat ')"
+  [ -n "$table" ] && [ -n "$fs" ] && [ "$table" -lt "$fs" ]
+}
+
+@test "a probe that cannot tell is never a reason to format" {
+  # blkid's 8 is "ambivalent", and anything but 0 or 2 is not an answer. The
+  # image may hold the 2 GB of installers.
+  formatting_tools
+  : >"$FLAGS/probe-fails"
+  run bash "$BUILD"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAILED  could not tell whether the partition in $UNOQ_SHARE_IMG is formatted (blkid exit 8)"* ]]
+  never_ran sfdisk
+  never_ran mkfs.vfat
+  never_ran rsync
+}
+
+# --- the drive is out of the computer while it is written --------------------
+
+# a_gadget [forced_eject] - a LUN holding the image, as gadget-up.sh leaves it.
+a_gadget() {
+  export UNOQ_GADGET_DIR="$BATS_TEST_TMPDIR/gadget"
+  LUN="$UNOQ_GADGET_DIR/functions/mass_storage.0/lun.0"
+  mkdir -p "$LUN"
+  echo "$UNOQ_SHARE_IMG" >"$LUN/file"
+  [ "${1:-}" = forced_eject ] && : >"$LUN/forced_eject"
+  export LUN
+  # What the LUN held when the written content was flushed. sync, not rsync:
+  # rsync runs only when share/learn has been built, and a clean checkout has
+  # not built it.
+  stub_body sync <<'SH'
+cat "$LUN/file" >"$FLAGS/lun-during-write"
+exit 0
+SH
+}
+
+@test "a refresh takes the drive out of the computer before writing to it" {
+  # The board was rewriting the documentation under a computer that had the
+  # drive open. FAT has no way to tell the host its blocks moved.
+  a_gadget
+  : >"$FLAGS/remount-rw-works"
+  run bash "$BUILD"
+  [ "$status" -eq 0 ]
+  [ -f "$FLAGS/lun-during-write" ]
+  [ -z "$(tr -d '\n' <"$FLAGS/lun-during-write")" ]
+  [[ "$output" == *"gadget: medium ejected while we work"* ]]
+  # And back in, read-only, at the end.
+  [ "$(cat "$LUN/file")" = "$UNOQ_SHARE_IMG" ]
+  [ "$(cat "$LUN/ro")" = 1 ]
+}
+
+@test "forced_eject is used where the kernel has it" {
+  # A plain write to `file` is refused while the host has the medium locked in,
+  # which a mounted drive usually has.
+  a_gadget forced_eject
+  run bash "$BUILD"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$LUN/forced_eject")" = 1 ]
+}
+
+@test "with --rw the drive is not handed back to the computer" {
+  # The board has it mounted read-write. Two writers is the one thing the
+  # whole read-only arrangement is there to prevent.
+  a_gadget
+  run bash "$BUILD" --rw
+  [ "$status" -eq 0 ]
+  [ -z "$(tr -d '\n' <"$LUN/file")" ]
+  [[ "$output" == *"drive left ejected while $UNOQ_SHARE_MOUNT is writable"* ]]
+}
+
+@test "no gadget is reported as no gadget" {
+  # The message was on the wrong side of the ||: printed when the medium did
+  # not go back into a bound gadget, and never when there was no gadget.
+  export UNOQ_GADGET_DIR="$BATS_TEST_TMPDIR/no-gadget"
+  run bash "$BUILD"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"gadget not bound - nothing to re-insert"* ]]
+  [[ "$output" != *"did not go back in"* ]]
+}
+
+@test "a bound gadget that will not take the medium back says so, and not that it is unbound" {
+  # A directory where the attribute should be: writable, and refuses a write.
+  export UNOQ_GADGET_DIR="$BATS_TEST_TMPDIR/gadget"
+  mkdir -p "$UNOQ_GADGET_DIR/functions/mass_storage.0/lun.0/file"
+  run bash "$BUILD"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"the drive did not go back in"* ]]
+  [[ "$output" != *"gadget not bound"* ]]
 }
