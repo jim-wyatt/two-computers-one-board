@@ -260,6 +260,12 @@ of the disagreements, so change all of them in one commit:
 | Zephyr's Python packages | `tools/update-constraints.sh`, which reads the version from the step above and rewrites `mcu/requirements-zephyr-lock.txt` |
 | The SDK | `provision/user/25-zephyr-sdk.sh`, `env.sh`, `bootstrap.sh`, the defaults in `mcu/zbuild.sh`, `mcu/flash-all.sh` and `mcu/ztest.sh`, and `.vscode/launch.json` and `.vscode/tasks.json` |
 
+On a board that already has a workspace, running `bootstrap.sh` again, or just
+`provision/user/30-zephyr-workspace.sh`, moves it to the new pin: it fetches
+the tag, checks it out, runs `west update`, and reinstalls Zephyr's Python
+requirements. If you have changed files inside `~/zephyrproject/zephyr`, it
+stops and says so instead of moving the tree under them.
+
 Then re-copy the OpenOCD board support that Zephyr's runner
 needs and that is not upstream:
 

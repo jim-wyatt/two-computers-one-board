@@ -70,9 +70,39 @@ else
 fi
 
 step "Zephyr $ZEPHYR_VERSION checkout"
+# Set when the checkout moves: the modules and Zephyr's own requirements were
+# for the old version, and each step below that would skip because something
+# is already there must run instead.
+MOVED=0
+zgit() { git -c safe.directory="$WS/zephyr" -C "$WS/zephyr" "$@"; }
 if [ -d "$WS/zephyr" ] && [ -f "$WS/.west/config" ]; then
-  have="$(git -c safe.directory="$WS/zephyr" -C "$WS/zephyr" describe --tags 2>/dev/null)"
-  skip "workspace initialized at ${have:-unknown}"
+  have="$(zgit describe --tags 2>/dev/null)"
+  if [ "$have" = "$ZEPHYR_VERSION" ]; then
+    skip "workspace at $have"
+  else
+    # This said "ok workspace initialized at v4.4.2" whatever the pin was. Move
+    # the pin to v4.4.3 and re-run bootstrap, and every line was ok, west update
+    # was skipped, the lock record then vouched for the venv, and the board
+    # stayed on the old Zephyr: the failure tests/lock.bats exists to stop for
+    # Python packages, left open for Zephyr itself.
+    #
+    # The zephyr directory is west's manifest repository, which `west update`
+    # never moves - so it is moved here, the same way west init made it: the
+    # one commit of the tag, no history. Local changes are not this script's
+    # to throw away, so a tree with any stops the run instead.
+    if [ -n "$(zgit status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+      fail "$WS/zephyr is at ${have:-an unknown version}, the pin is $ZEPHYR_VERSION, and it has local changes.
+  Commit or discard them (git -C $WS/zephyr status), then run this again."
+    fi
+    echo "  moving Zephyr from ${have:-an unknown version} to $ZEPHYR_VERSION..."
+    zgit fetch -q --depth=1 origin tag "$ZEPHYR_VERSION" >/dev/null 2>&1 ||
+      fail "could not fetch Zephyr $ZEPHYR_VERSION into $WS/zephyr"
+    zgit -c advice.detachedHead=false checkout -q "$ZEPHYR_VERSION" ||
+      fail "could not check out Zephyr $ZEPHYR_VERSION in $WS/zephyr"
+    MOVED=1
+    LOCKED=0
+    did "Zephyr moved from ${have:-an unknown version} to $ZEPHYR_VERSION"
+  fi
 else
   # --clone-opt=--depth=1: the one commit that is the release, not the 137,000
   # behind it. Zephyr's history is a gigabyte of git objects - measured, 1004 MB
@@ -106,7 +136,7 @@ fi
 step "west update"
 # --narrow -o=--depth=1 fetches only the tips: full history of every Zephyr
 # module is several GB of git objects nobody on this board will read.
-if [ -d "$WS/modules/hal/stm32" ]; then
+if [ "$MOVED" = 0 ] && [ -d "$WS/modules/hal/stm32" ]; then
   skip "modules already checked out (delete $WS/modules to force a refresh)"
 else
   echo "  west update (the modules: about 1.3 GB on disk - this is the slow step)..."
@@ -116,7 +146,11 @@ else
 fi
 
 step "zephyr-export"
-if [ -d "$HOME/.cmake/packages/Zephyr" ]; then
+# THIS workspace registered, not any. Each entry in the registry is a file
+# holding the path of one Zephyr's package directory, and the test was whether
+# the directory of entries existed at all - so a registration left by another
+# workspace, or one since deleted, counted, and this one was never exported.
+if grep -rqsxF "$WS/zephyr/share/zephyr-package/cmake" "$HOME/.cmake/packages/Zephyr"; then
   skip "Zephyr already registered with CMake"
 else
   (cd "$WS" && "$WS/.venv/bin/west" zephyr-export) >/dev/null 2>&1 ||
