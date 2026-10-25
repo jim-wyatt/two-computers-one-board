@@ -685,8 +685,15 @@ To update the content, one command:
 sudo bash ~/two-computers-one-board/share/build-image.sh
 ```
 
-It renders the documentation, remounts the image read-write, syncs the new
-content in, remounts it read-only, and hands the drive back to the gadget.
+It takes the drive out of the gadget, renders the documentation, remounts the
+image read-write, syncs the new content in, remounts it read-only, and hands
+the drive back. With `--rw` it leaves the image writable and does not hand the
+drive back, because the board and the computer would then both be writing it;
+run it again without `--rw` when you are done.
+
+An image whose partition table is there but whose filesystem is not, which is
+what a run interrupted half way through formatting leaves, is formatted on the
+next run.
 
 **Do not unbind the gadget first.** The script swaps the drive's medium
 underneath the mass-storage function, which is a media change, not a re-bind:
@@ -696,8 +703,10 @@ the gadget and deletes `br-usb`; and `systemctl restart unoq-usb-gadget`
 afterwards would not bring it back, because that unit only builds the
 definition and never binds.
 
-The computer may go on showing the old files until it reads the drive again.
-Ejecting the drive on the computer before you run the script avoids that.
+To the computer this looks like the drive being ejected and put back, so it
+reads the new contents rather than a cached copy of the old ones. A computer
+with a file open on the drive at that moment loses it, as it would with a USB
+stick pulled out.
 
 `build-image.sh` stops `unoq-learn` while it remounts the image and starts it
 again afterwards, because the web server serves from that mount and would
