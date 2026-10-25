@@ -204,3 +204,10 @@ SH
   [[ "$output" == *"UNOQ_GADGET_PRIMARY must be ncm or rndis, not 'ecm'"* ]]
   [ ! -e "$UNOQ_GADGET_DIR" ]
 }
+
+@test "the board asks the host for the 500 mA a USB 2 port can give" {
+  # configfs takes milliamps; the kernel encodes them. 250 here was 250 mA.
+  run "$PROJECT/usb/gadget-up.sh" --build
+  [ "$status" -eq 0 ]
+  [ "$(cat "$UNOQ_GADGET_DIR/configs/c.1/MaxPower")" = 500 ]
+}
