@@ -805,3 +805,33 @@ unoq-usb-bind.service" ]
   # At the start of a line, so not inside an `if`: the count of recent starts
   # outlives the failed state, and has to be cleared whatever the state is.
 }
+
+# --- the share mount --------------------------------------------------------
+#
+# 75-learning-web.sh mounts the drive image at UNOQ_SHARE_MOUNT, and
+# unoq-learn.service served /srv/unoq-share whatever that said: with the
+# setting changed, the image was mounted in one place and an empty directory
+# was served from the other (#116).
+
+@test "the share mount in a unit follows UNOQ_SHARE_MOUNT" {
+  load_lib "$BATS_TEST_TMPDIR"
+  export UNOQ_SHARE_MOUNT=/srv/elsewhere
+  src="$(unit learn "[Unit]" "RequiresMountsFor=/srv/unoq-share" "[Service]" "User=arduino" \
+    "ExecStart=/home/arduino/two-computers-one-board/bin/thing --root /srv/unoq-share")"
+  run install_unit "$src"
+  [ "$status" -eq 0 ]
+  run cat "$ETC/etc/systemd/system/learn.service"
+  [[ "$output" == *"RequiresMountsFor=/srv/elsewhere"* ]]
+  [[ "$output" == *"--root /srv/elsewhere"* ]]
+  [[ "$output" != *"/srv/unoq-share"* ]]
+}
+
+@test "without UNOQ_SHARE_MOUNT the share mount is left where it is" {
+  load_lib "$BATS_TEST_TMPDIR"
+  unset UNOQ_SHARE_MOUNT
+  src="$(unit learn "[Service]" "User=arduino" \
+    "ExecStart=/home/arduino/two-computers-one-board/bin/thing --root /srv/unoq-share")"
+  run install_unit "$src"
+  run cat "$ETC/etc/systemd/system/learn.service"
+  [[ "$output" == *"--root /srv/unoq-share"* ]]
+}

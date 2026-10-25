@@ -27,7 +27,7 @@ set -euo pipefail
 WS="${ZEPHYR_WORKSPACE:-$HOME/zephyrproject}"
 PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
 BOARD="${BOARD:-arduino_uno_q}"
-SDK="${ZEPHYR_SDK:-$HOME/zephyr-sdk-1.0.1}"
+SDK="${ZEPHYR_SDK:-$HOME/zephyr-sdk-${ZEPHYR_SDK_VERSION:-1.0.1}}"
 
 # cmake and ninja are in ~/.local/bin, where provision/user/20-host-tools.sh
 # installs them, and west runs both by name. An interactive shell has that

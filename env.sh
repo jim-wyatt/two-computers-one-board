@@ -34,13 +34,27 @@ fi
 export PATH="$HOME/.local/bin:/opt/openocd/bin:$PATH"
 
 # Zephyr / west
-export ZEPHYR_BASE="$HOME/zephyrproject/zephyr"
-export ZEPHYR_SDK_INSTALL_DIR="$HOME/zephyr-sdk-1.0.1"
+#
+# From the same settings the provisioning steps and mcu/*.sh read, not from
+# paths written out here: with ZEPHYR_WORKSPACE or an SDK override set, this
+# exported directories that did not exist, and an SDK directory that does not
+# exist is one the build will not look past (see mcu/zbuild.sh). The SDK
+# version's default is the pin in provision/user/25-zephyr-sdk.sh, and
+# tools/check-zephyr-pin.sh fails if they differ.
+_unoq_ws="${ZEPHYR_WORKSPACE:-$HOME/zephyrproject}"
+_unoq_sdk="${ZEPHYR_SDK:-$HOME/zephyr-sdk-${ZEPHYR_SDK_VERSION:-1.0.1}}"
+export ZEPHYR_BASE="$_unoq_ws/zephyr"
+if [ -d "$_unoq_sdk" ]; then
+  export ZEPHYR_SDK_INSTALL_DIR="$_unoq_sdk"
+fi
 export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 export BOARD=arduino_uno_q
 
-# west lives in the workspace venv, not on the global PATH
-west() { "$HOME/zephyrproject/.venv/bin/west" "$@"; }
+unset _unoq_ws _unoq_sdk
+
+# west lives in the workspace venv, not on the global PATH. The workspace is
+# the directory ZEPHYR_BASE is in.
+west() { "${ZEPHYR_BASE%/zephyr}/.venv/bin/west" "$@"; }
 
 # The three aliases below are double-quoted on purpose, so $UNOQ_PROJECT is
 # resolved once here rather than left to expand when you run them. That is what

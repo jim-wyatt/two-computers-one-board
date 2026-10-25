@@ -771,8 +771,11 @@ install_root_scripts() {
 # installed, and a second copy of these expressions over there would be right
 # until the day this one changed.
 render_unit() {
-  local src="$1" exec_root="$PROJECT"
+  local src="$1" exec_root="$PROJECT" share_mount="${UNOQ_SHARE_MOUNT:-/srv/unoq-share}"
   unit_runs_as_root "$src" && exec_root="$RUNTIME_DIR"
+  # The share mount too: with UNOQ_SHARE_MOUNT set, 75-learning-web.sh mounted
+  # the image there and unoq-learn went on serving an empty /srv/unoq-share.
+  #
   # The home directory by itself, for the units that wait for it to mount.
   # It has to be rewritten separately: the first expressions only match the
   # checkout path, so under any account but arduino those units went on
@@ -782,6 +785,7 @@ render_unit() {
     -e "s#^RequiresMountsFor=/home/arduino\$#RequiresMountsFor=$TARGET_HOME#" \
     -e "s#^User=arduino\$#User=$TARGET_USER#" \
     -e "s#^Group=arduino\$#Group=$TARGET_USER#" \
+    -e "s#/srv/unoq-share#$share_mount#g" \
     "$src"
 }
 
