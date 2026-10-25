@@ -143,7 +143,9 @@ tools/install-hooks.sh           # pre-commit -> check.sh --fast
 
 `install-dev-tools.sh` puts ruff, mypy, pytest, codespell, mkdocs and clang-format in the
 project venv, and fetches pinned `shellcheck`, `shfmt`, `bats` and `actionlint` into
-`~/.local/bin`. It detects the architecture, so the same script works on the
+`~/.local/bin`, each checked against a SHA-256 recorded beside its version
+before it is unpacked. Bumping one means changing its version and its checksum
+lines together. It detects the architecture, so the same script works on the
 board (aarch64) and on an ordinary x86_64 machine. You do not need a board for
 any of them: `mcu` wants a Zephyr workspace and `diagrams` wants a browser,
 and the rest want nothing.
