@@ -213,4 +213,39 @@ ZTEST(link_protocol, test_documented_sweep_rate_matches_the_geometry)
 		       APP_MATRIX_SWEEPS_PER_S, expected);
 }
 
+/* --- the numbers a command takes ----------------------------------------- */
+
+ZTEST(link_protocol, test_a_number_is_read_as_that_number)
+{
+	static const struct {
+		const char *in;
+		int want;
+	} ok[] = {{"0", 0}, {"7", 7}, {"100", 100}, {"-1", -1}, {"012", 12}};
+
+	for (size_t i = 0; i < ARRAY_SIZE(ok); i++) {
+		int got = -999;
+
+		zassert_true(app_parse_int(ok[i].in, &got), "'%s' was refused", ok[i].in);
+		zassert_equal(got, ok[i].want, "'%s' read as %d", ok[i].in, got);
+	}
+}
+
+ZTEST(link_protocol, test_anything_else_is_refused_and_changes_nothing)
+{
+	/* atoi() read every one of these as a number - most of them as 0, which
+	 * is a legal bar and a legal pixel, so the command said "ok". The last
+	 * two do not fit an int, which strtol reports and atoi does not. */
+	static const char *const bad[] = {
+		"", "abc", "x", "5x", "5 ", "1.5", "0x10", "-", "+", "99999999999", "-99999999999",
+	};
+
+	for (size_t i = 0; i < ARRAY_SIZE(bad); i++) {
+		int got = 12345;
+
+		zassert_false(app_parse_int(bad[i], &got), "'%s' was read as a number", bad[i]);
+		zassert_equal(got, 12345, "a refused '%s' still wrote %d", bad[i], got);
+	}
+	zassert_false(app_parse_int(NULL, &(int){0}), "a missing argument is not a number");
+}
+
 ZTEST_SUITE(link_protocol, NULL, NULL, NULL, NULL, NULL);

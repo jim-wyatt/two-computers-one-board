@@ -254,6 +254,15 @@ def test_matrix_flip_raises_on_an_unparsable_reply(mcu_factory: Any) -> None:
         mcu.matrix_flip()
 
 
+def test_matrix_flip_raises_when_the_mcu_could_not_save_it(mcu_factory: Any) -> None:
+    # The firmware applies the flip for this boot and says it was not
+    # persisted. That must not come back as a setting that will survive a reset.
+    reply = "Error: flip=1 applied but not saved (-28): it reverts at reset"
+    mcu = mcu_factory({"app matrix flip": [reply]})
+    with pytest.raises(MCUError, match="not saved"):
+        mcu.matrix_flip()
+
+
 def test_matrix_flip_raises_on_no_reply(mcu_factory: Any) -> None:
     mcu = mcu_factory({"app matrix flip": []})
     with pytest.raises(MCUError, match="could not parse matrix flip"):
