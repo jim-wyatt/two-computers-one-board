@@ -302,3 +302,61 @@ CONF
   run_profile down
   refute ran_like 'ip addr flush'
 }
+
+# --- the re-check ----------------------------------------------------------
+#
+# usb-dhcp.sh calls `up` on every leasefail: about every 35 seconds, for as
+# long as a host that serves no DHCP is on the cable. Each of those used to be
+# a fresh `up`, so one probe window with no answer ran `down` and took the
+# address - and every SSH session over it - off a link that was working (#115).
+
+already_claimed() {
+  echo "windows-ics 192.168.137.210/24 192.168.137.1" >"$UNOQ_USB_PROFILE_STATE"
+  stub_body ip <<'SH'
+case "$*" in
+  *"addr show dev br-usb"*) echo "2: br-usb    inet 192.168.137.210/24 brd 192.168.137.255 scope global br-usb" ;;
+esac
+exit 0
+SH
+}
+
+@test "a re-check that cannot reach the internet keeps the address" {
+  ANSWERS="192.168.137.1" fake_arping
+  already_claimed
+  stub ping 1
+  stub curl 1
+  run_profile up windows-ics
+  [ "$status" -eq 0 ]
+  refute ran_like '^ip addr del'
+  [ -e "$UNOQ_USB_PROFILE_STATE" ]
+}
+
+@test "a re-check leaves the route to prefer, which demotes it without proof" {
+  ANSWERS="192.168.137.1" fake_arping
+  already_claimed
+  stub ping 1
+  stub curl 1
+  run_profile up windows-ics
+  [ "$status" -eq 0 ]
+  ran "ip route replace default via 192.168.137.1 dev br-usb metric 700"
+  refute ran_like '^ip route replace .* metric 550'
+}
+
+@test "a re-check does not ARP-probe the address it already holds" {
+  ANSWERS="192.168.137.1" TAKEN="192.168.137.210" fake_arping
+  already_claimed
+  run_profile up windows-ics
+  [ "$status" -eq 0 ]
+  refute ran_like 'busybox arping .*-D'
+}
+
+@test "a state file whose address has gone from the bridge is claimed afresh" {
+  # The state file alone is not proof the address is there: somebody may have
+  # removed it by hand. That case gets the full `up`, probes and all.
+  ANSWERS="192.168.137.1" fake_arping
+  echo "windows-ics 192.168.137.210/24 192.168.137.1" >"$UNOQ_USB_PROFILE_STATE"
+  run_profile up windows-ics
+  [ "$status" -eq 0 ]
+  ran_like 'busybox arping .*-D .*192\.168\.137\.210'
+  ran "ip addr replace 192.168.137.210/24 dev br-usb"
+}

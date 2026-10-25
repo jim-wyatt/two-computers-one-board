@@ -102,15 +102,9 @@ log() {
   echo "unoq-usb-profile: $*"
 }
 
-# Same rule as usb-dhcp.sh: these values reach ip(8) as root, so anything that
-# is not plainly an address is dropped rather than escaped.
-is_ipv4() {
-  case "$1" in
-    '' | *[!0-9.]*) return 1 ;;
-    *.*.*.*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
+# pid_is, is_udhcpc and is_ipv4 are shared by the scripts in usb/.
+# shellcheck source=usb/common.sh
+. "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 # The table, with the operator's file appended so a Linux host - or an ICS that
 # has been renumbered - is one line rather than a patch. Later rows are tried
@@ -204,6 +198,17 @@ do_detect() {
 
 # --- up --------------------------------------------------------------------
 
+# already_up <profile> <cidr> - is this profile the one claimed, with its
+# address still on the bridge? Both, because the state file alone survives an
+# address somebody else removed.
+already_up() {
+  local name cidr _gw
+  [ -r "$STATE" ] || return 1
+  read -r name cidr _gw <"$STATE"
+  [ "$name" = "$1" ] && [ "$cidr" = "$2" ] || return 1
+  ip -4 -o addr show dev "$BRIDGE" 2>/dev/null | grep -qF " $2 "
+}
+
 do_up() {
   local want="$1" row name gw addr plen
 
@@ -212,6 +217,24 @@ do_up() {
     return 1
   }
   read -r name gw addr plen <<<"$row"
+
+  # Already up, and this is the re-check: usb-dhcp.sh calls `up` on every
+  # leasefail, which on a host that serves no DHCP is about every 35 seconds
+  # for as long as the cable is in. Each call used to prove the route from
+  # scratch and, on one bad probe window, run `down` - taking the address, and
+  # every SSH session over it, away from a link the host was still answering on
+  # (detect has just seen it answer ARP, or this would not have been called).
+  #
+  # So a re-check never takes the address down. It only decides what the
+  # route deserves: `prefer` promotes it with proof and demotes it without,
+  # which is the right response to an internet that has gone away behind a
+  # host that is still there - and it runs its own probe to decide. A cable
+  # pulled out ends this through usb-dhcp.sh and the bridge going away, not
+  # through here.
+  if already_up "$name" "$addr/$plen"; then
+    "$HERE/usb-route.sh" prefer "$gw" >/dev/null
+    return 0
+  fi
 
   if ! address_is_free "$addr"; then
     # Somebody answered for the address we were going to take. That is a real

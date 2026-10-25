@@ -187,3 +187,33 @@ SH
   [[ "$output" == *"not bound to a UDC"* ]]
   never_ran ip
 }
+
+# --- the renew kick ----------------------------------------------------------
+#
+# `off` sends udhcpc SIGUSR1 so DNS comes back on this link. It asked only
+# whether the pid file's process was called busybox or udhcpc - and every
+# applet started as `busybox <name>` is called busybox. With a stale pid file
+# whose pid had gone to another applet, root sent it SIGUSR1, which ends most
+# of them (#115).
+
+@test "off does not signal a BusyBox process that is not udhcpc" {
+  export UNOQ_RUN_DIR="$BATS_TEST_TMPDIR/run"
+  mkdir -p "$UNOQ_RUN_DIR"
+  # A real process the kernel calls "busybox", running something else.
+  cp "$(command -v sleep)" "$BATS_TEST_TMPDIR/busybox"
+  "$BATS_TEST_TMPDIR/busybox" 30 &
+  victim=$!
+  echo "$victim" >"$UNOQ_RUN_DIR/unoq-usb-udhcpc.pid"
+  stub_body id <<'SH'
+[ "${1:-}" = "-u" ] && { echo 0; exit 0; }
+exec /usr/bin/id "$@"
+SH
+  stub sleep
+  ip_v6_only_host
+  run "$WIFI" off --force
+  alive=0
+  kill -0 "$victim" 2>/dev/null && alive=1
+  kill "$victim" 2>/dev/null || true
+  [ "$alive" = 1 ]
+  [[ "$output" != *"asked udhcpc to renew"* ]]
+}

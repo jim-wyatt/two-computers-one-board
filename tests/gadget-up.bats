@@ -195,3 +195,12 @@ SH
   [ "${name:0:8}" = "UNO-Q   " ]
   [ "${name:8:5}" = "Share" ]
 }
+
+@test "an unknown network function is refused before anything is built" {
+  # It was checked after `mkdir "$G"`, so a typo left a half-built gadget that
+  # every later run called "already defined" until --purge (#115).
+  UNOQ_GADGET_PRIMARY=ecm run "$PROJECT/usb/gadget-up.sh" --build
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"UNOQ_GADGET_PRIMARY must be ncm or rndis, not 'ecm'"* ]]
+  [ ! -e "$UNOQ_GADGET_DIR" ]
+}

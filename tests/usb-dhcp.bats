@@ -293,3 +293,30 @@ SH
   [ -z "$(resolvers)" ]
   never_ran nslookup
 }
+
+@test "a default route with no metric is metric 0, and beats ours" {
+  # `ip route add default via X dev eth0` prints no metric, and for IPv4 that
+  # means 0 - the kernel prefers it to anything. This ranked it as 1024, which
+  # is IPv6's default, decided br-usb was the uplink, and took resolv.conf for
+  # a link that was carrying nothing (#115).
+  stub_body ip <<'SH'
+case "$*" in
+  "-4 route show default") printf '%s\n' \
+    "default via 192.168.0.1 dev eth0" \
+    "default via 192.168.137.1 dev br-usb metric 550" ;;
+esac
+exit 0
+SH
+  stub ping 0
+  stub curl 0
+  DNS_ANSWERS="1.1.1.1 192.168.137.1" fake_dns
+  lease
+  [ -z "$(resolvers)" ]
+}
+
+@test "a lease address that only looks like one is not written down" {
+  # Digits and dots: 999.1.1.1 passed the check here and went into the file
+  # the next startup hands to udhcpc as --request.
+  run env ip=999.1.1.1 subnet=255.255.255.0 "$DHCP" bound
+  [ ! -e "$LAST" ] || [ "$(cat "$LAST")" != "999.1.1.1" ]
+}

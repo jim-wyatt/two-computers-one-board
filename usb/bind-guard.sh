@@ -149,7 +149,25 @@ case "${1:-}" in
     fi
     # Written BEFORE the bind, not after. If the bind is what kills the board
     # there is no "after" in which to record that it was tried.
-    echo "$CURRENT_BOOT $((STATE_COUNT + 1))" >"$COUNTER" 2>/dev/null
+    #
+    # And it has to have WORKED. A failed write went to /dev/null and the bind
+    # went ahead, so on a filesystem remounted read-only - which repeated
+    # brownouts are a good way to get - the count never advanced, the guard
+    # never tripped, and the reboot loop it exists to stop ran for ever. A bind
+    # this guard cannot count is a bind it cannot stop, so it is refused, the
+    # same way a tripped guard refuses: wifi back on, gadget left alone.
+    #
+    # Through a temporary file and a rename, so a reset mid-write leaves the
+    # old count or the new one, never half of either.
+    if ! { echo "$CURRENT_BOOT $((STATE_COUNT + 1))" >"$COUNTER.tmp" &&
+      mv -f "$COUNTER.tmp" "$COUNTER"; } 2>/dev/null; then
+      rm -f "$COUNTER.tmp" 2>/dev/null
+      log "REFUSING to bind: could not record this attempt in $COUNTER."
+      log "  Is the filesystem read-only?  findmnt -no OPTIONS --target $(dirname "$COUNTER")"
+      log "  Without the count the guard cannot stop a reboot loop, so it does not start one."
+      wifi_rescue
+      exit 1
+    fi
     sync -f "$COUNTER" 2>/dev/null || sync
     log "bind attempt $((STATE_COUNT + 1))/$MAX"
     ;;

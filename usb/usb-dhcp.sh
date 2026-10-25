@@ -110,16 +110,9 @@ log() {
   echo "unoq-usb-dhcp: $*"
 }
 
-# The lease arrives from a machine we do not control, and every value below is
-# about to be handed to ip(8) as root. Anything that is not plainly an address
-# is dropped rather than escaped - there is no legitimate lease that needs it.
-is_ipv4() {
-  case "$1" in
-    '' | *[!0-9.]*) return 1 ;;
-    *.*.*.*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
+# pid_is, is_udhcpc and is_ipv4 are shared by the scripts in usb/.
+# shellcheck source=usb/common.sh
+. "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 # --- DNS -------------------------------------------------------------------
 #
@@ -142,11 +135,16 @@ is_ipv4() {
 # 550, and `550 >= 700` is false - so the check would conclude the USB link was
 # NOT carrying traffic at the exact moment it had just taken it over, and hand
 # resolv.conf back to NetworkManager. Comparing devices cannot rot that way.
+#
+# A route printed with no metric has metric 0. This read it as 1024, which is
+# IPv6's default and not IPv4's, so a plain `ip route add default via X dev
+# eth0` - which the kernel prefers to ours - lost to br-usb here, and this
+# script took resolv.conf over for a link that was carrying nothing.
 usb_route_is_the_default() {
   local best_dev
   best_dev="$(ip -4 route show default 2>/dev/null |
     awk '{
-      m = 1024; d = ""
+      m = 0; d = ""
       for (i = 1; i <= NF; i++) {
         if ($i == "metric") m = $(i + 1)
         if ($i == "dev") d = $(i + 1)
