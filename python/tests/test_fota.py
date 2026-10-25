@@ -242,8 +242,11 @@ def test_test_with_no_hash_never_marks_an_image_that_is_not_newer(
     )
     with pytest.raises(RuntimeError, match="not newer") as exc:
         fota.test()
-    # It says how to do it on purpose, with the hash to do it with.
-    assert "fota.test('beef')" in str(exc.value)
+    # It says how to update, and that going back means building again: the
+    # bootloader would erase an older image whatever this sent.
+    assert "fota.test(fota.upload(path))" in str(exc.value)
+    assert "build that source again" in str(exc.value)
+    assert "fota.test('beef')" not in str(exc.value)
     assert not any("hash" in getattr(r, "kwargs", {}) for r in smp["client"].requests)
 
 
@@ -254,7 +257,8 @@ def test_test_with_no_hash_refuses_when_nothing_is_running(smp: dict[str, Any]) 
 
 
 def test_an_older_image_is_marked_when_asked_for_by_hash(smp: dict[str, Any]) -> None:
-    # Rolling back on purpose is a thing you do, so the hash is taken as meant.
+    # A hash is taken as meant, and sent. Whether an older image then boots is
+    # the bootloader's decision (mcu/mcuboot.conf refuses it), not this one's.
     smp["client"] = FakeClient(
         [
             FakeImage(0, "0.0.0.200", active=True, digest=b"\xaa"),

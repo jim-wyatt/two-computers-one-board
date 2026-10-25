@@ -405,7 +405,7 @@ SH
   mcuboot_tree
   run "$PROJECT/mcu/flash-all.sh"
   [ "$status" -eq 0 ]
-  ran_like "^west build .* -d $ZEPHYR_WORKSPACE/build-mcuboot$"
+  ran_like "^west build .* -d $ZEPHYR_WORKSPACE/build-mcuboot( |$)"
   refute ran_like '/tmp/bmcuboot'
 }
 
@@ -417,6 +417,30 @@ SH
   first="$(grep -n "build-mcuboot/zephyr/zephyr.hex" "$STUB_LOG" | grep openocd | cut -d: -f1)"
   second="$(grep -n "build/zephyr/zephyr.signed.hex" "$STUB_LOG" | cut -d: -f1)"
   [ -n "$first" ] && [ -n "$second" ] && [ "$first" -lt "$second" ]
+}
+
+@test "the bootloader is built with downgrade prevention" {
+  # mcu/mcuboot.conf. Without it MCUboot swaps in whatever is marked pending,
+  # older or not, and fota.test() is the only thing in the way.
+  built
+  mcuboot_tree
+  run "$PROJECT/mcu/flash-all.sh"
+  [ "$status" -eq 0 ]
+  ran_like "^west build .* -- -DEXTRA_CONF_FILE=$PROJECT/mcu/mcuboot\.conf\$"
+}
+
+@test "a bootloader built from a different mcuboot.conf is rebuilt" {
+  # The configuration is part of what it was built from. A board whose
+  # bootloader predates downgrade prevention gets the new one, not the old one
+  # flashed again because the two source trees had not moved.
+  built
+  mcuboot_tree
+  run "$PROJECT/mcu/flash-all.sh"
+  sed -i 's/ conf [0-9a-f]*$/ conf 0000/' "$ZEPHYR_WORKSPACE/build-mcuboot/built-from"
+  : >"$STUB_LOG"
+  run "$PROJECT/mcu/flash-all.sh"
+  [ "$status" -eq 0 ]
+  ran_like '^west build'
 }
 
 @test "a bootloader already built from these revisions is not built again" {

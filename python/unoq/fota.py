@@ -205,8 +205,13 @@ def test(image_hash: str | None = None, port: str = PORT, timeout: float = 20.0)
     marked. After a swap and a confirm the inactive slot holds the PREVIOUS
     image, and marking whatever was there quietly scheduled a downgrade on a
     second call with no fresh upload. A hash, such as the one upload()
-    returns, is taken as meaning exactly that image, older or not: that is
-    how you roll back on purpose.
+    returns, is taken as meaning exactly that image.
+
+    The bootloader has the last word: it is built to refuse an image older
+    than the running one (mcu/mcuboot.conf), and erases it from the inactive
+    slot at the reset. So a hash naming an older image is sent, and then
+    comes to nothing. Going back to older firmware means building that source
+    again, which zbuild stamps with a newer build number.
     """
     if image_hash is None:
         table = images(port)
@@ -223,7 +228,8 @@ def test(image_hash: str | None = None, port: str = PORT, timeout: float = 20.0)
                 f"than the running {was}. After a confirm that slot holds the "
                 f"previous image, and marking it would downgrade the MCU.\n"
                 f"  To update: fota.test(fota.upload(path))\n"
-                f"  To go back to it on purpose: fota.test('{staged['hash']}')"
+                f"  The bootloader refuses older images too: to go back to older\n"
+                f"  firmware, build that source again (zbuild) and upload it."
             )
         image_hash = staged["hash"]
     if not image_hash:

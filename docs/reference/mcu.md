@@ -111,9 +111,20 @@ tell which build is actually running after a swap.
 `fota.test()` with no argument marks the image in the inactive slot only if its
 version is newer than the running one. `zbuild` stamps every build with the
 time, so a fresh upload always is. After a confirm, though, that slot holds the
-*previous* image, and marking it would roll the MCU back. To go back to an older
-image on purpose, pass its hash: `fota.test(h)` takes the image `h` names,
-whatever its version.
+*previous* image, and marking it would roll the MCU back.
+
+**The bootloader refuses downgrades as well.** MCUboot is built with downgrade
+prevention, counting the build number (`mcu/mcuboot.conf`): at the reset it
+erases a pending image whose version is lower than the running one, and boots
+the running one again. Two things still work. MCUboot reverting an image you
+never confirmed is a revert, not an upgrade, so it is not checked. And an image
+with the same version as the running one is allowed. To go back to older
+firmware, check out that source and build it again: `zbuild` gives it a newer
+build number, so it goes in like any update.
+
+This takes the bootloader `mcu/flash-all.sh` builds. A board flashed before
+this has the old one until `flash-all.sh` runs again, which `bootstrap.sh` does
+on every run.
 
 Every `fota` call holds the serial port the way `unoq.MCU` does, with both the
 advisory lock and the kernel's exclusive flag, so nothing can write shell
