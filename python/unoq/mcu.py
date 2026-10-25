@@ -187,13 +187,23 @@ def open_port(port: str = PORT, baud: int = BAUD, timeout: float = 0.3) -> seria
     # would mean an EBADF or EPERM silently downgraded us to advisory-only
     # locking, which is EXACTLY the failure this function exists to end: a lock
     # that does not lock, with nothing to say so.
+    set_exclusive(s)
+    return s
+
+
+def set_exclusive(s: serial.Serial) -> None:
+    """Set TIOCEXCL on an open port, closing it and raising if that fails for
+    any reason but "this device does not do TIOCEXCL". See open_port().
+
+    Its own function because fota opens the port through smpclient, not
+    through open_port(), and has to apply the same rule to that fd.
+    """
     try:
         fcntl.ioctl(s.fileno(), TIOCEXCL)
     except OSError as exc:
         if exc.errno not in (errno.ENOTTY, errno.EINVAL, errno.ENOSYS):
             s.close()
             raise
-    return s
 
 
 class ShellTimeout(MCUError):

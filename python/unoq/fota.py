@@ -24,12 +24,13 @@ import os
 from pathlib import Path
 from typing import Any, TypedDict
 
+import serial
 from smpclient import SMPClient
 from smpclient.requests.image_management import ImageStatesRead, ImageStatesWrite
 from smpclient.requests.os_management import ResetWrite
 from smpclient.transport.serial import SMPSerialTransport
 
-from .mcu import BAUD, PORT
+from .mcu import BAUD, PORT, open_port, set_exclusive
 
 
 class ImageState(TypedDict):
@@ -48,10 +49,49 @@ class ImageState(TypedDict):
     hash: str
 
 
+def _serial_of(transport: SMPSerialTransport) -> serial.Serial:
+    """The pyserial port inside smpclient's transport.
+
+    It is a private attribute, and smpclient is pinned in the lock file. If a
+    new version moves it, this raises rather than carrying on unlocked.
+    """
+    conn = getattr(transport, "_conn", None)
+    if not isinstance(conn, serial.Serial):
+        raise RuntimeError(
+            "smpclient's serial transport no longer keeps its port in _conn; "
+            "fota cannot lock the port. Update fota._serial_of."
+        )
+    return conn
+
+
 async def _client(port: str, timeout: float) -> tuple[SMPClient, SMPSerialTransport]:
-    transport = SMPSerialTransport(baudrate=BAUD)
+    """Connect over SMP holding both of the port's locks, as MCU() does.
+
+    This used to open the port with neither. An upload runs for minutes, and
+    during it MCU() or tio could open the port and put shell lines between the
+    SMP frames. And while unoq-cpu-bars held the port, the open here failed
+    with a bare EBUSY - or, because smpclient retries every failed open until
+    its timeout, as a TimeoutError - instead of PortBusy naming who has it.
+
+    The open_port() probe is what turns a busy port into that PortBusy, before
+    anything is sent. It is closed again at once, which also clears the
+    TIOCEXCL it set, and the transport opens the port for itself.
+    """
+    open_port(port).close()
+    transport = SMPSerialTransport(baudrate=BAUD, exclusive=True)
     client = SMPClient(transport, port, timeout_s=timeout)
-    await client.connect(connect_timeout_s=timeout)
+    try:
+        await client.connect(connect_timeout_s=timeout)
+    except TimeoutError:
+        # Taken in the moment between the probe and here. Ask again, so that
+        # the error names the holder if there is one.
+        open_port(port).close()
+        raise
+    try:
+        set_exclusive(_serial_of(transport))
+    except BaseException:
+        await transport.disconnect()
+        raise
     return client, transport
 
 
@@ -145,16 +185,47 @@ def upload(
     return asyncio.run(asyncio.wait_for(_run(), timeout))
 
 
+def _version(v: str) -> tuple[int, ...] | None:
+    """An MCUboot version, major.minor.revision[.build], as four integers to
+    compare. None if it is not one. zbuild stamps the build number from the
+    clock, so a newer build is a larger version."""
+    try:
+        parts = tuple(int(p) for p in v.split("."))
+    except ValueError:
+        return None
+    return parts + (0,) * (4 - len(parts)) if len(parts) <= 4 else None
+
+
 def test(image_hash: str | None = None, port: str = PORT, timeout: float = 20.0) -> None:
     """Mark the staged image pending, so the next boot swaps to it.
 
     If it does not get confirm()ed, MCUboot reverts on the following reset.
+
+    With no hash, only an inactive image NEWER than the running one is
+    marked. After a swap and a confirm the inactive slot holds the PREVIOUS
+    image, and marking whatever was there quietly scheduled a downgrade on a
+    second call with no fresh upload. A hash, such as the one upload()
+    returns, is taken as meaning exactly that image, older or not: that is
+    how you roll back on purpose.
     """
     if image_hash is None:
-        for im in images(port):
-            if not im["active"]:
-                image_hash = im["hash"]
-                break
+        table = images(port)
+        running = next((im for im in table if im["active"]), None)
+        staged = next((im for im in table if not im["active"]), None)
+        if staged is None:
+            raise RuntimeError("no staged image found in the inactive slot")
+        new = _version(staged["version"])
+        now = _version(running["version"]) if running else None
+        if new is None or now is None or new <= now:
+            was = running["version"] if running else "unknown"
+            raise RuntimeError(
+                f"the inactive slot holds {staged['version']}, which is not newer "
+                f"than the running {was}. After a confirm that slot holds the "
+                f"previous image, and marking it would downgrade the MCU.\n"
+                f"  To update: fota.test(fota.upload(path))\n"
+                f"  To go back to it on purpose: fota.test('{staged['hash']}')"
+            )
+        image_hash = staged["hash"]
     if not image_hash:
         raise RuntimeError("no staged image found in the inactive slot")
 
