@@ -137,8 +137,12 @@ static int cmd_app_bars(const struct shell *sh, size_t argc, char **argv)
 	/* Validate everything before drawing anything: a partly-applied update
 	 * would show a frame that never corresponded to a real measurement. */
 	for (int i = 0; i < n; i++) {
-		int pct = atoi(argv[i + 1]);
+		int pct;
 
+		if (!app_parse_int(argv[i + 1], &pct)) {
+			shell_error(sh, APP_ERR "bar %d: '%s' is not a number", i, argv[i + 1]);
+			return -EINVAL;
+		}
 		if (!app_bars_pct_valid(pct)) {
 			shell_error(sh, APP_ERR "bar %d: %d outside 0..%d", i, pct,
 				    APP_BARS_PCT_MAX);
@@ -159,12 +163,22 @@ static int cmd_app_bars(const struct shell *sh, size_t argc, char **argv)
 static int cmd_app_matrix_px(const struct shell *sh, size_t argc, char **argv)
 {
 	status_leds_link_seen();
-	int row = atoi(argv[1]);
-	int col = atoi(argv[2]);
-	int level = atoi(argv[3]);
+	static const char *const names[] = {"row", "col", "level"};
+	int vals[3];
+	int row, col, level;
 	int idx;
 
 	ARG_UNUSED(argc);
+
+	for (int i = 0; i < 3; i++) {
+		if (!app_parse_int(argv[i + 1], &vals[i])) {
+			shell_error(sh, APP_ERR "%s: '%s' is not a number", names[i], argv[i + 1]);
+			return -EINVAL;
+		}
+	}
+	row = vals[0];
+	col = vals[1];
+	level = vals[2];
 
 	if (!app_matrix_pixel_valid(row, col)) {
 		shell_error(sh, APP_ERR "row 0..%d, col 0..%d", APP_MATRIX_ROWS - 1,
@@ -198,9 +212,23 @@ static int cmd_app_matrix_flip(const struct shell *sh, size_t argc, char **argv)
 	ARG_UNUSED(argc);
 	ARG_UNUSED(argv);
 
+	int rc;
+
 	flip = !flip;
-	settings_save_one(APP_SETTINGS_FLIP, &flip, sizeof(flip));
+	rc = settings_save_one(APP_SETTINGS_FLIP, &flip, sizeof(flip));
 	redraw();
+
+	/* The flip still applies for this boot - the panel in front of you is
+	 * the right way round either way - but "ok" was printed whether or not
+	 * it was saved, and a board fitted once and then power-cycled came back
+	 * upside down with nothing to say why. An APP_ERR line makes
+	 * unoq.MCU.matrix_flip() raise rather than report a setting that is
+	 * not there. */
+	if (rc != 0) {
+		shell_error(sh, APP_ERR "flip=%d applied but not saved (%d): it reverts at reset",
+			    flip, rc);
+		return rc;
+	}
 
 	shell_print(sh, "ok flip=%d", flip);
 	return 0;

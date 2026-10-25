@@ -20,7 +20,10 @@
 #ifndef APP_PROTO_H
 #define APP_PROTO_H
 
+#include <errno.h>
+#include <limits.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 /* The `app status` line, parsed by unoq.MCU.status() into a dict.
  *
@@ -40,6 +43,32 @@
  * Python looking like a reply, and nothing was raised.
  */
 #define APP_ERR "Error: "
+
+/* Every number a command takes is read with this, and a false return is an
+ * APP_ERR reply.
+ *
+ * It was atoi(), which turns anything into a number: `app bars abc` drew an
+ * idle core, and `app matrix px x y z` lit the corner pixel and said "ok". A
+ * typo at the prompt and a corrupted line on the wire both looked like a valid
+ * command. The whole argument has to be one decimal integer that fits an int:
+ * nothing before it but what strtol allows, nothing after it at all.
+ */
+static inline bool app_parse_int(const char *s, int *out)
+{
+	char *end;
+	long v;
+
+	if (s == NULL || *s == '\0') {
+		return false;
+	}
+	errno = 0;
+	v = strtol(s, &end, 10);
+	if (end == s || *end != '\0' || errno == ERANGE || v < INT_MIN || v > INT_MAX) {
+		return false;
+	}
+	*out = (int)v;
+	return true;
+}
 
 /* The `app temp` line, parsed by unoq.MCU.die_temp() into degrees Celsius.
  *
