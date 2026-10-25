@@ -42,6 +42,19 @@ ADDR="${2:-}"
   fi
   exit 1
 }
+# An address means something only for a raw .bin. A .hex or .elf carries its
+# own load addresses, and OpenOCD ignores one given beside it - this printed
+# "flashing x.hex @ 0x08040000" and then wrote it wherever the hex said, which
+# for an image meant for the other slot is the wrong place, silently.
+case "$IMG" in
+  *.bin) ;;
+  *)
+    [ -z "$ADDR" ] || {
+      echo "$IMG carries its own load addresses; an address ($ADDR) is only for a .bin" >&2
+      exit 2
+    }
+    ;;
+esac
 [ -x "$OPENOCD" ] || {
   echo "openocd missing at $OPENOCD" >&2
   exit 1

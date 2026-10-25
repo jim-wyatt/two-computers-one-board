@@ -325,10 +325,15 @@ CODE="${code_matches[0]}"
 cs_matches=("$HOME"/.vscode-server/cli/servers/Stable-*/server/bin/code-server)
 CS="${cs_matches[0]}"
 [ -x "$CS" ] || CS=""
-[ -x "$CODE" ] && "$CODE" --list-extensions --show-versions 2>/dev/null >/tmp/exts.txt
-[ -s /tmp/exts.txt ] || { [ -x "$CS" ] && "$CS" --list-extensions --show-versions 2>/dev/null >/tmp/exts.txt; }
-python3 - <<'PY'
-import json, urllib.request
+# A file of this run's own. It was /tmp/exts.txt, which outlives the run: with
+# neither CLI available, the -s test below found an earlier run's list and
+# reported those extensions as installed now.
+EXTS="$(mktemp)"
+trap 'rm -f "$EXTS"' EXIT
+[ -x "$CODE" ] && "$CODE" --list-extensions --show-versions 2>/dev/null >"$EXTS"
+[ -s "$EXTS" ] || { [ -x "$CS" ] && "$CS" --list-extensions --show-versions 2>/dev/null >"$EXTS"; }
+EXTS="$EXTS" python3 - <<'PY'
+import json, os, urllib.request
 
 # This board is linux-arm64. The Marketplace returns one entry per target
 # platform, newest first, and publishers routinely ship a version for x64 and
@@ -340,7 +345,7 @@ import json, urllib.request
 PLATFORM = "linux-arm64"
 
 try:
-    cur = dict(l.rsplit("@",1) for l in open("/tmp/exts.txt").read().split() if "@" in l)
+    cur = dict(l.rsplit("@",1) for l in open(os.environ["EXTS"]).read().split() if "@" in l)
 except Exception:
     print("  (could not read extension list)"); raise SystemExit
 url="https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery"

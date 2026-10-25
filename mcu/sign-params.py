@@ -53,7 +53,10 @@ def params(build: Path, zephyr_base: Path) -> tuple[int, int]:
     if not edt_file.is_file():
         raise SystemExit(f"no devicetree at {edt_file} - has this been built?")
     with edt_file.open("rb") as f:
-        edt = pickle.load(f)  # noqa: S301 - written by this build; see the docstring
+        # Unpickling runs code, which is safe only because this build wrote it;
+        # see the docstring. (Ruff's S rules are not enabled here, so a noqa
+        # for one of them was itself a finding: RUF100.)
+        edt = pickle.load(f)
 
     flash = edt.chosen_node("zephyr,flash")
     if not flash:

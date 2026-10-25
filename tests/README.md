@@ -76,6 +76,8 @@ without touching `/var/lib`.
 | [`usb-handover.bats`](usb-handover.bats) | The order a stock board's doors are closed and opened in. `adbd` stopped before `sshd` is running, or by a script that is `adbd`'s own child, is a board nobody can log into; and "stopped and disabled" printed over a unit that is still running is how the MCU's serial port stayed held. |
 | [`zephyr-workspace.bats`](zephyr-workspace.bats) | Whether the board's Zephyr is the one the project pins. It said yes whenever a workspace existed, so moving the pin left the board on the old Zephyr with every line reading `ok`. |
 | [`install-dev-tools.bats`](install-dev-tools.bats) | The four linters and runners every gate executes, here and in CI. A pinned version is not pinned bytes: whatever the download returned was installed. |
+| [`shell-env.bats`](shell-env.bats) | The one line this project puts in `~/.bashrc`. Repointing it after a move repointed every other project's `env.sh` line too. |
+| [`fetch-vscode.bats`](fetch-vscode.bats) | Two gigabytes of installers. Once they were moved onto the drive, every run downloaded them all again. |
 | [`zephyr-sdk.bats`](zephyr-sdk.bats) | The first step of `bootstrap.sh` a stranger's board ever stopped at. It passed on every board it was developed on, and failed on a fresh one. |
 | [`build-flash.bats`](build-flash.bats) | `zbuild` and `zflash` with nothing after them: the right app, and never the unsigned image. Also that CI can run the same script the board does. |
 | [`uplink-fallback.bats`](uplink-fallback.bats) | The last automatic way back onto a network when wifi is off. Wrong one way it strands the board; wrong the other way the radio comes back on every boot. |

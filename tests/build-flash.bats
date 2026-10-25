@@ -69,6 +69,15 @@ built() {
   ran "west build -b arduino_uno_q -d $ZEPHYR_WORKSPACE/build-hello_world $ZEPHYR_WORKSPACE/zephyr/samples/hello_world -p always"
 }
 
+@test "a test suite inside the project builds in its own directory, not the firmware's" {
+  # mcu/tests/* are apps in the checkout too, and matched "$PROJECT"/*: one of
+  # them built into $WS/build and repointed compile_commands.json, so the next
+  # plain zbuild was a pristine rebuild (#119).
+  run "$PROJECT/mcu/zbuild.sh" "$PROJECT/mcu/tests/bars" -p always
+  [ "$status" -eq 0 ]
+  ran "west build -b arduino_uno_q -d $ZEPHYR_WORKSPACE/build-bars $PROJECT/mcu/tests/bars -p always"
+}
+
 @test "zbuild still refuses an app that does not exist" {
   run "$PROJECT/mcu/zbuild.sh" no/such/app
   [ "$status" -eq 1 ]
@@ -347,6 +356,17 @@ SH
   run "$PROJECT/mcu/flash.sh" "$BATS_TEST_TMPDIR/fw.bin"
   [ "$status" -eq 0 ]
   ran_like "^openocd .*program \"$BATS_TEST_TMPDIR/fw.bin\" verify reset exit 0x08000000$"
+}
+
+@test "an address given with a hex is refused, not printed and ignored" {
+  # A .hex carries its own addresses. This printed "@ 0x08040000" and then
+  # wrote the image wherever the hex said (#119).
+  echo ":00000001FF" >"$BATS_TEST_TMPDIR/other.hex"
+  run "$PROJECT/mcu/flash.sh" "$BATS_TEST_TMPDIR/other.hex" 0x08040000
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"an address (0x08040000) is only for a .bin"* ]]
+  never_ran openocd
+  never_ran gpioset
 }
 
 @test "BOOT0 is held low before flashing" {
