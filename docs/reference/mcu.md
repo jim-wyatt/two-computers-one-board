@@ -108,6 +108,19 @@ confirming, and the board returned to v0.0.0 by itself.
 `fota.images()` reports the slot table, and the image version in it is how you
 tell which build is actually running after a swap.
 
+`fota.test()` with no argument marks the image in the inactive slot only if its
+version is newer than the running one. `zbuild` stamps every build with the
+time, so a fresh upload always is. After a confirm, though, that slot holds the
+*previous* image, and marking it would roll the MCU back. To go back to an older
+image on purpose, pass its hash: `fota.test(h)` takes the image `h` names,
+whatever its version.
+
+Every `fota` call holds the serial port the way `unoq.MCU` does, with both the
+advisory lock and the kernel's exclusive flag, so nothing can write shell
+commands into the middle of an upload. If `unoq-cpu-bars` or another program
+has the port, the call fails at once with `PortBusy` and names that program;
+stop it first.
+
 ## Interactive shell
 
 The app runs a Zephyr shell on the same UART.

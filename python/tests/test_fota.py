@@ -8,13 +8,17 @@ confirming the wrong slot. Both are guarded below without touching a board.
 
 from __future__ import annotations
 
+import asyncio
+import errno
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
+import serial
 
 from unoq import fota
+from unoq.mcu import PortBusy
 
 
 class FakeImage:
@@ -207,12 +211,63 @@ def test_test_marks_the_given_hash_pending(smp: dict[str, Any]) -> None:
 def test_test_finds_the_inactive_slot_when_no_hash_is_given(smp: dict[str, Any]) -> None:
     smp["client"] = FakeClient(
         [
-            FakeImage(0, active=True, digest=b"\xaa"),
-            FakeImage(1, active=False, digest=b"\xbe\xef"),
+            FakeImage(0, "0.0.0.100", active=True, digest=b"\xaa"),
+            FakeImage(1, "0.0.0.200", active=False, digest=b"\xbe\xef"),
         ]
     )
     fota.test()
     assert smp["client"].requests[-1].kwargs["hash"] == bytes.fromhex("beef")
+
+
+@pytest.mark.parametrize(
+    ("running", "staged"),
+    [
+        # After a swap and a confirm: the previous image, in the inactive slot.
+        ("0.0.0.200", "0.0.0.100"),
+        ("0.0.0.100", "0.0.0.100"),
+        # 1.2 is 1.2.0.0, not something smaller than it.
+        ("1.2", "1.2.0.0"),
+        ("0.0.0.100", "not-a-version"),
+        ("0.0.0.100", "1.2.3.4.5"),
+    ],
+)
+def test_test_with_no_hash_never_marks_an_image_that_is_not_newer(
+    smp: dict[str, Any], running: str, staged: str
+) -> None:
+    smp["client"] = FakeClient(
+        [
+            FakeImage(0, running, active=True, digest=b"\xaa"),
+            FakeImage(1, staged, active=False, digest=b"\xbe\xef"),
+        ]
+    )
+    with pytest.raises(RuntimeError, match="not newer") as exc:
+        fota.test()
+    # It says how to do it on purpose, with the hash to do it with.
+    assert "fota.test('beef')" in str(exc.value)
+    assert not any("hash" in getattr(r, "kwargs", {}) for r in smp["client"].requests)
+
+
+def test_test_with_no_hash_refuses_when_nothing_is_running(smp: dict[str, Any]) -> None:
+    smp["client"] = FakeClient([FakeImage(1, "0.0.0.200", active=False)])
+    with pytest.raises(RuntimeError, match="than the running unknown"):
+        fota.test()
+
+
+def test_an_older_image_is_marked_when_asked_for_by_hash(smp: dict[str, Any]) -> None:
+    # Rolling back on purpose is a thing you do, so the hash is taken as meant.
+    smp["client"] = FakeClient(
+        [
+            FakeImage(0, "0.0.0.200", active=True, digest=b"\xaa"),
+            FakeImage(1, "0.0.0.100", active=False, digest=b"\xbe\xef"),
+        ]
+    )
+    fota.test("beef")
+    assert smp["client"].requests[-1].kwargs["hash"] == bytes.fromhex("beef")
+
+
+def test_an_empty_hash_is_not_an_image(smp: dict[str, Any]) -> None:
+    with pytest.raises(RuntimeError, match="no staged image"):
+        fota.test("")
 
 
 def test_test_raises_when_nothing_is_staged(smp: dict[str, Any]) -> None:
@@ -238,29 +293,112 @@ def test_reset_still_disconnects(smp: dict[str, Any]) -> None:
     assert smp["transport"].disconnected is True
 
 
-def test_client_builds_a_connected_smp_pair(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Cover the connection helper the other tests patch out."""
-    import asyncio
+# -- the port: both locks, and a busy port named ------------------------------
 
-    connected: list[float] = []
 
-    class _Transport:
-        def __init__(self, baudrate: int = 0) -> None:
-            self.baudrate = baudrate
+class FakeSMPTransport:
+    def __init__(self, **kwargs: Any) -> None:
+        self.kwargs = kwargs
+        self._conn = serial.Serial()  # never opened
+        self.disconnected = False
 
-    class _Client:
-        def __init__(self, transport: Any, port: str, timeout_s: float = 0) -> None:
-            self.transport = transport
-            self.port = port
+    async def disconnect(self) -> None:
+        self.disconnected = True
 
-        async def connect(self, connect_timeout_s: float = 0) -> None:
-            connected.append(connect_timeout_s)
 
-    monkeypatch.setattr(fota, "SMPSerialTransport", _Transport)
-    monkeypatch.setattr(fota, "SMPClient", _Client)
+class FakeSMPClient:
+    connect_fails: ClassVar[BaseException | None] = None
+    connected: ClassVar[list[float]] = []
 
-    pair: tuple[Any, Any] = asyncio.run(fota._client("/dev/fake", 5.0))
+    def __init__(self, transport: Any, port: str, timeout_s: float) -> None:
+        self.port = port
+
+    async def connect(self, connect_timeout_s: float) -> None:
+        FakeSMPClient.connected.append(connect_timeout_s)
+        if FakeSMPClient.connect_fails is not None:
+            raise FakeSMPClient.connect_fails
+
+
+@pytest.fixture
+def port(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    """fota._client with the transport, the probe and TIOCEXCL all faked."""
+    state: dict[str, Any] = {"probes": 0, "busy_on": set(), "exclusive": []}
+
+    class Probe:
+        def close(self) -> None:
+            pass
+
+    def fake_open_port(p: str) -> Probe:
+        state["probes"] += 1
+        if state["probes"] in state["busy_on"]:
+            raise PortBusy(f"{p} is flagged exclusive. Open right now: unoq-cpu-bars (pid 7).")
+        return Probe()
+
+    def fake_set_exclusive(s: Any) -> None:
+        state["exclusive"].append(s)
+        if "exclusive_fails" in state:
+            raise state["exclusive_fails"]
+
+    def fake_transport(**kwargs: Any) -> FakeSMPTransport:
+        t = FakeSMPTransport(**kwargs)
+        state["transport"] = t
+        return t
+
+    FakeSMPClient.connect_fails = None
+    FakeSMPClient.connected = []
+    monkeypatch.setattr(fota, "open_port", fake_open_port)
+    monkeypatch.setattr(fota, "set_exclusive", fake_set_exclusive)
+    monkeypatch.setattr(fota, "SMPSerialTransport", fake_transport)
+    monkeypatch.setattr(fota, "SMPClient", FakeSMPClient)
+    return state
+
+
+def test_the_smp_connection_takes_both_locks(port: dict[str, Any]) -> None:
+    pair: tuple[Any, Any] = asyncio.run(fota._client("/dev/ttyHS1", 5.0))
     client, transport = pair
-    assert client.port == "/dev/fake"
-    assert transport.baudrate == 115200
-    assert connected == [5.0]
+    assert transport.kwargs["baudrate"] == 115200
+    assert FakeSMPClient.connected == [5.0]
+    # flock, through pyserial ...
+    assert transport.kwargs["exclusive"] is True
+    # ... and TIOCEXCL, on the transport's own fd.
+    assert port["exclusive"] == [transport._conn]
+    assert client.port == "/dev/ttyHS1"
+
+
+def test_a_busy_port_is_named_before_anything_is_sent(port: dict[str, Any]) -> None:
+    port["busy_on"] = {1}
+    with pytest.raises(PortBusy, match="unoq-cpu-bars"):
+        asyncio.run(fota._client("/dev/ttyHS1", 1.0))
+    assert "transport" not in port
+
+
+def test_a_port_taken_after_the_probe_is_still_named(port: dict[str, Any]) -> None:
+    # smpclient retries a failed open until its timeout and then says only
+    # TimeoutError. The second probe is what says who.
+    port["busy_on"] = {2}
+    FakeSMPClient.connect_fails = TimeoutError("Failed to connect")
+    with pytest.raises(PortBusy, match="unoq-cpu-bars"):
+        asyncio.run(fota._client("/dev/ttyHS1", 1.0))
+
+
+def test_a_connect_timeout_with_nobody_holding_the_port_stays_a_timeout(
+    port: dict[str, Any],
+) -> None:
+    FakeSMPClient.connect_fails = TimeoutError("Failed to connect")
+    with pytest.raises(TimeoutError):
+        asyncio.run(fota._client("/dev/ttyHS1", 1.0))
+    assert port["probes"] == 2
+
+
+def test_a_port_that_will_not_lock_is_let_go_and_reported(port: dict[str, Any]) -> None:
+    port["exclusive_fails"] = OSError(errno.EPERM, "Operation not permitted")
+    with pytest.raises(OSError, match="not permitted"):
+        asyncio.run(fota._client("/dev/ttyHS1", 1.0))
+    assert port["transport"].disconnected is True
+
+
+def test_a_transport_with_no_port_inside_is_not_used_unlocked() -> None:
+    # smpclient's _conn is private; if a new version moves it, say so rather
+    # than carry on with only half the locking.
+    with pytest.raises(RuntimeError, match="cannot lock the port"):
+        fota._serial_of(object())  # type: ignore[arg-type]
