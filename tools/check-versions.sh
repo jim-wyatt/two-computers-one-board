@@ -64,6 +64,7 @@ esac
 # bug recorded as finding 6 in docs/reference/clean-board-findings.md, fixed in
 # env.sh at the time and missed here.
 PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
+WS="${ZEPHYR_WORKSPACE:-$HOME/zephyrproject}"
 export PATH="$HOME/.local/bin:$PATH"
 
 # Sent only when there is a token to send. Without one the API still answers,
@@ -282,7 +283,7 @@ fi
 
 echo "=== Zephyr ==="
 printf '  installed %-12s latest %s\n' \
-  "$(git -c safe.directory="$HOME/zephyrproject/zephyr" -C "$HOME/zephyrproject/zephyr" describe --tags 2>/dev/null)" \
+  "$(git -c safe.directory="$WS/zephyr" -C "$WS/zephyr" describe --tags 2>/dev/null)" \
   "$(gh_latest zephyrproject-rtos/zephyr)"
 
 echo "=== Zephyr SDK ==="
@@ -312,7 +313,7 @@ uv pip list --python "$PROJECT/.venv/bin/python" --outdated 2>/dev/null | tail -
 echo "  (these are held by python/requirements-lock.txt - take them with tools/update-constraints.sh --upgrade)"
 
 echo "=== Zephyr venv conformance to its own pins ==="
-(cd "$HOME/zephyrproject" && uv pip install --python .venv/bin/python \
+(cd "$WS" && uv pip install --python .venv/bin/python \
   -r zephyr/scripts/requirements.txt --dry-run 2>&1 | tail -2 | sed 's/^/  /')
 
 echo "=== VS Code extensions vs Marketplace ==="

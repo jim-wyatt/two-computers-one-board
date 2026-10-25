@@ -34,7 +34,7 @@ APP_HEX="${1:-$WS/build/zephyr/zephyr.signed.hex}"
 export PATH="$HOME/.local/bin:$PATH"
 WEST="$WS/.venv/bin/west"
 [ -x "$WEST" ] || WEST="$(command -v west || true)"
-SDK="${ZEPHYR_SDK:-$HOME/zephyr-sdk-1.0.1}"
+SDK="${ZEPHYR_SDK:-$HOME/zephyr-sdk-${ZEPHYR_SDK_VERSION:-1.0.1}}"
 [ -d "$SDK" ] && export ZEPHYR_SDK_INSTALL_DIR="$SDK"
 
 # WHEN THE BOOTLOADER IS REBUILT

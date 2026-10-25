@@ -271,7 +271,7 @@ of the disagreements, so change all of them in one commit:
 |---|---|
 | Zephyr | `west.yml` and `provision/user/30-zephyr-workspace.sh` (`tools/check-zephyr-pin.sh` fails if they differ) |
 | Zephyr's Python packages | `tools/update-constraints.sh`, which reads the version from the step above and rewrites `mcu/requirements-zephyr-lock.txt` |
-| The SDK | `provision/user/25-zephyr-sdk.sh`, `env.sh`, `bootstrap.sh`, the defaults in `mcu/zbuild.sh`, `mcu/flash-all.sh` and `mcu/ztest.sh`, and `.vscode/launch.json` and `.vscode/tasks.json` |
+| The SDK | `provision/user/25-zephyr-sdk.sh`, `env.sh`, `bootstrap.sh`, the defaults in `mcu/zbuild.sh`, `mcu/flash-all.sh` and `mcu/ztest.sh`, and `.vscode/launch.json` and `.vscode/tasks.json` (`tools/check-zephyr-pin.sh` fails if any differs from the first) |
 
 On a board that already has a workspace, running `bootstrap.sh` again, or just
 `provision/user/30-zephyr-workspace.sh`, moves it to the new pin: it fetches

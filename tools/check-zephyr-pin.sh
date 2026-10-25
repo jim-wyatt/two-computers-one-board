@@ -1,8 +1,8 @@
 #!/bin/bash
 # Copyright (c) 2026 Jim Wyatt
 # SPDX-License-Identifier: MIT
-# The Zephyr version is written down twice, and so is uv's. Fail if either
-# pair disagrees.
+# The Zephyr version is written down twice, uv's twice, and the SDK's in every
+# script that defaults to it. Fail if any of them disagrees.
 #
 #   tools/check-zephyr-pin.sh
 #
@@ -134,3 +134,35 @@ done
 [ "$fail" = 0 ] || exit 1
 
 echo "uv pinned at $uv_board on the board and in every workflow that installs it"
+
+# --- the SDK -----------------------------------------------------------------
+#
+# provision/user/25-zephyr-sdk.sh pins the SDK release. Everything else that
+# needs the SDK derives its path from ZEPHYR_SDK_VERSION, but the default still
+# has to be written in each reader (env.sh, bootstrap.sh, the mcu/*.sh scripts)
+# and the VS Code files cannot read a variable at all - nine places, and moving
+# the pin in one left the others pointing at a directory that no longer
+# existed. So every one is held to the pin here. tests/ is left out: it names
+# other releases on purpose.
+SDK_STEP="$PROJECT/provision/user/25-zephyr-sdk.sh"
+# SDK_VERSION="${ZEPHYR_SDK_VERSION:-1.0.1}"
+sdk_pin="$(sed -n 's/^SDK_VERSION=.*:-\([0-9][0-9.]*\)}.*/\1/p' "$SDK_STEP" | head -1)"
+if [ -z "$sdk_pin" ]; then
+  echo "could not read the SDK version from $SDK_STEP" >&2
+  exit 1
+fi
+stray="$(cd "$PROJECT" && git grep -nE 'zephyr-sdk-[0-9][0-9.]*[0-9]|ZEPHYR_SDK_VERSION:-[0-9][0-9.]*' -- ':!tests/' 2>/dev/null |
+  grep -vE "zephyr-sdk-${sdk_pin//./\\.}([^0-9.]|\$|\.[^0-9])|ZEPHYR_SDK_VERSION:-${sdk_pin//./\\.}([^0-9.]|\$)" || true)"
+if [ -n "$stray" ]; then
+  cat >&2 <<MSG
+The Zephyr SDK is pinned at $sdk_pin (provision/user/25-zephyr-sdk.sh), and
+these name another version:
+
+$stray
+
+Change them all together: docs/reference/mcu.md, "Upgrading Zephyr".
+MSG
+  exit 1
+fi
+
+echo "Zephyr SDK $sdk_pin named consistently wherever its version is written"

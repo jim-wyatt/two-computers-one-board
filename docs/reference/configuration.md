@@ -116,7 +116,7 @@ matches it.
 | `UNOQ_LEARN_PORT` | `8080` | `provision/75-learning-web.sh` | The port that script *checks* after starting the server. It does not move the server: the port is named in `ExecStart` in [`python/unoq-learn.service`](../../python/unoq-learn.service). Change both, or neither. |
 | `UNOQ_SHARE_SIZE_MB` | `2600` | `share/build-image.sh` | Size of the FAT32 image that is both the USB drive and the web root. |
 | `UNOQ_SHARE_IMG` | `~/unoq-share.img` | `provision/95`, `provision/75`, `share/build-image.sh`, `usb/gadget-up.sh` | Where that image lives. If you move it, set this everywhere it is read, including `/etc/default/unoq-usb`. |
-| `UNOQ_SHARE_MOUNT` | `/srv/unoq-share` | `provision/75`, `share/build-image.sh` | Where the image is mounted for the web server. |
+| `UNOQ_SHARE_MOUNT` | `/srv/unoq-share` | `provision/75`, `share/build-image.sh`, `share/fetch-vscode.sh`, and `install_unit`, which writes it into `unoq-learn.service` | Where the image is mounted for the web server. |
 | `UNOQ_SHARE` | `/var/lib/unoq-share` | `share/build-image.sh` | The staging directory the image is built from. |
 
 ## Provisioning switches
@@ -156,9 +156,9 @@ command line for one run, for example `BUILD_DIR=/tmp/b zbuild`.
 
 | Variable | Default | Read by | What it does |
 |---|---|---|---|
-| `ZEPHYR_WORKSPACE` | `~/zephyrproject` | `bootstrap.sh`, `provision/user/30-zephyr-workspace.sh`, `mcu/zbuild.sh`, `mcu/flash.sh`, `mcu/flash-all.sh`, `mcu/ztest.sh`, `tools/update-constraints.sh` | Where the west workspace is. If you move it, set this for every one of those scripts. |
-| `ZEPHYR_SDK` | `~/zephyr-sdk-1.0.1` | `mcu/zbuild.sh`, `mcu/flash-all.sh`, `mcu/ztest.sh` | Where the Zephyr SDK (the cross-compiler) is installed. |
-| `ZEPHYR_SDK_VERSION` | `1.0.1` | `provision/user/25-zephyr-sdk.sh` | Which SDK release that step downloads, into `~/zephyr-sdk-<version>`. A pin: see the note below. |
+| `ZEPHYR_WORKSPACE` | `~/zephyrproject` | `bootstrap.sh`, `env.sh`, `provision/user/30-zephyr-workspace.sh`, `mcu/zbuild.sh`, `mcu/flash.sh`, `mcu/flash-all.sh`, `mcu/ztest.sh`, `tools/update-constraints.sh`, `tools/check-versions.sh` | Where the west workspace is. If you move it, set this for every one of those scripts. |
+| `ZEPHYR_SDK` | `~/zephyr-sdk-<ZEPHYR_SDK_VERSION>` | `env.sh`, `mcu/zbuild.sh`, `mcu/flash-all.sh`, `mcu/ztest.sh` | Where the Zephyr SDK (the cross-compiler) is installed. Unset, it follows `ZEPHYR_SDK_VERSION`, so changing the version is enough. |
+| `ZEPHYR_SDK_VERSION` | `1.0.1` | `provision/user/25-zephyr-sdk.sh`, and through `ZEPHYR_SDK`'s default everything that reads that | Which SDK release that step downloads, into `~/zephyr-sdk-<version>`. A pin: see the note below. |
 | `UV_VERSION` | `0.13.5` | `provision/user/20-host-tools.sh` | Which uv release that step installs, or brings an existing uv to. A pin: see the note below. |
 | `ZEPHYR_VERSION` | `v4.4.2` | `provision/user/30-zephyr-workspace.sh` | Which Zephyr release the workspace is created at. A pin: see the note below. |
 | `BOARD` | `arduino_uno_q` | `mcu/zbuild.sh`, `mcu/flash-all.sh` | The Zephyr board to build for. `env.sh` exports the same value. |
@@ -174,8 +174,9 @@ command line for one run, for example `BUILD_DIR=/tmp/b zbuild`.
 > `ZEPHYR_VERSION`, `ZEPHYR_SDK_VERSION` and `UV_VERSION` can be overridden,
 > and should not be changed casually. The Zephyr version is also written in
 > `west.yml` for CI, and the uv version in the workflows' `env:`, and a gate
-> fails when either pair disagrees; the SDK path is written into
-> `env.sh` and the `ZEPHYR_SDK` defaults above. Changing either is an upgrade
+> fails when either pair disagrees; the SDK version's default is written in
+> each script that reads it and in the VS Code files, and the same gate fails
+> if any of them differs from the pin. Changing either is an upgrade
 > with its own checklist: see [mcu.md](mcu.md#upgrading-zephyr).
 
 ## Not for changing

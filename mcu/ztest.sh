@@ -19,7 +19,7 @@ export PATH="$HOME/.local/bin:$PATH"
 export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 # Same fallbacks as zbuild.sh, for the same reason: CI runs this script too, and
 # a runner has neither the SDK in $HOME nor a venv inside the workspace.
-SDK="${ZEPHYR_SDK:-$HOME/zephyr-sdk-1.0.1}"
+SDK="${ZEPHYR_SDK:-$HOME/zephyr-sdk-${ZEPHYR_SDK_VERSION:-1.0.1}}"
 [ -d "$SDK" ] && export ZEPHYR_SDK_INSTALL_DIR="$SDK"
 PYTHON="$WS/.venv/bin/python"
 [ -x "$PYTHON" ] || PYTHON="$(command -v python3)"
