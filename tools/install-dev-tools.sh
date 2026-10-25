@@ -44,6 +44,32 @@ SHFMT_VERSION="${SHFMT_VERSION:-3.14.1}"
 BATS_VERSION="${BATS_VERSION:-1.14.0}"
 ACTIONLINT_VERSION="${ACTIONLINT_VERSION:-1.7.12}"
 
+# What each pinned download must hash to. The versions above pinned which
+# release to ask for, and nothing checked what came back: whatever bytes
+# arrived were installed into ~/.local/bin and run by every gate, here and in
+# CI. A bump is now two edits: the version, and its lines here.
+#
+# tool        version  arch     sha256
+#
+# The shellcheck, shfmt and actionlint lines are release assets, and agree with the
+# digests GitHub lists for them (and with actionlint's own checksums.txt).
+# bats publishes no assets, so its line is the hash of the source archive
+# GitHub generates for the tag. GitHub keeps those stable; if it ever does not,
+# this fails loudly instead of installing something else.
+#
+# A version chosen with one of the variables above has no line here, so it is
+# refused unless its hash is given too: SHELLCHECK_SHA256=..., SHFMT_SHA256=...,
+# BATS_SHA256=..., ACTIONLINT_SHA256=...
+DEV_TOOL_SUMS='
+shellcheck  0.11.0   aarch64  12b331c1d2db6b9eb13cfca64306b1b157a86eb69db83023e261eaa7e7c14588
+shellcheck  0.11.0   x86_64   8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+shfmt       3.14.1   arm64    5f2db09dae91fca848f7adbdd014632e921a383863a2ad7e0450ad3aba0c6489
+shfmt       3.14.1   amd64    76e77641faa025814b77f153b29796b8e6fa2fca03e0c76a691608b86c7ea7bf
+bats        1.14.0   any      bb537b70b15b732f6d8827dd6578e3d8ce166636ce1f18ea9a074184fcce9177
+actionlint  1.7.12   arm64    325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6
+actionlint  1.7.12   amd64    8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+'
+
 case "$(uname -m)" in
   aarch64 | arm64)
     SC_ARCH=aarch64
@@ -60,6 +86,34 @@ case "$(uname -m)" in
 esac
 
 mkdir -p "$BIN"
+
+# fetch <tool> <version> <arch> <url> <file> - download to <file>, and keep it
+# only if it hashes to what is recorded for that tool, version and arch.
+fetch() {
+  local tool="$1" version="$2" arch="$3" url="$4" out="$5" var want got
+  var="$(tr '[:lower:]' '[:upper:]' <<<"$tool")_SHA256"
+  want="${!var:-}"
+  [ -n "$want" ] || want="$(awk -v t="$tool" -v v="$version" -v a="$arch" \
+    '$1 == t && $2 == v && $3 == a { print $4 }' <<<"$DEV_TOOL_SUMS")"
+  if [ -z "$want" ]; then
+    echo "  no checksum recorded for $tool $version ($arch): add its line to DEV_TOOL_SUMS, or set $var" >&2
+    return 1
+  fi
+  # -f so an HTTP error is an error, rather than an HTML page saved as the tool.
+  curl -fsSL "$url" -o "$out" || {
+    echo "  could not download $tool v$version" >&2
+    return 1
+  }
+  got="$(sha256sum "$out" | cut -d' ' -f1)"
+  if [ "$got" != "$want" ]; then
+    rm -f "$out"
+    echo "  $tool v$version did not match its checksum - not installed" >&2
+    echo "    expected $want" >&2
+    echo "    got      $got" >&2
+    echo "    from     $url" >&2
+    return 1
+  fi
+}
 
 echo "=== Python tooling -> $VENV ==="
 [ -x "$VENV/bin/python" ] || uv venv "$VENV"
@@ -82,13 +136,14 @@ else
   [ -n "$have" ] &&
     echo "  found $have on PATH, installing $SHELLCHECK_VERSION over it (CI and local must match)"
   tmp=$(mktemp -d)
-  # -f so an HTTP error is an error, rather than an HTML page piped into tar.
-  curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.${SC_ARCH}.tar.xz" |
-    tar -xJ -C "$tmp" || {
+  if ! { fetch shellcheck "$SHELLCHECK_VERSION" "$SC_ARCH" \
+    "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.${SC_ARCH}.tar.xz" \
+    "$tmp/shellcheck.tar.xz" &&
+    tar -xJ -C "$tmp" -f "$tmp/shellcheck.tar.xz"; }; then
     rm -rf "$tmp"
-    echo "  could not download shellcheck v$SHELLCHECK_VERSION" >&2
+    echo "  could not install shellcheck v$SHELLCHECK_VERSION" >&2
     exit 1
-  }
+  fi
   install -m 0755 "$tmp/shellcheck-v${SHELLCHECK_VERSION}/shellcheck" "$BIN/shellcheck"
   rm -rf "$tmp"
   echo "  installed $("$BIN/shellcheck" --version | awk '/^version:/ {print $2}')"
@@ -102,12 +157,18 @@ if [ "$have" = "$SHFMT_VERSION" ]; then
 else
   [ -n "$have" ] &&
     echo "  found $have on PATH, installing $SHFMT_VERSION over it (CI and local must match)"
-  curl -fsSL "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_${SHFMT_ARCH}" \
-    -o "$BIN/shfmt" || {
-    echo "  could not download shfmt v$SHFMT_VERSION" >&2
+  tmp=$(mktemp -d)
+  # Into a temporary file first, not straight over $BIN/shfmt: a download that
+  # failed its check must leave the old one where it was.
+  fetch shfmt "$SHFMT_VERSION" "$SHFMT_ARCH" \
+    "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_${SHFMT_ARCH}" \
+    "$tmp/shfmt" || {
+    rm -rf "$tmp"
+    echo "  could not install shfmt v$SHFMT_VERSION" >&2
     exit 1
   }
-  chmod +x "$BIN/shfmt"
+  install -m 0755 "$tmp/shfmt" "$BIN/shfmt"
+  rm -rf "$tmp"
   echo "  installed $("$BIN/shfmt" --version)"
 fi
 
@@ -129,14 +190,15 @@ else
   # tar's stderr is NOT silenced, deliberately and like the shellcheck block
   # above: a truncated or corrupt download fails inside tar, and hiding that
   # message leaves "could not download bats" as the only clue to an extraction
-  # problem. -f on curl so an HTTP error page is an error rather than something
-  # tar is asked to unpack.
-  curl -fsSL "https://github.com/bats-core/bats-core/archive/refs/tags/v${BATS_VERSION}.tar.gz" |
-    tar -xz -C "$tmp" || {
+  # problem.
+  if ! { fetch bats "$BATS_VERSION" any \
+    "https://github.com/bats-core/bats-core/archive/refs/tags/v${BATS_VERSION}.tar.gz" \
+    "$tmp/bats.tar.gz" &&
+    tar -xz -C "$tmp" -f "$tmp/bats.tar.gz"; }; then
     rm -rf "$tmp"
     echo "  could not download or unpack bats v$BATS_VERSION" >&2
     exit 1
-  }
+  fi
   # install.sh lays out bin/ and libexec/ under the prefix; $BIN is $prefix/bin,
   # so hand it the parent.
   "$tmp/bats-core-${BATS_VERSION}/install.sh" "$(dirname "$BIN")" >/dev/null || {
@@ -162,12 +224,14 @@ else
     echo "  found $have on PATH, installing $ACTIONLINT_VERSION over it (CI and local must match)"
   tmp=$(mktemp -d)
   # shfmt's arch names, not shellcheck's: amd64 and arm64.
-  curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_${SHFMT_ARCH}.tar.gz" |
-    tar -xz -C "$tmp" actionlint || {
+  if ! { fetch actionlint "$ACTIONLINT_VERSION" "$SHFMT_ARCH" \
+    "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_${SHFMT_ARCH}.tar.gz" \
+    "$tmp/actionlint.tar.gz" &&
+    tar -xz -C "$tmp" -f "$tmp/actionlint.tar.gz" actionlint; }; then
     rm -rf "$tmp"
     echo "  could not download or unpack actionlint v$ACTIONLINT_VERSION" >&2
     exit 1
-  }
+  fi
   install -m 0755 "$tmp/actionlint" "$BIN/actionlint"
   rm -rf "$tmp"
   echo "  installed $("$BIN/actionlint" -version | head -1)"

@@ -34,7 +34,15 @@ set -euo pipefail
 COMMIT="${OPENOCD_COMMIT:-da3920b0a52d}"
 REPO="${OPENOCD_REPO:-https://github.com/openocd-org/openocd.git}"
 PREFIX="${OPENOCD_PREFIX:-/opt/openocd-rebuilt}"
-SRC="${OPENOCD_SRC:-/tmp/openocd-src}"
+# A directory of its own, made fresh. This runs as root and used to clone and
+# build in /tmp/openocd-src, and log to /tmp/openocd-selftest.log: fixed names
+# in a directory every user can write to, so anyone could create either first -
+# a tree for root to build and install from, or a symlink for root to write
+# through. mktemp makes one nobody else can have made, and it is kept
+# afterwards, as the fixed one was, so the build can be looked at.
+WORK="$(mktemp -d /tmp/openocd-build.XXXXXX)"
+SRC="${OPENOCD_SRC:-$WORK/src}"
+LOG="$WORK/selftest.log"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 GPIOD_CFG="${GPIOD_CFG:-$HERE/../mcu/board-support/openocd_gpiod.cfg}"
 PROMOTE=0
@@ -104,13 +112,13 @@ sudo -u "${SUDO_USER:-$(stat -c %U "$HERE")}" "$LINK_UP" || true
 # and tee then dies of SIGPIPE.
 "$PREFIX/bin/openocd" -s "$PREFIX" -s "$PREFIX/share/openocd/scripts" \
   -f "$PREFIX/openocd_gpiod.cfg" -c "init" -c "targets" -c "shutdown" \
-  >/tmp/openocd-selftest.log 2>&1 || true
-if grep -q "Cortex-M33" /tmp/openocd-selftest.log; then
+  >"$LOG" 2>&1 || true
+if grep -q "Cortex-M33" "$LOG"; then
   echo
   echo "SELF-TEST PASSED - the rebuilt binary talks to the MCU."
-  grep -E "DPIDR|Cortex-M33" /tmp/openocd-selftest.log | sed 's/^/  /'
+  grep -E "DPIDR|Cortex-M33" "$LOG" | sed 's/^/  /'
 else
-  echo "SELF-TEST FAILED - see /tmp/openocd-selftest.log" >&2
+  echo "SELF-TEST FAILED - see $LOG" >&2
   echo "/opt/openocd was NOT touched." >&2
   exit 1
 fi
