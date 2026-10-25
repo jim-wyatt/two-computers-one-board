@@ -57,7 +57,13 @@ if ! git diff --quiet; then
     SAVED=1
 fi
 
-"$PROJECT/tools/check.sh" --fast
+# Without the variables git sets for a hook. check.sh runs the bats suites,
+# and a test that ran git in a scratch directory with this commit's GIT_DIR
+# and GIT_INDEX_FILE still set was running it on THIS repository: its
+# `git commit` started this hook again, inside itself, for as long as anyone
+# waited. The hook's own git commands above need them; nothing it starts does.
+# shellcheck disable=SC2046 # one name per word is the point
+env $(printf -- '-u %s ' $(git rev-parse --local-env-vars)) "$PROJECT/tools/check.sh" --fast
 STATUS=$?
 
 # A failed restore blocks the commit too. Committing on top of a tree we could

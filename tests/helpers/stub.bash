@@ -34,6 +34,13 @@ stub_setup() {
   # run from one inherited the real SDK path, and "an SDK directory that does
   # not exist is not exported" failed on the board and passed in CI.
   unset UNOQ_PROJECT ZEPHYR_BASE ZEPHYR_SDK_INSTALL_DIR ZEPHYR_TOOLCHAIN_VARIANT BOARD
+  # What git exports to a hook, which is where tools/check.sh runs from on
+  # every commit. With GIT_DIR and GIT_INDEX_FILE inherited, a test's own
+  # `git -C <scratch> init` and `commit` acted on the repository being
+  # committed to: the commit ran the pre-commit hook again, which ran these
+  # suites again, without end. git names the variables itself.
+  # shellcheck disable=SC2046 # one name per word is the point
+  unset $(git rev-parse --local-env-vars 2>/dev/null)
 }
 
 # stub <name> [exit_code] [stdout]
