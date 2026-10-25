@@ -364,6 +364,16 @@ line_of() { grep -nE "$1" "$STUB_LOG" | head -1 | cut -d: -f1; }
   refute ran_step provision/55-purge-arduino.sh
   refute ran_step provision/80-watchdog.sh
   refute ran_step provision/85-esp-permissions.sh
+  refute ran_step provision/82-boot-counting.sh
+}
+
+@test "boot counting runs only when asked for by name, not with --everything" {
+  bootstrap --everything
+  [ "$status" -eq 0 ]
+  refute ran_step provision/82-boot-counting.sh
+  bootstrap --with-boot-counting
+  [ "$status" -eq 0 ]
+  ran_step provision/82-boot-counting.sh
 }
 
 @test "--minimal leaves out all three, and the drive image with them" {

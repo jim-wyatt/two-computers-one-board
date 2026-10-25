@@ -583,3 +583,35 @@ If the USB gadget will not bind and wifi is off, the MPU's serial console,
 `/dev/ttyMSM0`, still offers a login and shows kernel messages from the first
 boot line. Which pads it comes out on is not yet verified — see
 [hardware.md](hardware.md#the-third-uart-the-mpus-own-console).
+
+### A new kernel that did not come up
+
+With `--with-boot-counting` ([provisioning.md](provisioning.md)), a newly installed kernel's boot entry has a try counter, and `bootctl list` shows it:
+
+```
+id: f182…-7.0.1+2-1.conf      two tries left, one used
+id: f182…-7.0.1+0-3.conf      bad: three boots and never marked good
+```
+
+An entry at `+0` is sorted below every good one, so the board boots the previous kernel without anyone touching it. That is the safety net working, not a fault. To find out why the new kernel failed, look at its boot. `journalctl --list-boots` lists them, and in a failed one `systemctl status unoq-boot-health` says whether the boot never finished or `sshd` never came up. Once the cause is fixed, reinstall the kernel package, which writes a fresh entry with a full counter. To keep the old kernel for good, remove the new one.
+
+**The test that has not been run yet.** Boot counting needs U-Boot to let systemd-boot rename a file on the EFI partition. One reboot shows whether it does. It boots the kernel the board already runs, through a second, counted entry, so the worst case is an ordinary boot:
+
+```bash
+sudo bash ~/two-computers-one-board/provision/82-boot-counting.sh   # if it is not installed yet
+cd /boot/efi/loader/entries
+E="$(ls *.conf | head -1)"                                          # the current entry
+sudo sh -c "sed 's/^title .*/title counting test/' '$E' > unoq-test+1.conf"
+sudo bootctl set-oneshot unoq-test+1.conf                           # boot it once
+sudo reboot
+```
+
+If `set-oneshot` is refused (U-Boot may not keep EFI variables written from Linux), change the `default` line of `/boot/efi/loader/loader.conf` to `unoq-test*` instead, and put it back afterwards. Then, a few minutes after the board is back:
+
+| `ls /boot/efi/loader/entries` shows | Means |
+|---|---|
+| `unoq-test.conf` | It all works: the try was counted, the health check passed, and the entry was marked good. |
+| `unoq-test+0-1.conf` | The count works, but the entry was not marked good. `systemctl status unoq-boot-health systemd-bless-boot` |
+| `unoq-test+1.conf`, unchanged | Nothing was renamed: either it did not boot this entry (`bootctl status`, *Current Entry*), or U-Boot cannot write the partition, and boot counting cannot work on this board. |
+
+Afterwards, `sudo rm /boot/efi/loader/entries/unoq-test*.conf`.

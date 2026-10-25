@@ -1,0 +1,33 @@
+# Copyright (c) 2026 Jim Wyatt
+# SPDX-License-Identifier: MIT
+[Unit]
+Description=Mark a kernel on trial good once the board is up and SSH answers
+Documentation=file:/home/arduino/two-computers-one-board/provision/82-boot-counting.sh
+
+# Part of systemd-boot's boot counting (see 82-boot-counting.sh). A boot entry
+# installed with a try counter (...+3.conf) is good only once
+# boot-complete.target is reached; systemd-bless-boot then drops the counter.
+# This is the check boot-complete.target waits for, and the only one.
+#
+# Only on a counted boot. boot-complete.target is pulled in by
+# systemd-bless-boot.service, which its generator adds only when systemd-boot
+# reports the entry has a counter. On an ordinary boot this unit never runs.
+Before=boot-complete.target
+After=multi-user.target ssh.service
+
+[Service]
+Type=oneshot
+# What a kernel can break and you need to get back in: the boot finished
+# (After=multi-user.target), and sshd is up. ssh.service is Type=notify, so
+# "active" means it is listening. Network and the microcontroller are left
+# out on purpose: a board with no cable and no wifi, or a firmware being
+# flashed, is not a reason to go back to an older kernel.
+#
+# The sleep is the same reasoning as unoq-usb-confirm.service: the first minute
+# is when a board is busiest, and a kernel that falls over then must not have
+# been marked good on the way past.
+ExecStart=/bin/sleep 60
+ExecStart=/usr/bin/systemctl is-active --quiet ssh.service
+
+[Install]
+RequiredBy=boot-complete.target
