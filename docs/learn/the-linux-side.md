@@ -48,8 +48,8 @@ sudo systemctl start unoq-leds
 ```
 
 (`sudo tee` is how you write to a file only root may write, from a pipe. And
-the first and last lines are there because `unoq-leds` rewrites that LED every
-five seconds to report the board's state. Leave it running and your blue light
+the first and last lines are there because `unoq-leds` checks that LED every
+five seconds and puts back the board's state. Leave it running and your blue light
 is overwritten almost at once: two writers, one file, and the last one wins.
 [Four lights that tell the truth](four-lights.md) is about that service.)
 
@@ -108,14 +108,17 @@ systemctl list-units 'unoq-*' --no-pager
 ```
 
 ```
-unoq-cpu-bars.service  loaded active running Arduino UNO Q host CPU load on the LED matrix
-unoq-leds.service      loaded active running Show the Arduino UNO Q link state on the board LEDs
-unoq-link.service      loaded active exited  Arduino UNO Q MPU<->MCU link (BOOT0 + UART enable GPIOs)
+unoq-cpu-bars.service   loaded active running Arduino UNO Q host CPU load on the LED matrix
+unoq-learn.service      loaded active running Arduino UNO Q learning content and installers over HTTP
+unoq-leds.service       loaded active running Show the Arduino UNO Q link state on the board LEDs
+unoq-link.service       loaded active exited  Arduino UNO Q MPU<->MCU link (BOOT0 + UART enable GPIOs)
+unoq-usb-gadget.service loaded active exited  Arduino UNO Q composite USB gadget (network + fileshare)
 ```
 
-Those three are what the course's setup gives you. `unoq-link` says `exited`,
-not `running`, and that is success: it sets two pins at boot and has nothing
-more to do. A plain setup also gives you `unoq-learn` and `unoq-usb-gadget`.
+Those five are what a plain setup gives you. `unoq-link` and `unoq-usb-gadget`
+say `exited`, not `running`, and that is success: each sets something up at
+boot and has nothing more to do. Add `--all` and you also see the USB units that
+run only when a cable is plugged in, sitting `inactive` until then.
 
 Useful commands, which you will use constantly:
 

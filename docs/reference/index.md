@@ -148,8 +148,8 @@ tools/check.sh --fix                     # reformat in place, then check
 
 | | |
 |---|---|
-| `mcu/app/` | The firmware — `main.c`, `matrix.c` (charlieplex driver), `bars.c` (rasterizer) |
-| `python/unoq/` | The Linux-side package — `link.py`, `mcu.py`, `fota.py`, `cpu.py` |
+| `mcu/app/` | The firmware — `main.c`, `matrix.c` (charlieplex driver), `bars.c` (rasterizer), `status_leds.c` |
+| `python/unoq/` | The Linux-side package — `link.py`, `mcu.py`, `fota.py`, `cpu.py`, `thermal.py`, and the two daemons `cpubars.py` and `learn.py` |
 | `usb/` | The composite gadget, the bridge, the bind guard |
 | `status/` | The status LEDs |
 | `provision/` | Root setup, numbered in order; `provision/user/` is the half that must not be root |

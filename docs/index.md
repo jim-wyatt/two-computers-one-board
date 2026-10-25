@@ -170,14 +170,16 @@ that were wrong the first time.
 
 </div>
 
-## Three ways to read this
+## Four ways to read this
 
-You are looking at one of them. All three are built from the same markdown, by
-the same command, so they cannot disagree about what the board does.
+You are looking at one of them. All four come from the same markdown, and the
+three built sites from the same command, so they cannot disagree about what the
+board does.
 
 | Where | How you get there | Needs |
 |---|---|---|
 | **GitHub** | The `docs/` folder in the repository | A browser |
+| **The published site** | [jim-wyatt.github.io/two-computers-one-board](https://jim-wyatt.github.io/two-computers-one-board/) | A network |
 | **The board** | `http://<board>:8080/` — served by `unoq-learn` | The board running |
 | **The USB drive** | The `UNO-Q` drive that appears when you plug the board in | Nothing at all |
 

@@ -16,7 +16,7 @@
 #   0x08000000  boot_partition  64K   MCUboot
 #   0x08010000  slot0          416K   signed application
 #   0x08078000  slot1          416K   staged update
-#   0x080e0000  storage        128K   NVS (settings, boot counter)
+#   0x080e0000  storage        128K   NVS (settings: panel orientation)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

@@ -78,11 +78,12 @@ completeness because the firmware links against them:
 |---|---|
 | [Zephyr RTOS](https://github.com/zephyrproject-rtos/zephyr) (+ MCUboot) | Apache-2.0 |
 | [OpenOCD](https://openocd.org/) — built by `tools/build-openocd.sh` | GPL-2.0-or-later |
-| `pyserial`, `gpiod`, `smpclient` | BSD-3-Clause / LGPL-2.1 / Apache-2.0 |
+| `pyserial`, `gpiod`, `smpclient`, `smbus2`, `spidev` | BSD-3-Clause / LGPL-2.1 / Apache-2.0 / MIT / MIT |
 | [MkDocs](https://www.mkdocs.org/) + [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/) | BSD-2-Clause / MIT |
 
 OpenOCD is GPL. `tools/build-openocd.sh` builds it from upstream source into
-`/opt/openocd`; no OpenOCD code is vendored into this repository. If you pass a
+`/opt/openocd-rebuilt`, and puts it in place of `/opt/openocd` only when run with
+`--promote`; no OpenOCD code is vendored into this repository. If you pass a
 built `/opt/openocd` on to someone else, the GPL applies to you: give them the
 source, or say where it is. The script prints the commit it built.
 

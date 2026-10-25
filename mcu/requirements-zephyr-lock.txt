@@ -2,7 +2,7 @@
 #    tools/update-constraints.sh  (Zephyr v4.4.2)
 anytree==2.13.0
     # via -r requirements-base.txt
-ast-serialize==0.12.1
+ast-serialize==0.13.1
     # via mypy
 attrs==26.1.0
     # via
@@ -15,7 +15,7 @@ canopen==2.4.1
     # via -r requirements-base.txt
 cbor2==6.1.5
     # via imgtool
-certifi==2026.7.22
+certifi==2026.10.23
     # via requests
 cffi==2.1.1 ; platform_python_implementation != 'PyPy'
     # via cryptography
@@ -36,17 +36,17 @@ colorama==0.4.6
     #   west
 colorlog==6.12.0
     # via gcovr
-coverage==7.16.2
+coverage==7.17.0
     # via -r requirements-build-test.txt
 cryptography==50.0.2
     # via imgtool
 docopt==0.6.2
     # via pykwalify
-gcovr==8.6
+gcovr==8.7
     # via -r requirements-build-test.txt
 idna==3.20
     # via requests
-imgtool==2.4.0
+imgtool==2.5.0
     # via -r extra.txt
 iniconfig==2.3.1
     # via pytest
@@ -93,7 +93,7 @@ patool==4.0.7 ; python_full_version < '3.12'
     # via -r requirements-base.txt
 patool==4.1.0 ; python_full_version >= '3.12'
     # via -r requirements-base.txt
-pluggy==1.6.0
+pluggy==1.7.0
     # via pytest
 ply==3.11
     # via -r requirements-build-test.txt
@@ -101,7 +101,7 @@ psutil==7.2.2
     # via
     #   -r requirements-base.txt
     #   pylink-square
-pycparser==3.11 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+pycparser==3.12 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
     # via cffi
 pyelftools==0.33
     # via -r requirements-base.txt
@@ -121,7 +121,7 @@ pytest==9.1.1
     # via -r requirements-build-test.txt
 python-can==4.6.1
     # via canopen
-python-dateutil==2.9.0.post0
+python-dateutil==3.0.0
     # via pykwalify
 python-debian==1.1.1
     # via reuse
@@ -150,13 +150,13 @@ ruamel-yaml==0.19.1
     # via pykwalify
 semver==3.1.0
     # via -r requirements-base.txt
-setuptools==84.0.0
+setuptools==84.2.1
     # via -r extra.txt
 six==1.17.0
     # via
     #   pylink-square
     #   python-dateutil
-tomlkit==0.15.1
+tomlkit==0.15.2
     # via reuse
 tqdm==4.70.1
     # via -r requirements-base.txt
@@ -165,6 +165,8 @@ typing-extensions==4.16.0
     #   mypy
     #   python-can
     #   referencing
+tzdata==2026.5
+    # via python-dateutil
 urllib3==2.8.0
     # via requests
 west==1.5.0

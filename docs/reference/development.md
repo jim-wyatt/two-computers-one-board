@@ -21,9 +21,10 @@ The reasoning behind the checks is the chapter
 │   ├── learn/              the course, in reading order
 │   └── reference/          the detail, for someone who already knows
 ├── mcu/                    everything for the STM32U585
-│   ├── app/                the firmware: shell + SMP + NVS + LED matrix
+│   ├── app/                the firmware: shell + SMP + NVS + LED matrix + status LEDs
 │   │   ├── include/        app_proto.h - the MPU<->MCU contract, shared
-│   │   └── src/            main.c, matrix.c (charlieplex driver), bars.c (rasterizer)
+│   │   └── src/            main.c, matrix.c (charlieplex driver), bars.c (rasterizer),
+│   │                       status_leds.c
 │   ├── tests/              ztest suites, run on the host with native_sim
 │   ├── board-support/      the OpenOCD configuration that names this board's SWD pins
 │   ├── zbuild.sh           west build + sign + compile_commands
@@ -34,7 +35,8 @@ The reasoning behind the checks is the chapter
 │   └── restore-arduino-firmware.sh
 ├── python/                 the Linux-side package (an editable install)
 │   ├── unoq/               link.py (GPIOs), mcu.py (shell), fota.py,
-│   │                       cpu.py (/proc/stat), cpubars.py + learn.py (daemons)
+│   │                       cpu.py (/proc/stat), thermal.py (temperatures),
+│   │                       cpubars.py + learn.py (daemons)
 │   └── tests/              pytest, all against fakes - no hardware
 ├── provision/              what bootstrap.sh runs; see provisioning.md
 │   ├── lib.sh              the primitives that make every step idempotent
@@ -130,7 +132,7 @@ that silently does nothing is worse than no gate.
 | | site inputs | `tools/check-site-inputs.sh` | no page embeds a file the site's path filters do not watch |
 | `workflows` | lint | `actionlint` | `.github/workflows/`, including the shell inside every `run:` block |
 | `diagrams` | render | `tools/check-diagrams.sh` | every diagram actually draws, and can be read: lettering displayed at 12px or more and no diagram wider than the text column, in a 1440px window. One headless browser, driven over every page that has one, a few seconds |
-| `mcu` | tests | `ztest` on `native_sim` | the protocol in `app_proto.h` and the rasterizer in `bars.c` |
+| `mcu` | tests | `ztest` on `native_sim` | the protocol in `app_proto.h`, the rasterizer in `bars.c`, and the status LED decisions in `status_leds.c` |
 
 Install the tools, and the pre-commit hook that runs `--fast`:
 
@@ -139,7 +141,7 @@ tools/install-dev-tools.sh       # no sudo, no apt
 tools/install-hooks.sh           # pre-commit -> check.sh --fast
 ```
 
-`install-dev-tools.sh` puts ruff, mypy, pytest, mkdocs and clang-format in the
+`install-dev-tools.sh` puts ruff, mypy, pytest, codespell, mkdocs and clang-format in the
 project venv, and fetches pinned `shellcheck`, `shfmt`, `bats` and `actionlint` into
 `~/.local/bin`. It detects the architecture, so the same script works on the
 board (aarch64) and on an ordinary x86_64 machine. You do not need a board for
@@ -291,7 +293,7 @@ tools/check-links.sh             # do the external links in the docs still resol
 
 Nothing on the board updates itself, on purpose, so run the first of these now
 and then. The script's header lists the things that look out of date and are
-not — `cbor2` held at 5.x, mkdocs held below 2.0, OpenOCD built from master —
+not — pydantic-core moving only with pydantic, mkdocs held below 2.0, OpenOCD built from master —
 and why.
 
 Upgrading Zephyr has its own checklist: [mcu.md](mcu.md#upgrading-zephyr).
@@ -368,14 +370,15 @@ installs, on the board and in CI:
 | File | Pins |
 |---|---|
 | `python/requirements-lock.txt` | this project's `.venv`: the hardware libraries, the docs tooling, the dev tools |
-| `mcu/requirements-zephyr-lock.txt` | the Zephyr workspace's `.venv`, and `cmake`, `ninja` and `west` |
+| `mcu/requirements-zephyr-lock.txt` | the Zephyr workspace's `.venv` (with `imgtool` and `natsort`), and `cmake`, `ninja` and `west` |
 
 They are passed to every install as *constraints* (`-c`): each step still asks
 for what it wants by name, and the file only decides the version. That is why
 a board set up next month gets what a board set up today got.
 
 ```bash
-tools/update-constraints.sh     # recompile both: after adding a dependency, or to take newer versions
+tools/update-constraints.sh             # recompile both, after adding a dependency
+tools/update-constraints.sh --upgrade   # recompile both, taking the newest versions that fit
 ```
 
 Then run the gates, and bootstrap on a board: a new version of a package is a

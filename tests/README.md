@@ -10,7 +10,7 @@ bats tests/                 # just these
 bats tests/bind-guard.bats  # one file
 ```
 
-Shell is the largest thing in this project — several thousand lines across forty-odd
+Shell is the largest thing in this project — several thousand lines across nearly sixty
 scripts, several times the Python and the C put together — and until this suite
 existed it was checked only by `shellcheck` and `shfmt`. Those are linters. They
 will tell you a variable is unquoted; they will never tell you the bind guard
@@ -83,6 +83,9 @@ without touching `/var/lib`.
 | [`lock.bats`](lock.bats) | An environment that remembers which lock file it was built to. Without it a pin moves, the board is provisioned again, every line says `ok`, and it is still running the old versions. |
 | [`bootstrap.bats`](bootstrap.bats) | What `bootstrap.sh` says about the microcontroller when the firmware did not go on. Telling someone their chip is as it was, after a flash that stopped half-way, sends them looking in the wrong place. |
 | [`build-image.bats`](build-image.bats) | The web server is stopped for a remount and always started again, on every exit path, and a busy mount is never forced. |
+| [`watchdog.bats`](watchdog.bats) | A board that resets itself: the watchdog armed when nobody asked, armed with a timeout too short to survive a busy moment, or PID 1 re-executed on every run for no reason. |
+| [`esp-permissions.bats`](esp-permissions.bats) | An edit to the `/etc/fstab` line the board boots from, which has no `nofail`: a line systemd cannot mount is emergency mode on a board with no screen. |
+| [`site-inputs.bats`](site-inputs.bats) | The gate that notices a page embedding a file the site's path filters do not watch, so an edit to it would never republish the site. |
 
 The first two were written first, because both scripts had already failed:
 

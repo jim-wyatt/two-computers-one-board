@@ -4,11 +4,18 @@
 # Recompile the two lock files that pin every Python package this project
 # installs, on the board and in CI.
 #
-#   tools/update-constraints.sh
+#   tools/update-constraints.sh             # re-resolve, keeping every pin that still fits
+#   tools/update-constraints.sh --upgrade   # take the newest versions that resolve together
 #
-# Run it when you add a dependency, when Zephyr's version changes, or when you
-# want newer versions on purpose. Then run the gates, and on a board,
-# bootstrap: a new version of a package is a change like any other.
+# Run it when you add a dependency or when Zephyr's version changes, and with
+# --upgrade when you want newer versions on purpose. Then run the gates, and on
+# a board, bootstrap: a new version of a package is a change like any other.
+#
+# Without --upgrade, uv keeps whatever the existing lock already says wherever
+# that still resolves, so a plain run moves nothing that does not have to move.
+# That is what you want after adding a dependency, and it is why a plain run
+# never picks up a new release: it used to be the only way to run this, and the
+# header promised newer versions it could not deliver.
 #
 # WHY THERE ARE LOCK FILES
 # ------------------------
@@ -32,6 +39,21 @@
 # and on a development machine or CI runner (x86_64), with environment markers
 # where the two differ.
 set -euo pipefail
+
+UPGRADE=()
+case "${1:-}" in
+  "") ;;
+  -U | --upgrade) UPGRADE=(--upgrade) ;;
+  -h | --help)
+    sed -n '4,18p' "$0"
+    exit 0
+    ;;
+  *)
+    echo "unknown argument: $1 (try --help)" >&2
+    exit 2
+    ;;
+esac
+
 PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
 export PATH="$HOME/.local/bin:$PATH"
 command -v uv >/dev/null 2>&1 || {
@@ -50,7 +72,7 @@ echo "== python/requirements-lock.txt =="
 BUILD_IN="$PROJECT/python/build-tools.in"
 printf '%s\n' hatchling setuptools wheel >"$BUILD_IN"
 trap 'rm -f "$BUILD_IN"' EXIT
-(cd "$PROJECT/python" && uv pip compile -q --universal --python-version 3.11 \
+(cd "$PROJECT/python" && uv pip compile -q --universal --python-version 3.11 "${UPGRADE[@]}" \
   --extra dev --extra docs --extra board pyproject.toml build-tools.in \
   --custom-compile-command "tools/update-constraints.sh" \
   -o requirements-lock.txt)
@@ -84,7 +106,7 @@ done
 # setuptools and wheel for the same reason as in the lock above: anything
 # here that is built from source is built with them.
 printf '%s\n' west imgtool natsort cmake ninja setuptools wheel >"$TMP/extra.txt"
-(cd "$TMP" && uv pip compile -q --universal --python-version 3.11 \
+(cd "$TMP" && uv pip compile -q --universal --python-version 3.11 "${UPGRADE[@]}" \
   requirements-base.txt requirements-build-test.txt extra.txt \
   --custom-compile-command "tools/update-constraints.sh  (Zephyr $ZEPHYR_VERSION)" \
   -o "$PROJECT/mcu/requirements-zephyr-lock.txt")

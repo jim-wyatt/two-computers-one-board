@@ -46,7 +46,7 @@ own app updates its index. Override the directory with `BUILD_DIR=...`.
 
 ## Signing
 
-`zbuild` signs every image, because MCUboot refuses one that is not, and then
+`zbuild` signs every image built for MCUboot (`CONFIG_BOOTLOADER_MCUBOOT=y`, as this project's is), because MCUboot refuses one that is not, and then
 checks the signature against the key before it reports the build as done. It
 calls `imgtool` itself, with the slot size and flash alignment read from the
 build's own devicetree by `mcu/sign-params.py`; `west sign -t imgtool`, which
@@ -251,7 +251,16 @@ gate list.
 
 ## Upgrading Zephyr
 
-After a version bump, re-copy the OpenOCD board support that Zephyr's runner
+The versions are written in more than one place, and the gates catch only some
+of the disagreements, so change all of them in one commit:
+
+| What | Where |
+|---|---|
+| Zephyr | `west.yml` and `provision/user/30-zephyr-workspace.sh` (`tools/check-zephyr-pin.sh` fails if they differ) |
+| Zephyr's Python packages | `tools/update-constraints.sh`, which reads the version from the step above and rewrites `mcu/requirements-zephyr-lock.txt` |
+| The SDK | `provision/user/25-zephyr-sdk.sh`, `env.sh`, `bootstrap.sh`, the defaults in `mcu/zbuild.sh`, `mcu/flash-all.sh` and `mcu/ztest.sh`, and `.vscode/launch.json` and `.vscode/tasks.json` |
+
+Then re-copy the OpenOCD board support that Zephyr's runner
 needs and that is not upstream:
 
 ```bash

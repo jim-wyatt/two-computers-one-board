@@ -107,7 +107,7 @@ Come back and run them when it arrives.
 - Nothing else. No soldering, no extra parts, no oscilloscope.
 
 If your board has not been set up yet, [Set up a board](../setup.md) walks you
-through it: one script, about an hour, mostly waiting. The next-to-last page of
+through it: one script, about twenty minutes on home broadband, mostly waiting. The next-to-last page of
 the course explains what that script did and why. You can read the first few
 chapters while it runs.
 

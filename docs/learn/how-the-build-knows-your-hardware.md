@@ -21,7 +21,7 @@ flowchart TD
   Q1["What hardware EXISTS,<br/>and how is it wired?"] --> DT["Devicetree<br/><small>.dts / .dtsi / .overlay</small>"]
   Q2["Which SOFTWARE should<br/>be compiled in?"] --> KC["Kconfig<br/><small>prj.conf</small>"]
   DT --> GEN["devicetree_generated.h<br/><small>32,062 lines of macros</small>"]
-  KC --> AC["autoconf.h<br/><small>512 CONFIG_ symbols</small>"]
+  KC --> AC["autoconf.h<br/><small>521 CONFIG_ symbols</small>"]
   GEN --> BIN["zephyr.elf"]
   AC --> BIN
 ```
@@ -54,8 +54,8 @@ do not change it — it is
 upstream's, it will be updated, and your board is not special enough to fork it.
 
 Instead you write an **overlay**: a small file that is layered on top. This
-project's is about forty lines, and it is worth reading in full because it does exactly
-three things.
+project's is under sixty lines, and it is worth reading in full. It does three
+things, and at the very end switches one converter back off; its comment says why.
 
 ### 1. Pick which device plays which role
 
@@ -83,8 +83,8 @@ board which looks completely silent while working perfectly.
 ```
 
 Three words, and they matter more than they look. Devices in the SoC
-description exist but are **disabled** by default — on this build, 77 of them
-are, against 27 enabled. A disabled node is not compiled into the image, gets no
+description exist but are **disabled** by default — on this build, 78 of them
+are, against 26 enabled. A disabled node is not compiled into the image, gets no
 driver instance, and its clock is never switched on.
 
 `status = "okay"` enables port F, which is what makes its clock run. After that
@@ -125,8 +125,8 @@ job:
 CONFIG_COUNTER=y
 ```
 
-Thirty-eight lines like that produce the 512 symbols in the final configuration.
-The gap between 38 and 512 is Kconfig's other half: **dependencies**. Ask for
+Forty-three lines like that produce the 521 symbols in the final configuration.
+The gap between 43 and 521 is Kconfig's other half: **dependencies**. Ask for
 `CONFIG_SHELL=y` and you get the shell, its backends, its history buffer and a
 dozen things it needs, without listing them.
 
@@ -156,7 +156,7 @@ cd ~/zephyrproject/build/zephyr
 **The final devicetree**, all layers merged into one 1,943-line file:
 
 ```bash
-grep -A3 "chosen {" zephyr.dts
+grep -E 'zephyr,(code-partition|console|shell-uart)' zephyr.dts
 ```
 
 ```dts
@@ -172,7 +172,7 @@ layer won, which is a question that is otherwise genuinely hard to answer.
 **The final configuration**, all defaults and dependencies resolved:
 
 ```bash
-grep -c "^CONFIG" .config          # 512, from your 38
+grep -c "^CONFIG" .config          # 521, from your 43
 grep "^CONFIG_COUNTER" .config
 ```
 

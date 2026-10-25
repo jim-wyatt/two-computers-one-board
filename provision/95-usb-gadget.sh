@@ -55,10 +55,11 @@ for mod in libcomposite usb_f_ncm usb_f_rndis usb_f_mass_storage bridge; do
 done
 # Loaded on demand by the gadget, but listing them here means a board that
 # lacks one says so now rather than at 2am with a cable in it.
-if write_file 0644 /etc/modules-load.d/unoq-usb-gadget.conf <<'MODS'; then
+if write_file 0644 /etc/modules-load.d/unoq-usb-gadget.conf <<'MODS'
 libcomposite
 bridge
 MODS
+then
   skip "modules will load at boot"
 fi
 

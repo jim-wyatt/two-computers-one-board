@@ -106,7 +106,7 @@ def addresses(port: int) -> list[str]:
 
     Resolving the hostname is kept deliberately. It is tempting to enumerate
     interfaces instead, but SIOCGIFADDR returns only an interface's PRIMARY
-    address: on this board br-usb holds both 10.55.0.1 and the address the host
+    address: br-usb can hold a link-local address as well as the one the host
     leases over ICS, and that ioctl silently drops the leased one - which is
     the address a Windows user actually needs. getaddrinfo returns both.
     """

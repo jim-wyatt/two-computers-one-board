@@ -67,7 +67,7 @@ File /var/log/journal/…/system.journal corrupted or uncleanly shut down, renam
 | `pm4125_codec`, `va_macro`, `qcom-soundwire`, `MultiMedia1: ASoC` | The vendor devicetree describing audio hardware this board does not expose. Not this project's. |
 | `90-alsa-restore.rules … no matching label` | A Debian packaging wart in the ALSA udev rules. |
 | `CPUidle PSCI: …` | Real, and not harmless in the long run: the CPU cores have no idle states on this kernel. It breaks nothing you will notice. Tracked as [issue #39](https://github.com/jim-wyatt/two-computers-one-board/issues/39). |
-| `Random seed file … world accessible` | Real, and small. `/boot/efi` is FAT, which has no permission bits, so every file on it reads as `755` whatever you `chmod`. Tracked as [issue #40](https://github.com/jim-wyatt/two-computers-one-board/issues/40). |
+| `Random seed file … world accessible` | Real, and small. `/boot/efi` is FAT, which has no permission bits, so every file on it reads as `755` whatever you `chmod`. `./bootstrap.sh --with-esp-lockdown` fixes it with mount options; see [provisioning](provisioning.md). |
 | `system.journal corrupted or uncleanly shut down` | The board lost power without being shut down, which is how most people turn it off. It reads like data loss and is the journal starting a new file. |
 | `tmux-spawn-….scope` | From your login session, not the board: a cgroup delegation problem in `systemd --user`. One line per terminal pane. Harmless to the services. |
 | `qcom_q6v5_pas … ssctl`, `Bluetooth: hci0: Frame reassembly failed` | Seen on consecutive healthy boots. Nobody has explained them. |
@@ -338,7 +338,7 @@ unavailable` if `gpiof` or `timers17` were missing from the devicetree.
 The panel's orientation depends on how the board is mounted and the firmware
 cannot know it. `app matrix flip` rotates 180° and stores that in NVS.
 
-**`app bars` says `range` or `usage`.**
+**`app bars` says `usage` or `outside 0..100`.**
 One to seven values, each 0..100. `unoq.MCU.bars()` clamps percentages for you
 but raises on the wrong *number* of bars — see [mpu.md](mpu.md#cpu-bars-on-the-led-matrix).
 
@@ -353,7 +353,7 @@ The boot service is probably running and holding the port open.
 `sudo systemctl stop unoq-cpu-bars`, and start it again when you have finished.
 Flashing over SWD is unaffected.
 
-Since [#55] `unoq.MCU` and `mcucon` report this properly. They raise `PortBusy`,
+Since [#55] `unoq.MCU` and `mcucon` report this properly. `unoq.MCU` raises `PortBusy` (and `mcucon` prints it),
 which names the process holding the port and the command to stop it, instead of
 surfacing a bare `errno 16`:
 
@@ -574,7 +574,9 @@ then run the purge again. If the image is already gone and you accept that,
 `sudo UNOQ_ALLOW_NO_STOCK_FW=1 bash ~/two-computers-one-board/provision/55-purge-arduino.sh`
 (the variable goes after `sudo`, or it does not reach the script).
 `bootstrap.sh` prints a shorter warning with the same first words during its
-preflight; that one is only a warning, and it carries on.
+preflight, and carries on with everything else, but it does not flash the
+microcontroller. To flash anyway, run `mcu/flash-all.sh` yourself, or run
+`UNOQ_ALLOW_NO_STOCK_FW=1 ./bootstrap.sh`.
 
 **No network reaches the board at all.**
 If the USB gadget will not bind and wifi is off, the MPU's serial console,

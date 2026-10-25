@@ -42,13 +42,16 @@ minute). A `--fast` run that passes ends like this:
   PASS  bats (shell behavior)
   PASS  units and udev rules (systemd)
   PASS  zephyr version pin
+  PASS  lock files cover the dependencies
   PASS  clang-format
+  PASS  spelling (en_US)
   PASS  docs (mkdocs --strict)
   PASS  diagram assets (offline)
   PASS  settings page matches the code
+  PASS  site inputs are watched
   PASS  actionlint
 
-All 14 gates passed.
+All 17 gates passed.
 ```
 
 What each one looks for:
@@ -62,10 +65,13 @@ What each one looks for:
 | `bats (shell behavior)` | what the shell scripts do, with no board involved |
 | `units and udev rules (systemd)` | a unit file or udev rule systemd would reject |
 | `zephyr version pin` | the two places the Zephyr version is written disagreeing |
+| `lock files cover the dependencies` | a Python package installed at a version no lock file names |
 | `clang-format` | C layout |
+| `spelling (en_US)` | a misspelling, or British spelling, in the project's own files |
 | `docs (mkdocs --strict)` | a documentation link that does not resolve |
 | `diagram assets (offline)` | a diagram that would need the internet to draw |
 | `settings page matches the code` | a setting the code reads and the documentation omits |
+| `site inputs are watched` | a page embedding a file whose changes would not republish the site |
 | `actionlint` | mistakes in the CI definition itself |
 
 A full run adds `diagrams (headless render)` and `ztest (native_sim)`.
@@ -117,6 +123,8 @@ This project tests two things that way:
   pixels light up, and at what brightness. Pure arithmetic, no hardware, and
   exactly the kind of code that is embarrassing to get wrong.
 - **`link_protocol/`** — framing and parsing of the messages coming from Linux.
+- **`status_leds/`** — what LEDs 3 and 4 show, and in what rhythm, for each
+  state the firmware can be in.
 
 What it *cannot* test is the part that touches registers: the charlieplexing
 driver writes `MODER` and `BSRR` directly, and there is no such register on a
@@ -274,12 +282,13 @@ minute of browser are too slow to sit in front of one. CI runs the same script �
 that matters, because a green CI then means the same thing as a clean local run
 rather than something adjacent to it.
 
-CI splits it into three jobs, and the shape is worth copying:
+CI splits it into four jobs, and the shape is worth copying:
 
 | job | time | what it is for |
 |---|---|---|
 | `checks` | ~30 s | lint, types, tests, coverage, docs |
-| `changes` | ~2 s | does this change touch anything the firmware is built from? |
+| `changes` | ~2 s | does this change touch anything the firmware, or a diagram, is built from? |
+| `diagrams` | ~1 min | draw every diagram in a headless browser; only when a diagram's inputs changed |
 | `firmware` | ~5 min | cross-compile for the Cortex-M33, sign, run the MCU suites |
 
 The expensive one is **gated twice**. It `needs: checks`, so thirty seconds of
@@ -305,8 +314,9 @@ reference failed `checks` in two seconds, and `firmware` never started.
 One gap remains, and naming it is deliberate — a test suite you have oversold is
 worse than a small one you have described accurately:
 
-- **CI runs on x86_64; the board is aarch64.** For the Python that is fine: the
-  tests use fakes and the libraries ship wheels for both. The firmware
+- **CI runs mostly on x86_64; the board is aarch64.** The fresh-install job runs
+  on both, and for the Python that is enough: the tests use fakes and the
+  libraries ship wheels for both. The firmware
   cross-compiles, so its output is identical either way. But nothing in CI runs
   on the actual hardware, so CI proves the logic and the build, never the board.
 

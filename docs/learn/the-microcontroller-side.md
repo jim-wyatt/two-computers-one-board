@@ -69,7 +69,7 @@ Zephyr gives you a few things worth having without giving up that property:
 
 It is not Linux. Zephyr compiles into *one binary containing your application
 and the OS together*. There is no kernel to boot separately, no init system, no
-packages. The whole thing on this board is about 83 KB.
+packages. The whole thing on this board is about 90 KB.
 
 Ask for the size of the file that gets written to the chip:
 
@@ -78,11 +78,11 @@ stat -c '%s bytes' ~/zephyrproject/build/zephyr/zephyr.bin
 ```
 
 ```
-84752 bytes
+91584 bytes
 ```
 
 Yours will differ by a little; the figure moves every time the code does. Call
-it 83 KB: operating system, drivers, LED matrix code, serial shell, update
+it 90 KB: operating system, drivers, LED matrix code, serial shell, update
 machinery, and the application. For comparison, the page you are reading is
 about a tenth of that.
 
@@ -102,7 +102,7 @@ first the way Linux loads an executable. That is why "flashing" the board means
 writing to the chip's permanent storage, and why it takes a few seconds rather
 than being instant.
 
-Our application uses **83 KB of 2048 KB**. The chip is 96% empty.
+Our application uses **about 90 KB of 2048 KB**. The chip is 95% empty.
 
 ## The shape of a Zephyr program
 
@@ -201,7 +201,7 @@ sudo systemctl start unoq-cpu-bars
 
 1. Your MCU program calls `malloc()` in a loop and never frees. On Linux, what
    happens? Here, what happens?
-2. Why is 83 KB enough for an operating system here but not on the other chip?
+2. Why is 90 KB enough for an operating system here but not on the other chip?
 3. The LED matrix dimensions are written in a C header and again in Python. Why
    is that not simply a bug?
 

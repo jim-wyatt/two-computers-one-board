@@ -169,7 +169,7 @@ chip's health, and it is on the correct chip to say it.
 
 > [!NOTE]
 > "Heard from Linux" means one of the firmware's own `app` commands arrived:
-> `app status`, `app bars`, or an `app matrix` command. Nothing else counts.
+> `app status`, `app bars`, `app temp`, or an `app matrix` command. Nothing else counts.
 > On a board set up for this course the thing sending them is
 > `unoq-cpu-bars.service`, which draws twice a second. So LED 4 is steady green
 > while that service runs and blinking red a few seconds after it stops, and it
@@ -325,8 +325,8 @@ should be able to say which state each LED is in from its rhythm alone.
    other way round?
 4. You want to add a fifth indicator for "the storage is nearly full". Argue
    both sides using the rule at the top of this page.
-5. Blinking LED 3 on every message was thrown away as "a clock". Three of the
-   four LEDs can now blink. Why is that not the same mistake?
+5. Blinking LED 3 on every message was thrown away as "a clock". All four
+   LEDs can now blink. Why is that not the same mistake?
 
 <details markdown="1">
 <summary>Answers — try each one first</summary>

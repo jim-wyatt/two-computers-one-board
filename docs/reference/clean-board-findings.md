@@ -15,7 +15,7 @@ printed a warning that read as noise. Only two announced themselves as errors.
 A check that cannot pass is indistinguishable from a check that always passes,
 unless you run it somewhere it matters.
 
-Status as of the runs on 2026-08-08/09. Fixed items link to the commit.
+Status as of the runs on 2026-08-08/09. `git log -S` on a phrase from a row finds the commit that fixed it.
 
 | # | What | How it presented | Status |
 |---|---|---|---|
@@ -166,8 +166,9 @@ which reads like the cable fell out.
 A clean failure is found in the first five minutes. Something that works 75% of
 the time survives testing, ships, and then fails in front of somebody else while
 pointing at the wrong cause. The documentation had always said to stop the
-service first — `exclusive=True` on the port is what turned that from advice
-into something the kernel enforces.
+service first — `open_port()` taking the port with `TIOCEXCL`, not only the
+advisory lock `exclusive=True` gives, is what turned that from advice into
+something the kernel enforces.
 
 The general form, worth keeping: **when a README says "remember to X first", ask
 whether the code can make X unnecessary or impossible to forget.**
