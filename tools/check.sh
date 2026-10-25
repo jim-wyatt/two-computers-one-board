@@ -102,6 +102,22 @@ if wanted python; then
     fi
   fi
   have mypy "mypy (strict)" && run "mypy (strict)" "$VENV/bin/mypy"
+  # The Python that is not the package: the docs build's hooks, the diagram
+  # check, and the MCUboot signing helper. Linted and type-checked with the
+  # package's own configuration, which they were never given - so an unused
+  # noqa in sign-params.py and a None that mkdocs_hooks.py did not handle had
+  # nothing to find them.
+  SCRIPTS_PY=(../tools/*.py ../mcu/sign-params.py)
+  if have ruff "ruff (scripts)"; then
+    if [ "$FIX" = 1 ]; then
+      run "ruff format (scripts)" "$VENV/bin/ruff" format "${SCRIPTS_PY[@]}"
+      run "ruff --fix (scripts)" "$VENV/bin/ruff" check --fix "${SCRIPTS_PY[@]}"
+    else
+      run "ruff lint (scripts)" "$VENV/bin/ruff" check "${SCRIPTS_PY[@]}"
+      run "ruff format (scripts)" "$VENV/bin/ruff" format --check "${SCRIPTS_PY[@]}"
+    fi
+  fi
+  have mypy "mypy (scripts)" && run "mypy (scripts)" "$VENV/bin/mypy" --strict "${SCRIPTS_PY[@]}"
   # Coverage threshold lives in pyproject.toml, so it fails here too.
   have pytest "pytest + coverage" && run "pytest + coverage" "$VENV/bin/pytest"
 fi

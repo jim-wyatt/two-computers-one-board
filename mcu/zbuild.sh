@@ -86,8 +86,14 @@ else
 fi
 
 # See BUILD DIRECTORY above. OWN_APP also gates the compile_commands.json link.
+#
+# This project's app is mcu/app exactly, not anything under the checkout. The
+# test suites in mcu/tests/ are apps in the checkout too, and matched the old
+# "$PROJECT"/* pattern: building one went into $WS/build and repointed the
+# project's compile_commands.json at it, so the next plain zbuild was a
+# pristine rebuild and clangd indexed a test suite meanwhile.
 case "$APP/" in
-  "$PROJECT"/*)
+  "$PROJECT/mcu/app/")
     BUILD="$WS/build"
     OWN_APP=1
     ;;

@@ -24,6 +24,11 @@ need_root
 
 SHARE="${UNOQ_SHARE:-/var/lib/unoq-share}"
 DEST="$SHARE/vscode"
+# Where share/build-image.sh puts them: it MOVES the installers out of $DEST
+# into the drive image, because the small root filesystem has no room for
+# both copies. So "not in $DEST" is the normal state after a build, and this
+# used to read it as "not downloaded" and fetch all ~2 GB again.
+ON_DRIVE="${UNOQ_SHARE_MOUNT:-/srv/unoq-share}/vscode"
 REFRESH=0
 [ "${1:-}" = "--refresh" ] && REFRESH=1
 
@@ -47,6 +52,10 @@ for entry in "${TARGETS[@]}"; do
     skip "$filename ($(du -h "$target" | cut -f1))"
     continue
   fi
+  if [ "$REFRESH" = 0 ] && [ -s "$ON_DRIVE/$filename" ]; then
+    skip "$filename already on the drive ($(du -h "$ON_DRIVE/$filename" | cut -f1)); --refresh to fetch it again"
+    continue
+  fi
   url="https://update.code.visualstudio.com/latest/$platform/stable"
   # Download beside the target and move on success, so an interrupted run never
   # leaves a truncated installer that looks complete to the next one.
@@ -62,10 +71,36 @@ done
 step "checksums"
 # So a laptop can verify what it copied off a board that has been sitting on a
 # bench. Written last, covering whatever actually downloaded.
-if (cd "$DEST" && sha256sum ./*.exe ./*.zip ./*.deb ./*.tar.gz 2>/dev/null >SHA256SUMS.txt); then
-  did "SHA256SUMS.txt ($(grep -c . "$DEST/SHA256SUMS.txt") files)"
+#
+# The installers that are here, as a list: the four patterns were handed to
+# sha256sum as they were, and any one that matched nothing reached it as a
+# literal "./*.zip". sha256sum then failed for that one file, having summed
+# every other, and this warned "no installers present" over a full set of
+# checksums.
+#
+# And every installer the drive will hold, not only those fetched this run:
+# build-image.sh moves this SHA256SUMS.txt over the one on the drive, so a list
+# of the new ones alone would drop the checksums of everything already there.
+# An installer here replaces the drive's copy, so it is the one summed.
+shopt -s nullglob
+new=("$DEST"/*.exe "$DEST"/*.zip "$DEST"/*.deb "$DEST"/*.tar.gz)
+kept=()
+for f in "$ON_DRIVE"/*.exe "$ON_DRIVE"/*.zip "$ON_DRIVE"/*.deb "$ON_DRIVE"/*.tar.gz; do
+  [ -e "$DEST/${f##*/}" ] || kept+=("$f")
+done
+shopt -u nullglob
+if [ ${#new[@]} -eq 0 ]; then
+  if [ ${#kept[@]} -gt 0 ]; then
+    skip "nothing new here; the drive keeps the checksums of what it holds"
+  else
+    warn "no installers present to checksum"
+  fi
+elif sha256sum "${new[@]}" ${kept[@]+"${kept[@]}"} | sed 's#  .*/#  #' >"$DEST/SHA256SUMS.txt.part" &&
+  mv "$DEST/SHA256SUMS.txt.part" "$DEST/SHA256SUMS.txt"; then
+  did "SHA256SUMS.txt ($((${#new[@]} + ${#kept[@]})) files, ${#new[@]} new)"
 else
-  warn "no installers present to checksum"
+  rm -f "$DEST/SHA256SUMS.txt.part"
+  warn "could not checksum the installers in $DEST"
 fi
 
 step "total"

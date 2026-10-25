@@ -118,6 +118,7 @@ that silently does nothing is worse than no gate.
 | `python` | lint, format | `ruff` | `python/` |
 | | types | `mypy --strict` | `python/`, tests included |
 | | tests | `pytest` + coverage | `python/unoq`, held at **100%** of branches |
+| | scripts | `ruff`, `mypy --strict` | `tools/*.py` and `mcu/sign-params.py`, with the package's configuration |
 | `shell` | lint | `shellcheck -x` | every tracked `*.sh` |
 | | format | `shfmt -i 2 -ci` | every tracked `*.sh` |
 | | behavior | `bats` | `tests/*.bats` — see [the suite's own guide](../../tests/README.md) |

@@ -22,6 +22,8 @@ import posixpath
 import re
 from typing import TYPE_CHECKING
 
+from mkdocs.exceptions import PluginError
+
 if TYPE_CHECKING:  # pragma: no cover - import-time only, for type checkers
     from mkdocs.config.defaults import MkDocsConfig
     from mkdocs.structure.files import Files
@@ -234,6 +236,10 @@ def on_page_markdown(
     config: MkDocsConfig,
     files: Files,  # noqa: ARG001 - part of the MkDocs hook signature
 ) -> str:
+    # mkdocs.yml sets repo_url; without it there is nowhere for a link out of
+    # docs/ to point, and the build should say so rather than fail on None.
+    if not config.repo_url:
+        raise PluginError("mkdocs.yml has no repo_url: links to files outside docs/ need one")
     repo_blob = config.repo_url.rstrip("/") + "/blob/main/"
     page_dir = posixpath.dirname(page.file.src_uri)
 

@@ -36,6 +36,9 @@ minute). A `--fast` run that passes ends like this:
   PASS  ruff lint
   PASS  ruff format
   PASS  mypy (strict)
+  PASS  ruff lint (scripts)
+  PASS  ruff format (scripts)
+  PASS  mypy (scripts)
   PASS  pytest + coverage
   PASS  shellcheck
   PASS  shfmt
@@ -51,7 +54,7 @@ minute). A `--fast` run that passes ends like this:
   PASS  site inputs are watched
   PASS  actionlint
 
-All 17 gates passed.
+All 20 gates passed.
 ```
 
 What each one looks for:
@@ -60,6 +63,7 @@ What each one looks for:
 |---|---|
 | `ruff lint`, `ruff format` | Python mistakes, and Python layout |
 | `mypy (strict)` | Python type errors |
+| `ruff lint (scripts)`, `ruff format (scripts)`, `mypy (scripts)` | The same three, for the Python that is not the package: the docs build's hooks, the diagram check, the signing helper |
 | `pytest + coverage` | Python behavior, with every branch run by a test |
 | `shellcheck`, `shfmt` | shell mistakes, and shell layout |
 | `bats (shell behavior)` | what the shell scripts do, with no board involved |

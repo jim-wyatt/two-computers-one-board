@@ -4,8 +4,13 @@
 Description=Arduino UNO Q MPU<->MCU link (BOOT0 + UART enable GPIOs)
 Documentation=file:/home/arduino/two-computers-one-board/mcu/link-up.sh
 DefaultDependencies=no
-After=systemd-udev-settle.service
 Before=multi-user.target
+# No After=systemd-udev-settle.service: nothing pulls that deprecated unit in,
+# so ordering after it did nothing. Nor After=dev-gpiochip1.device: udev does
+# not tag GPIO chips for systemd, so that unit never becomes active and the
+# job would wait out its timeout. The chip is a platform device, probed long
+# before /home/arduino mounts, and the mount ordering below is what holds this
+# back (measured: the mount at ~7.1s, this unit just after).
 
 # /home/arduino is its own ext4 partition (mmcblk0p69) and mounts at ~13s, but
 # DefaultDependencies=no drops the implicit ordering after sysinit/basic.target

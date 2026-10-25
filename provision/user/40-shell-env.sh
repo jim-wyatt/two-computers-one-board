@@ -26,9 +26,22 @@ if grep -qF "$MARKER" "$BASHRC" 2>/dev/null; then
   if grep -qF "source $PROJECT/env.sh" "$BASHRC"; then
     skip "already sources $PROJECT/env.sh"
   else
-    # Rewrite the marked line rather than appending a competing one.
-    sed -i "\#^source .*/env.sh\$#c\\source $PROJECT/env.sh" "$BASHRC"
-    did "repointed the env.sh line at $PROJECT"
+    # Rewrite the marked line rather than appending a competing one - and
+    # only the marked line. This was a sed over every `source .../env.sh` in
+    # the file, so another project's env.sh was repointed at this one too.
+    # The line this step writes is the one straight after its marker.
+    tmp="$(mktemp)"
+    awk -v m="$MARKER" -v new="source $PROJECT/env.sh" '
+      prev == m && /^source .*\/env\.sh$/ { $0 = new }
+      { print; prev = $0 }' "$BASHRC" >"$tmp" &&
+      cat "$tmp" >"$BASHRC" # through the same inode, keeping its mode and owner
+    rm -f "$tmp"
+    if grep -qxF "source $PROJECT/env.sh" "$BASHRC"; then
+      did "repointed the env.sh line at $PROJECT"
+    else
+      warn "found \"$MARKER\" in $BASHRC but no source line after it to repoint;"
+      warn "  add this under it by hand:  source $PROJECT/env.sh"
+    fi
   fi
 else
   printf '\n%s\n' "$LINE" >>"$BASHRC"
@@ -36,12 +49,19 @@ else
 fi
 
 step "git pre-commit hook"
-if [ -L "$PROJECT/.git/hooks/pre-commit" ]; then
+# Overridable so the tests do not install a hook in the checkout running them.
+GIT_DIR_HERE="${UNOQ_GIT_DIR:-$PROJECT/.git}"
+if [ -L "$GIT_DIR_HERE/hooks/pre-commit" ]; then
   skip "hook already installed"
-elif [ -d "$PROJECT/.git" ]; then
-  "$PROJECT/tools/install-hooks.sh" >/dev/null 2>&1 ||
+elif [ -d "$GIT_DIR_HERE" ]; then
+  # A failure is a warning and only a warning. It used to be followed by
+  # `did` regardless, so a hook that was not installed was also reported as
+  # installed.
+  if "$PROJECT/tools/install-hooks.sh" >/dev/null 2>&1; then
+    did "pre-commit hook -> tools/check.sh --fast"
+  else
     warn "install-hooks.sh failed (a non-symlink hook may already exist)"
-  did "pre-commit hook -> tools/check.sh --fast"
+  fi
 else
   skip "not a git checkout - no hook to install"
 fi
