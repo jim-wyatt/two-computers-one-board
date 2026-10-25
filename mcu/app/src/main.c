@@ -54,7 +54,7 @@ SETTINGS_STATIC_HANDLER_DEFINE(app, "app", NULL, app_settings_set, NULL, NULL);
 
 /* --- shell commands: the MPU drives these over the serial link ----------- */
 
-/* Every command handler starts here. LED 3 is the MCU saying "something
+/* Every command handler starts here. LED 4 is the MCU saying "something
  * arrived and I dealt with it" - which is a different claim from Linux's "I
  * sent something", and the difference is exactly what you want when the link
  * has gone quiet and you are trying to work out which end stopped.
@@ -248,9 +248,6 @@ int main(void)
 		printk("settings unavailable - panel orientation not persisted\n");
 	}
 
-	/* The panel stays dark until something draws on it, so a failure here
-	 * costs the LED matrix and nothing else - the link and the shell both
-	 * still come up. */
 	/* LED 3 and LED 4. A board without them still runs everything else, so
 	 * this only reports. */
 	status_leds_init();
@@ -267,6 +264,9 @@ int main(void)
 	printk("status LEDs %s, image %s\n", status_leds_present() ? "ready" : "unavailable",
 	       confirmed ? "confirmed" : "UNCONFIRMED (reverts on next reset)");
 
+	/* The panel stays dark until something draws on it, so a failure here
+	 * costs the LED matrix and nothing else - the link and the shell both
+	 * still come up. */
 	if (matrix_init() == 0) {
 		printk("LED matrix ready (%dx%d, flip=%d)\n", APP_MATRIX_ROWS, APP_MATRIX_COLS,
 		       flip != 0);

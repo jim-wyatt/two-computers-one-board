@@ -56,10 +56,10 @@ jobs:
       - name: Install uv
         # Pinned to a commit, like every action here, with the release it is in
         # the trailing comment: Dependabot reads that comment and moves both.
-        # The release is an exact one (v10.2.0), not a major: astral-sh publish
+        # The release is an exact one (v10.3.2), not a major: astral-sh publish
         # moving major tags only up to v7, so `@v9` or `@v10` does not resolve
         # and the whole workflow fails to start.
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
 
@@ -123,7 +123,7 @@ jobs:
 
       - name: Install uv
         # An exact release, pinned by commit, for the reason given in `checks`.
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
 

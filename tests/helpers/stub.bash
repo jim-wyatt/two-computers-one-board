@@ -30,6 +30,10 @@ stub_setup() {
   : >"$STUB_LOG"
   PATH="$STUB_DIR:$PATH"
   export PATH STUB_LOG
+  # What env.sh exports, which every interactive shell on a board has. A suite
+  # run from one inherited the real SDK path, and "an SDK directory that does
+  # not exist is not exported" failed on the board and passed in CI.
+  unset UNOQ_PROJECT ZEPHYR_BASE ZEPHYR_SDK_INSTALL_DIR ZEPHYR_TOOLCHAIN_VARIANT BOARD
 }
 
 # stub <name> [exit_code] [stdout]

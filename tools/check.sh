@@ -5,7 +5,7 @@
 #
 #   ~/two-computers-one-board/tools/check.sh              # everything
 #   ~/two-computers-one-board/tools/check.sh --fix        # reformat in place, then check
-#   ~/two-computers-one-board/tools/check.sh --fast       # skip the slow ones (MCU build, diagrams)
+#   ~/two-computers-one-board/tools/check.sh --fast       # skip the slow ones (firmware tests, diagrams)
 #   ~/two-computers-one-board/tools/check.sh python       # one area: python | shell | c | docs | workflows | diagrams | mcu
 #
 # Every gate runs even if an earlier one fails, so one pass shows you all the

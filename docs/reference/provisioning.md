@@ -117,7 +117,7 @@ which is not there.
 **What a re-run prints.** Nothing changed:
 
 ```
-  ok      12 of root's scripts in /usr/local/lib/unoq already match the checkout
+  ok      13 of root's scripts in /usr/local/lib/unoq already match the checkout
 ```
 
 A script edited in the checkout since the last run:

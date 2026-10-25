@@ -159,9 +159,10 @@ add_to_group i2c
 step "SPI access"
 ensure_group spi
 add_to_group spi
-if write_file 0644 /etc/udev/rules.d/91-spidev-local.rules <<'RULE'; then
+if write_file 0644 /etc/udev/rules.d/91-spidev-local.rules <<'RULE'
 SUBSYSTEM=="spidev", GROUP="spi", MODE="0660"
 RULE
+then
   udevadm control --reload-rules
   udevadm trigger --subsystem-match=spidev
 fi

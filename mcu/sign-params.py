@@ -4,7 +4,7 @@
 """Print the imgtool arguments a build's own devicetree calls for.
 
     sign-params.py <build dir> <zephyr base>
-    ->  --align 8 --slot-size 983040
+    ->  --align 16 --slot-size 425984     (this board's)
 
 Called by mcu/zbuild.sh, which signs every MCUboot image it builds.
 

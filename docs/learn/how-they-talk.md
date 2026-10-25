@@ -143,7 +143,7 @@ Press Enter to get a prompt, then type the command the library sends:
 
 ```
 unoq:~$ app status
-uptime_ms=12216 flip=0 sweeps=1043712
+uptime_ms=12216 flip=0 sweeps=11748
 unoq:~$
 ```
 

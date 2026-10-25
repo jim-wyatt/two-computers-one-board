@@ -12,13 +12,12 @@
 #
 # THINGS THAT LOOK OUT OF DATE BUT ARE NOT
 # ----------------------------------------
-#   cbor2 5.x       - `smp` requires >=5.5.1,<6.0.0. Upgrading breaks SMP/FOTA.
-#   pydantic-core   - pydantic pins it EXACTLY (==2.46.4). Never bump alone.
+#   pydantic-core   - pydantic pins it to one exact version. Never bump it
+#                     alone; tools/update-constraints.sh --upgrade moves both.
 #   Zephyr's venv   - Zephyr pins its own tool versions per release; `pip list
-#                     --outdated` flags them, but they are deliberate. The
-#                     cryptography/setuptools pins people notice live in
-#                     requirements-actions.txt, which is CI-only and NOT part
-#                     of requirements.txt.
+#                     --outdated` flags them, but they are deliberate, and
+#                     mcu/requirements-zephyr-lock.txt holds the workspace
+#                     to exactly what Zephyr asks for.
 #   OpenOCD         - we build master on purpose: the newest *release* (0.12.0,
 #                     2023) predates libgpiod v2, which this board needs.
 #   arm64 extensions- the Marketplace "latest" is often x64-only. If a version
@@ -227,6 +226,15 @@ action_row() {
     [ -n "$major" ] && [ "$ref" != "$major" ] && flag="  <-- behind"
   elif [[ "$ref" =~ ^${RELEASE_TAG}$ ]]; then
     [ -n "$release" ] && [ "${ref#v}" != "${release#v}" ] && flag="  <-- behind"
+  elif [[ "$ref" =~ ^[0-9a-f]{40}$ ]] && [ -n "$release" ]; then
+    # A commit pin, which is how every workflow here pins. It is current when
+    # it is the commit the newest release points at. ls-remote lists an
+    # annotated tag and then its peeled "^{}" twin, so the last match is the
+    # commit, whichever kind of tag it is. Without this, every pin in the
+    # workflows printed "resolves" and none could ever read as behind.
+    local release_sha
+    release_sha="$(awk -v t="refs/tags/$release" '$2 == t || $2 == t "^{}" { s = $1 } END { print s }' <<<"$REFS")"
+    [ -n "$release_sha" ] && [ "$ref" != "$release_sha" ] && flag="  <-- behind ($release is ${release_sha:0:12})"
   fi
   [ "$state" = "DOES NOT RESOLVE" ] && flag="  <-- the workflow will not start"
   printf '  %-42s %-10s %-17s latest %s, major tag %s%s\n' \
@@ -240,6 +248,7 @@ pins() {
   tag_pin shellcheck "$(shell_pin SHELLCHECK_VERSION "$tools")" koalaman/shellcheck
   tag_pin shfmt "$(shell_pin SHFMT_VERSION "$tools")" mvdan/sh
   tag_pin bats "$(shell_pin BATS_VERSION "$tools")" bats-core/bats-core
+  tag_pin actionlint "$(shell_pin ACTIONLINT_VERSION "$tools")" rhysd/actionlint
 
   echo "=== project pins: python (python/pyproject.toml) ==="
   for p in clang-format mkdocs mkdocs-material; do
@@ -297,7 +306,7 @@ done
 echo "=== MPU python ($PROJECT/.venv) ==="
 uv pip list --python "$PROJECT/.venv/bin/python" --outdated 2>/dev/null | tail -n +3 |
   sed 's/^/  /' || true
-echo "  (cbor2 / pydantic-core here are PINNED - see header, do not upgrade)"
+echo "  (these are held by python/requirements-lock.txt - take them with tools/update-constraints.sh --upgrade)"
 
 echo "=== Zephyr venv conformance to its own pins ==="
 (cd "$HOME/zephyrproject" && uv pip install --python .venv/bin/python \

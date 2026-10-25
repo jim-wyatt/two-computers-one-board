@@ -110,8 +110,9 @@ See [mcu.md](mcu.md#update-over-serial-no-swd).
 
 ## What runs at boot
 
-Eight systemd units, of which a board set up with a plain `./bootstrap.sh` has
-the first two. The others arrive with the flag named.
+Eight systemd units. A plain `./bootstrap.sh` installs all of them; `--no-cpu-bars`,
+`--no-learning` and `--no-usb-gadget` (or `--minimal`, for all three) leave out
+the ones named.
 
 | Unit | What it does | Installed by | Runs as | Kind |
 |---|---|---|---|---|

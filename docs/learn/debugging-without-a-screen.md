@@ -155,7 +155,7 @@ with MCU() as mcu: print(mcu.status())
 "
 ```
 
-The last lines of what comes back look like this (the process name and number
+What comes back begins like this (the process name and number
 will differ):
 
 ```

@@ -269,7 +269,6 @@ Doing so also removes the recovery login described above.
 **Which physical pads this port lands on is not visible from software** and
 needs the schematic. Everything else in this section was confirmed on the
 running board; the pinout was not. There is deliberately no pin table here.
-See [issue #38](https://github.com/jim-wyatt/two-computers-one-board/issues/38).
 
 ---
 
@@ -409,7 +408,7 @@ predates the libgpiod v2 support this board needs.
 0x08000000  boot_partition   64K   MCUboot (38K used)
 0x08010000  slot0           416K   running signed app
 0x08078000  slot1           416K   staged update
-0x080e0000  storage         128K   NVS (settings, boot counter)
+0x080e0000  storage         128K   NVS (settings: panel orientation)
 ```
 
 Two 416K slots out of 2 MB of flash, which is why

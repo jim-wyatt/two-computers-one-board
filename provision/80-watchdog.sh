@@ -191,7 +191,7 @@ as_requested() {
 # REVERT: rm /etc/systemd/system.conf.d/50-unoq-watchdog.conf && systemctl daemon-reexec
 step "RuntimeWatchdogSec"
 REEXEC=0
-if write_file 0644 "$CONF" <<EOF; then
+if write_file 0644 "$CONF" <<EOF
 # Written by provision/80-watchdog.sh (two-computers-one-board).
 # PID 1 pets /dev/watchdog0; if it stops for this long, the hardware resets
 # the board. Remove this file and run \`systemctl daemon-reexec\` to disarm.
@@ -199,6 +199,7 @@ if write_file 0644 "$CONF" <<EOF; then
 RuntimeWatchdogSec=${TIMEOUT}s
 RebootWatchdogSec=${TIMEOUT}s
 EOF
+then
   REEXEC=1
 elif ! as_requested; then
   # The file is right and the manager is not using it - not armed at all, or
@@ -231,7 +232,7 @@ elif armed; then
 else
   fail "systemd does not report a runtime watchdog (RuntimeWatchdogUSec=$(manager_timeout)).
   $CONF is in place, so the watchdog will be armed at the next boot whether
-  or not that is what you want. Look at:  journalctl -b -g -i watchdog
+  or not that is what you want. Look at:  journalctl -b -g watchdog
   To back out:  rm $CONF && systemctl daemon-reexec"
 fi
 

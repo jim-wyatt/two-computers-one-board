@@ -118,7 +118,7 @@ def upload(
     if "signed" not in path.name:
         raise ValueError(
             f"{path.name} does not look signed; MCUboot will reject an unsigned "
-            "image. Use zephyr.signed.bin (see README: west sign -t imgtool)."
+            "image. Use zephyr.signed.bin, which zbuild writes and signs."
         )
     blob = path.read_bytes()
 

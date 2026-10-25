@@ -225,8 +225,8 @@ the idea gets explained, this is where you come to be reminded.
 
 **Overlay**
 :   A small devicetree file layered on top of the board's, so you can change
-    what the board description says without forking it. This project's is 38
-    lines.
+    what the board description says without forking it. This project's is under
+    sixty lines.
 
 ## P
 
@@ -282,8 +282,9 @@ the idea gets explained, this is where you come to be reminded.
 
 **Trigger (LED)**
 :   A kernel feature that wires an LED to an event source — disk activity, wifi
-    traffic — so it blinks without any program driving it. Three of them are
-    registered on this board and none of them fire. See
+    traffic, a timer — so it blinks without any program driving it. Every blink
+    this project shows uses the `timer` one; the three disk triggers registered
+    on this board never fire. See
     [Four lights that tell the truth](learn/four-lights.md).
 
 ## U

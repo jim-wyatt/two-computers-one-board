@@ -162,7 +162,7 @@ the quality gates, and the conventions.
 Start with [Troubleshooting](docs/reference/troubleshooting.md), which is
 organized by symptom. If `bootstrap.sh` fails and running it again does not
 help, [open an issue](https://github.com/jim-wyatt/two-computers-one-board/issues)
-and paste the output from the last `==` heading down. The step name and the
+and paste the output from the last `##########` banner down. The step name and the
 line marked `FAILED` are usually enough to find it.
 
 This was built and tested on the UNO Q (`arduino,imola`). Nothing here has been

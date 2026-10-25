@@ -156,7 +156,7 @@ command line for one run, for example `BUILD_DIR=/tmp/b zbuild`.
 
 | Variable | Default | Read by | What it does |
 |---|---|---|---|
-| `ZEPHYR_WORKSPACE` | `~/zephyrproject` | `provision/user/30-zephyr-workspace.sh`, `mcu/zbuild.sh`, `mcu/flash.sh`, `mcu/flash-all.sh`, `mcu/ztest.sh` | Where the west workspace is. If you move it, set this for every one of those scripts. |
+| `ZEPHYR_WORKSPACE` | `~/zephyrproject` | `bootstrap.sh`, `provision/user/30-zephyr-workspace.sh`, `mcu/zbuild.sh`, `mcu/flash.sh`, `mcu/flash-all.sh`, `mcu/ztest.sh`, `tools/update-constraints.sh` | Where the west workspace is. If you move it, set this for every one of those scripts. |
 | `ZEPHYR_SDK` | `~/zephyr-sdk-1.0.1` | `mcu/zbuild.sh`, `mcu/flash-all.sh`, `mcu/ztest.sh` | Where the Zephyr SDK (the cross-compiler) is installed. |
 | `ZEPHYR_SDK_VERSION` | `1.0.1` | `provision/user/25-zephyr-sdk.sh` | Which SDK release that step downloads, into `~/zephyr-sdk-<version>`. A pin: see the note below. |
 | `ZEPHYR_VERSION` | `v4.4.2` | `provision/user/30-zephyr-workspace.sh` | Which Zephyr release the workspace is created at. A pin: see the note below. |
@@ -214,7 +214,7 @@ Read by the scripts under `tools/`, on whatever machine runs the quality gates.
 
 | Variable | Default | What it does |
 |---|---|---|
-| `UNOQ_BIN` | `~/.local/bin` | Where `install-dev-tools.sh` puts `shellcheck`, `shfmt` and `bats`. |
+| `UNOQ_BIN` | `~/.local/bin` | Where `install-dev-tools.sh` puts `shellcheck`, `shfmt`, `bats` and `actionlint`. |
 | `UNOQ_SITE` | `share/learn` | The built site the diagram checks inspect. |
 | `UNOQ_DIAGRAM_PORT` | `8099` | The port `check-diagrams.sh` serves the site on while it renders. |
 | `UNOQ_DIAGRAM_BROWSER` | the first Chromium or Chrome on `PATH` | The browser `check-diagrams.sh` drives. CI sets it to the pinned one that `install-diagram-browser.sh` fetches. |

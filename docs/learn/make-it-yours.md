@@ -36,8 +36,10 @@ Worth naming, because most of it is not about this board:
 cat /sys/class/thermal/thermal_zone3/temp
 ```
 
-`unoq/cpu.py` shows the shape: read a file, turn it into a number, send bar
-heights. Do it as a second mode of the existing demo.
+`unoq.thermal` already reads them (`read_temps()`, `hottest()`), and
+`MCU.die_temp()` asks the microcontroller for its own. What is left is the
+demo: turn a temperature into bar heights, as `unoq/cpu.py` does with load, and
+make it a second mode of the existing one.
 
 **Change what a status LED says.** All four are in use — see
 [Four lights that tell the truth](four-lights.md) — but what each one reports is
@@ -71,24 +73,25 @@ where being 2 ms late is a failure.
 every N milliseconds without exception. This is where determinism stops being an
 abstraction.
 
-**Arm the watchdog.** `/dev/watchdog0` exists and is unused. Everything protecting
-this board today is userspace, and none of it helps if the kernel wedges.
+**Use the watchdog.** `./bootstrap.sh --with-watchdog` arms the Linux side's
+hardware watchdog, so a wedged kernel resets the board instead of sitting there.
+The microcontroller has a watchdog of its own, and nothing uses it yet.
 
-**Use the empty microcontroller.** The application is 82 KB of 2048 KB. The chip
-is 96% empty.
+**Use the empty microcontroller.** The application is about 90 KB of 2048 KB. The
+chip is 95% empty.
 
 ## Where the open work is
 
 The repository's [issues](https://github.com/jim-wyatt/two-computers-one-board/issues) list
 real gaps, each written up with what was measured and why it matters — the
-watchdog, the CDC-ACM console, the unused I²C and SPI, the thermal zones, and
-the mostly-empty MCU flash.
+CDC-ACM console, the SPI link to the microcontroller, choosing a CPU governor
+against the power budget, the CPU cores that never idle, and the mostly-empty
+MCU flash.
 
 They are deliberately not just "TODO: do X". Each says what is there now, what it
 would buy, and what to be careful of. Several have a defensible *opposite*
-answer — the I²C one argues that if nothing is going to use those libraries, the
-honest move is to remove them rather than keep installing a C extension nobody
-imports.
+answer — the one about the flash argues that the current bootloader strategy,
+slow as it is, has been through a real rollback, and that is worth something.
 
 ## Before you change anything
 
@@ -132,7 +135,7 @@ The four places a newcomer edits first:
 |---|---|
 | `mcu/app/` | The firmware: `main.c`, `matrix.c` (the driver), `bars.c` (the arithmetic) |
 | `mcu/app/include/app_proto.h` | The contract both sides agree on |
-| `python/unoq/` | The Linux side: `cpu.py`, `mcu.py`, `fota.py`, `link.py` |
+| `python/unoq/` | The Linux side: `cpu.py`, `thermal.py`, `mcu.py`, `fota.py`, `link.py`, and the daemons `cpubars.py` and `learn.py` |
 | `docs/` | This course, and the reference it links into |
 
 The rest — `usb/`, `status/`, `provision/`, `share/`, `tools/`, `tests/` — is

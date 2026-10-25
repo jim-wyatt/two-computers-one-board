@@ -86,7 +86,8 @@ else
   uv pip install --python "$VENV/bin/python" -q -c "$LOCK" -b "$LOCK" $HW_PKGS ||
     fail "could not install the hardware libraries (missing:$MISSING)
         spidev is a C extension - if it failed to build, the board is missing
-        gcc or python3-dev. provision/15-dev-tools.sh installs both."
+        gcc or python3-dev. provision/10-optimize-board.sh installs python3-dev
+        and provision/15-dev-tools.sh installs gcc."
   STILL="$(hw_missing)"
   [ -z "$STILL" ] || fail "still missing after install:$STILL"
   if [ -n "$MISSING" ]; then
@@ -113,9 +114,12 @@ step "dev tooling"
 # Delegated rather than duplicated: install-dev-tools.sh already knows how to
 # get ruff/mypy/pytest into this venv and shellcheck/shfmt into ~/.local/bin,
 # and it is what CI runs too.
+# Every tool the gates look for in the venv, not a sample of them: codespell
+# joined the [dev] extra after boards had been set up, and a check of three
+# names skipped the step and left the spelling gate failing on those boards.
 if [ "$LOCKED" = 1 ] && [ -x "$VENV/bin/pytest" ] && [ -x "$VENV/bin/mypy" ] &&
-  [ -x "$VENV/bin/ruff" ]; then
-  skip "ruff, mypy and pytest present"
+  [ -x "$VENV/bin/ruff" ] && [ -x "$VENV/bin/codespell" ]; then
+  skip "ruff, mypy, pytest and codespell present"
 else
   "$PROJECT/tools/install-dev-tools.sh" >/dev/null 2>&1 ||
     fail "tools/install-dev-tools.sh failed - run it directly to see why"

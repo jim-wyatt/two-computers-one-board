@@ -15,7 +15,11 @@
 set -euo pipefail
 
 PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
-HOOK_DIR="$(git -C "$PROJECT" rev-parse --git-path hooks)"
+# Absolute: --git-path on its own answers ".git/hooks", relative to the
+# repository, and mkdir and ln below would read that against wherever this was
+# run from. Run from $HOME, the hook went into ~/.git/hooks and the repository
+# got none.
+HOOK_DIR="$(git -C "$PROJECT" rev-parse --path-format=absolute --git-path hooks)"
 HOOK="$HOOK_DIR/pre-commit"
 
 mkdir -p "$HOOK_DIR"

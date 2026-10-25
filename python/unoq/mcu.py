@@ -274,8 +274,10 @@ class MCU:
         self._s.write((command + "\r\n").encode())
         self._s.flush()
 
-        buf, deadline = "", time.time() + timeout
-        while time.time() < deadline:
+        # monotonic, not time(): the board has no battery-backed clock, and an
+        # NTP step after boot would end this wait at once or stretch it out.
+        buf, deadline = "", time.monotonic() + timeout
+        while time.monotonic() < deadline:
             chunk = self._s.read(4096)
             if chunk:
                 buf += chunk.decode("utf-8", "replace")

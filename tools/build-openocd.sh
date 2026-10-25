@@ -99,9 +99,13 @@ echo "== 6/6 self-test: can it reach the MCU over SWD? =="
 # self-tested with BOOT0 unset (the `|| true` hides it) and failed confusingly.
 LINK_UP="$HERE/../mcu/link-up.sh"
 sudo -u "${SUDO_USER:-$(stat -c %U "$HERE")}" "$LINK_UP" || true
-if "$PREFIX/bin/openocd" -s "$PREFIX" -s "$PREFIX/share/openocd/scripts" \
-  -f "$PREFIX/openocd_gpiod.cfg" -c "init" -c "targets" -c "shutdown" 2>&1 |
-  tee /tmp/openocd-selftest.log | grep -q "Cortex-M33"; then
+# Into the log first, and grep the file: under pipefail, `| tee | grep -q`
+# failed whenever the MCU DID answer, because grep -q exits at its first match
+# and tee then dies of SIGPIPE.
+"$PREFIX/bin/openocd" -s "$PREFIX" -s "$PREFIX/share/openocd/scripts" \
+  -f "$PREFIX/openocd_gpiod.cfg" -c "init" -c "targets" -c "shutdown" \
+  >/tmp/openocd-selftest.log 2>&1 || true
+if grep -q "Cortex-M33" /tmp/openocd-selftest.log; then
   echo
   echo "SELF-TEST PASSED - the rebuilt binary talks to the MCU."
   grep -E "DPIDR|Cortex-M33" /tmp/openocd-selftest.log | sed 's/^/  /'
