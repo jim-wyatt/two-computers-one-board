@@ -204,11 +204,11 @@ and setting one will mostly make a script look in the wrong place.
 | `UNOQ_CODESPELL` | `.venv/bin/codespell` | The spelling checker `tools/check-spelling.sh` runs. |
 | `UNOQ_PY_LOCK`, `UNOQ_ZEPHYR_LOCK`, `UNOQ_ZEPHYR_IN`, `UNOQ_PYPROJECT`, `UNOQ_WORKSPACE_STEP` | the files in the repository | The five files `tools/check-constraints.sh` compares, so its tests can hand it copies with one thing wrong. |
 | `UNOQ_RUN_DIR` | `/run` | Where `usb-net-up.sh` keeps the DHCP client's pid file (and `wifi.sh` and `gadget-down.sh` look for it), and where provisioning notes that packages changed in this boot. |
-| `UNOQ_NET_SYSFS` | `/sys/class/net` | Where `usb-net-up.sh` looks for the gadget's network interfaces. |
+| `UNOQ_NET_SYSFS` | `/sys/class/net` | Where `usb-net-up.sh` looks for the gadget's network interfaces, and `status/leds.sh` for the bridge's carrier. |
 | `UNOQ_GIT_DIR` | the checkout's `.git` | Where `provision/user/40-shell-env.sh` looks for the git hooks directory. |
 | `UNOQ_PROC` | `/proc` | Where the scripts in `usb/` check that a pid file names the daemon it claims to (`usb/common.sh`). |
 | `UNOQ_APT_CACHE_DIR` | `/var/cache/apt` | Where `90-cleanup.sh` looks for downloaded packages. |
-| `UNOQ_UDC_DIR` | `/sys/class/udc` | Where `usb/handover.sh` looks for a USB controller to bind to. |
+| `UNOQ_UDC_DIR` | `/sys/class/udc` | Where `usb/handover.sh` looks for a USB controller to bind to, and `status/leds.sh` for whether a host has configured it. |
 | `UNOQ_SSH_DIR` | `/etc/ssh` | Where provisioning looks for SSH host keys before switching `sshd` on. |
 | `UNOQ_CGROUP_FILE` | `/proc/self/cgroup` | What a provisioning step reads to find out whether it was started from `adb shell`. |
 

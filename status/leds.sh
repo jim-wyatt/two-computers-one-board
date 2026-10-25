@@ -113,6 +113,8 @@ case "$SLOW_MS" in '' | 0* | *[!0-9]*) SLOW_MS=1000 ;; esac
 case "$FAST_MS" in '' | 0* | *[!0-9]*) FAST_MS=250 ;; esac
 BRIDGE="${UNOQ_USB_BRIDGE:-br-usb}"
 G="${UNOQ_GADGET_DIR:-/sys/kernel/config/usb_gadget/unoq}"
+UDC_DIR="${UNOQ_UDC_DIR:-/sys/class/udc}"
+NET_SYSFS="${UNOQ_NET_SYSFS:-/sys/class/net}"
 LEDS="${UNOQ_LED_DIR:-/sys/class/leds}"
 # The bind guard is asked whether it has given up, which is half of what LED 2
 # reports. Overridable rather than hardcoded as "$HERE/bind-guard.sh": that
@@ -321,13 +323,28 @@ all_off() {
 
 # --- reading the state ------------------------------------------------------
 
-# Bound with nobody on the other end is what a charge-only cable gives you, and
-# it is worth distinguishing from a link that works.
+# Whether a computer is on the cable, with a network interface up for the
+# board - the kernel's answer, not the routing table's.
+#
+# It used to be "bound, and br-usb has a default route, or dnsmasq has a
+# lease". dnsmasq is gone with the DHCP-server mode, so nothing writes that
+# file, and the route was wrong both ways (#109): a computer that shares no
+# connection gives no route, so a working cable showed fast red; and avahi's
+# link-local default route sits on br-usb with the link DOWN, so with no cable
+# at all it showed slow blue. Bound is no evidence either way - the gadget is
+# bound to the controller from boot, cable or not.
+#
+#   UDC state "configured"  a host enumerated the board and chose a
+#                           configuration. Not true of a charge-only cable,
+#                           which has no data lines to enumerate over.
+#   bridge carrier 1        the host's NCM driver brought the link up, so
+#                           there is a network interface on the other end.
 usb_link_up() {
-  [ -n "$(cat "$G/UDC" 2>/dev/null)" ] || return 1
-  ip link show "$BRIDGE" >/dev/null 2>&1 || return 1
-  ip -4 route show default dev "$BRIDGE" 2>/dev/null | grep -q . && return 0
-  [ -s /run/unoq-usb-dnsmasq.leases ]
+  local udc
+  udc="$(cat "$G/UDC" 2>/dev/null)"
+  [ -n "$udc" ] || return 1
+  [ "$(cat "$UDC_DIR/$udc/state" 2>/dev/null)" = configured ] || return 1
+  [ "$(cat "$NET_SYSFS/$BRIDGE/carrier" 2>/dev/null)" = 1 ]
 }
 
 guard_tripped() {
