@@ -53,17 +53,23 @@ SDK="${ZEPHYR_SDK:-$HOME/zephyr-sdk-${ZEPHYR_SDK_VERSION:-1.0.1}}"
 # board's bootloader was flashed to this one's boot partition. The board is part
 # of what it was built from, so it is part of the stamp. A stamp written before
 # this has no board in it, matches nothing, and costs one rebuild.
+#
+# And for its configuration: mcu/mcuboot.conf (downgrade prevention, see its
+# header) is part of what the bootloader is built from, so a change to it
+# rebuilds rather than flashing a bootloader built without it.
 rev() { git -C "$1" rev-parse HEAD 2>/dev/null || echo unknown; }
 BOARD="${BOARD:-arduino_uno_q}"
+MCUBOOT_CONF="$HERE/mcuboot.conf"
 REVS="zephyr $(rev "$WS/zephyr") mcuboot $(rev "$WS/bootloader/mcuboot")"
-BUILT_FROM="board $BOARD $REVS"
+CONF_SUM="$(sha256sum "$MCUBOOT_CONF" 2>/dev/null | cut -d' ' -f1)"
+BUILT_FROM="board $BOARD $REVS conf ${CONF_SUM:-unknown}"
 STAMP="$MCUBOOT_BUILD/built-from"
 
 # "unknown" is looked for in the revisions alone: a board is whatever the
 # caller named, and may spell anything.
 if [ ! -f "$MCUBOOT_BUILD/zephyr/zephyr.hex" ] ||
   [ "$(cat "$STAMP" 2>/dev/null)" != "$BUILT_FROM" ] ||
-  [[ "$REVS" == *unknown* ]]; then
+  [[ "$REVS" == *unknown* ]] || [ -z "$CONF_SUM" ]; then
   echo "Building MCUboot..."
   [ -n "$WEST" ] || {
     echo "no west: not in $WS/.venv/bin and not on PATH" >&2
@@ -84,7 +90,8 @@ if [ ! -f "$MCUBOOT_BUILD/zephyr/zephyr.hex" ] ||
     cd "$WS" || exit 1
     ZEPHYR_TOOLCHAIN_VARIANT=zephyr \
       "$WEST" build -b "$BOARD" \
-      "$WS/bootloader/mcuboot/boot/zephyr" -p always -d "$MCUBOOT_BUILD"
+      "$WS/bootloader/mcuboot/boot/zephyr" -p always -d "$MCUBOOT_BUILD" \
+      -- -DEXTRA_CONF_FILE="$MCUBOOT_CONF"
   )
   echo "$BUILT_FROM" >"$STAMP"
 fi

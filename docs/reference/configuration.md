@@ -163,7 +163,7 @@ command line for one run, for example `BUILD_DIR=/tmp/b zbuild`.
 | `ZEPHYR_VERSION` | `v4.4.2` | `provision/user/30-zephyr-workspace.sh` | Which Zephyr release the workspace is created at. A pin: see the note below. |
 | `BOARD` | `arduino_uno_q` | `mcu/zbuild.sh`, `mcu/flash-all.sh` | The Zephyr board to build for. `env.sh` exports the same value. |
 | `BUILD_DIR` | `~/zephyrproject/build` for this project's app, `build-<name>` for any other | `mcu/zbuild.sh` | The build directory. With it set, `zflash` no longer finds the image by itself: name it, as `zbuild` prints at the end. |
-| `IMAGE_VERSION` | `0.0.0+<seconds since 1970>` | `mcu/zbuild.sh` | The version signed into the image, which `fota.images()` reports. The default makes every build distinguishable. |
+| `IMAGE_VERSION` | `0.0.0+<seconds since 1970>` | `mcu/zbuild.sh` | The version signed into the image, which `fota.images()` reports. The default makes every build distinguishable, and newer than the last. The bootloader refuses an image older than the one running, so a version set by hand has to be higher than the running one, build number included. |
 | `MCUBOOT_BUILD` | `~/zephyrproject/build-mcuboot` | `mcu/flash-all.sh` | Where the bootloader is built. |
 | `OCD_ROOT` | `/opt/openocd` | `mcu/flash.sh`, `provision/55-purge-arduino.sh` | The OpenOCD installation used for SWD. Point it at a rebuilt copy to try one without replacing the original. |
 | `STOCK_FW` | `~/uno-q-backup/zephyr-arduino_uno_q_stm32u585xx.hex` | `mcu/restore-arduino-firmware.sh` | The Arduino firmware image that script flashes. |
