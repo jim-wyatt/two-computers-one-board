@@ -53,21 +53,21 @@ setup() {
   mkdir -p "$UNOQ_GADGET_DIR"
   echo "4e00000.usb" >"$UNOQ_GADGET_DIR/UDC" # bound, by default
 
+  # A computer on the cable, by default: the controller says a host has
+  # configured the board, and the bridge has carrier from the host's driver.
+  export UNOQ_UDC_DIR="$BATS_TEST_TMPDIR/udc"
+  export UNOQ_NET_SYSFS="$BATS_TEST_TMPDIR/net"
+  mkdir -p "$UNOQ_UDC_DIR/4e00000.usb" "$UNOQ_NET_SYSFS/br-test"
+  echo configured >"$UNOQ_UDC_DIR/4e00000.usb/state"
+  echo 1 >"$UNOQ_NET_SYSFS/br-test/carrier"
+
   # Healthy board by default; each test breaks one thing.
   stub ping 0         # the internet is reachable
   stub systemctl 0 "" # no failed units
-  # `ip link show` must succeed AND `ip -4 route show default` must print
-  # something, or usb_link_up() cannot tell "a computer is there" from
-  # "nothing is there".
-  stub_body ip <<'SH'
-case "$1 $2" in
-  "link show") exit 0 ;;
-esac
-case "$*" in
-  *"route show default"*) echo "default via 192.168.137.1 dev br-test metric 700" ;;
-esac
-exit 0
-SH
+  # No route on the bridge, and no answer from ip at all: usb_link_up() asks
+  # the kernel's sysfs, and a test that still passed only because routes were
+  # faked is what hid #109.
+  stub ip 1
   stub logger
 }
 
@@ -204,7 +204,49 @@ EOF
 
 @test "no internet and no bridge is a fast red blink even with the gadget bound" {
   stub ping 1
-  stub ip 1 # `ip link show br-test` fails
+  rm -r "$UNOQ_NET_SYSFS/br-test"
+  leds once
+  [ "$(look_of LED1)" = "red fast" ]
+}
+
+@test "a computer sharing no connection is slow blue, with no route anywhere" {
+  # #109: the only way to read as linked was a default route over the bridge,
+  # which a host that is not sharing its connection never gives. A working
+  # cable showed fast red.
+  stub ping 1
+  stub ip 1
+  leds once
+  [ "$(look_of LED1)" = "blue slow" ]
+}
+
+@test "no cable is fast red, though the gadget is bound from boot" {
+  # The controller has no host. This is the board's own state with nothing
+  # plugged in: bound, "not attached", and avahi's link-local default route
+  # still sitting on a bridge that is down - which used to read as linked.
+  stub ping 1
+  echo "not attached" >"$UNOQ_UDC_DIR/4e00000.usb/state"
+  echo 0 >"$UNOQ_NET_SYSFS/br-test/carrier"
+  stub_body ip <<'SH'
+case "$*" in *"route show default"*) echo "default scope link metric 1002 linkdown" ;; esac
+exit 0
+SH
+  leds once
+  [ "$(look_of LED1)" = "red fast" ]
+}
+
+@test "a charge-only cable is fast red" {
+  # Power and no data: the host never enumerates the board.
+  stub ping 1
+  echo powered >"$UNOQ_UDC_DIR/4e00000.usb/state"
+  echo 0 >"$UNOQ_NET_SYSFS/br-test/carrier"
+  leds once
+  [ "$(look_of LED1)" = "red fast" ]
+}
+
+@test "a host that enumerated the board but has not brought its network up is fast red" {
+  # Configured, but no NCM driver on the other end: nothing to talk to.
+  stub ping 1
+  echo 0 >"$UNOQ_NET_SYSFS/br-test/carrier"
   leds once
   [ "$(look_of LED1)" = "red fast" ]
 }
