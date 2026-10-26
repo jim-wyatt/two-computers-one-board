@@ -83,7 +83,7 @@ Add something that is not:
   --with-boot-counting
                       also boot new kernels on trial (82): one that does not
                       come up with SSH three times running is set aside for
-                      the previous kernel. Not yet seen through a reboot.
+                      the previous kernel.
 
   --skip-mcu          do not build or flash the MCU firmware
   -h, --help          this
@@ -179,7 +179,7 @@ echo "  - install the Zephyr SDK and workspace into $HOME (~3 GB)"
 [ "$WITH_ESP_LOCKDOWN" = 1 ] &&
   echo "  - edit the /boot/efi line of /etc/fstab, the partition this board boots from (--with-esp-lockdown; backed up first)"
 [ "$WITH_BOOT_COUNTING" = 1 ] &&
-  echo "  - boot every new kernel on trial, falling back to the previous one by itself (--with-boot-counting; not yet seen through a reboot)"
+  echo "  - boot every new kernel on trial, falling back to the previous one by itself (--with-boot-counting)"
 echo
 echo "Every change is listed, with how to undo it, in docs/setup.md."
 if [ -t 0 ]; then

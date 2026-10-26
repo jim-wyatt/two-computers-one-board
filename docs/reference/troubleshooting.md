@@ -595,18 +595,19 @@ id: f182…-7.0.1+0-3.conf      bad: three boots and never marked good
 
 An entry at `+0` is sorted below every good one, so the board boots the previous kernel without anyone touching it. That is the safety net working, not a fault. To find out why the new kernel failed, look at its boot. `journalctl --list-boots` lists them, and in a failed one `systemctl status unoq-boot-health` says whether the boot never finished or `sshd` never came up. Once the cause is fixed, reinstall the kernel package, which writes a fresh entry with a full counter. To keep the old kernel for good, remove the new one.
 
-**The test that has not been run yet.** Boot counting needs U-Boot to let systemd-boot rename a file on the EFI partition. One reboot shows whether it does. It boots the kernel the board already runs, through a second, counted entry, so the worst case is an ordinary boot:
+**Testing it with one reboot.** Boot counting needs U-Boot to let systemd-boot rename a file on the EFI partition. On the UNO Q it does: this test passed, and the boot it counted logged `Marked boot as 'good'. (Boot attempt counter is at 1.)`. To check it again, after a U-Boot update say, boot the kernel the board already runs through a second, counted entry, so the worst case is an ordinary boot. `bootctl set-oneshot` cannot pick it, because Linux cannot write U-Boot's EFI variables (`bootctl status` lists none), so the test points `loader.conf`'s `default` at it for a while:
 
 ```bash
 sudo bash ~/two-computers-one-board/provision/82-boot-counting.sh   # if it is not installed yet
-cd /boot/efi/loader/entries
-E="$(ls *.conf | head -1)"                                          # the current entry
-sudo sh -c "sed 's/^title .*/title counting test/' '$E' > unoq-test+1.conf"
-sudo bootctl set-oneshot unoq-test+1.conf                           # boot it once
+cd /boot/efi/loader
+E="$(ls entries/*.conf | head -1)"                                  # the current entry
+sudo sh -c "sed 's/^title .*/title counting test/' '$E' > entries/unoq-test+1.conf"
+sudo cp loader.conf loader.conf.unoq-test.bak
+sudo sed -i 's/^default .*/default unoq-test*/' loader.conf
 sudo reboot
 ```
 
-If `set-oneshot` is refused (U-Boot may not keep EFI variables written from Linux), change the `default` line of `/boot/efi/loader/loader.conf` to `unoq-test*` instead, and put it back afterwards. Then, a few minutes after the board is back:
+A few minutes after the board is back, past the health check:
 
 | `ls /boot/efi/loader/entries` shows | Means |
 |---|---|
@@ -614,4 +615,10 @@ If `set-oneshot` is refused (U-Boot may not keep EFI variables written from Linu
 | `unoq-test+0-1.conf` | The count works, but the entry was not marked good. `systemctl status unoq-boot-health systemd-bless-boot` |
 | `unoq-test+1.conf`, unchanged | Nothing was renamed: either it did not boot this entry (`bootctl status`, *Current Entry*), or U-Boot cannot write the partition, and boot counting cannot work on this board. |
 
-Afterwards, `sudo rm /boot/efi/loader/entries/unoq-test*.conf`.
+`journalctl -b -u unoq-boot-health -u systemd-bless-boot` shows the check passing and the entry being marked. Afterwards, put the default back and remove the test entry:
+
+```bash
+cd /boot/efi/loader
+sudo mv loader.conf.unoq-test.bak loader.conf
+sudo rm entries/unoq-test*.conf
+```

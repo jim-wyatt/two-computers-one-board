@@ -48,11 +48,12 @@
 # installed, and only matters while the previous one is still installed beside
 # it, which Debian keeps until `apt autoremove`.
 #
-# NOT YET RUN THROUGH A REBOOT. Whether it works depends on U-Boot letting
-# systemd-boot rename a file on the EFI partition at boot, which nothing short
-# of a counted boot can show. Until that has been seen, this is opt-in:
-# bootstrap.sh runs it only with --with-boot-counting, and --everything leaves
-# it out. docs/reference/troubleshooting.md has the one-reboot test that settles it.
+# It depends on U-Boot letting systemd-boot rename a file on the EFI partition
+# at boot, which nothing short of a counted boot can show. One has: the try was
+# counted, unoq-boot-health passed, and systemd-bless-boot marked the entry
+# good. docs/reference/troubleshooting.md has that one-reboot test. It is still
+# opt-in: bootstrap.sh runs it only with --with-boot-counting, and --everything
+# leaves it out.
 #
 # REVERT: rm /etc/kernel/tries &&
 #         systemctl disable unoq-boot-health.service &&
