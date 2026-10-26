@@ -90,7 +90,7 @@ Add something that is not:
 
 --with-cpu-bars, --with-learning, --with-usb-gadget and --everything are still
 accepted: the first three ask for what now happens anyway, and --everything
-adds --with-purge.
+adds --with-purge and --with-boot-counting.
 EOF
 }
 
@@ -120,8 +120,12 @@ for arg in "$@"; do
     # switch it on for everybody - one can reset the board mid-build, the other
     # edits the fstab entry it boots from. Each has to be asked for by name
     # until it has been seen on more than one.
+    # Boot counting is in --everything: on its own board it went through a
+    # counted boot and was marked good, and what it risks is a kernel that has
+    # yet to be installed, with the previous one there to fall back to.
     --everything)
       WITH_PURGE=1
+      WITH_BOOT_COUNTING=1
       WITH_CPU_BARS=1
       WITH_USB_GADGET=1
       WITH_LEARNING=1

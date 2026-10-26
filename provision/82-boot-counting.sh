@@ -51,9 +51,8 @@
 # It depends on U-Boot letting systemd-boot rename a file on the EFI partition
 # at boot, which nothing short of a counted boot can show. One has: the try was
 # counted, unoq-boot-health passed, and systemd-bless-boot marked the entry
-# good. docs/reference/troubleshooting.md has that one-reboot test. It is still
-# opt-in: bootstrap.sh runs it only with --with-boot-counting, and --everything
-# leaves it out.
+# good. docs/reference/troubleshooting.md has that one-reboot test. It is not in
+# bootstrap.sh's default run: it takes --with-boot-counting, or --everything.
 #
 # REVERT: rm /etc/kernel/tries &&
 #         systemctl disable unoq-boot-health.service &&

@@ -479,7 +479,8 @@ later run does not remove what an earlier run installed;
 [Provisioning](reference/provisioning.md) has the command that undoes each.
 
 `--with-cpu-bars`, `--with-learning`, `--with-usb-gadget` and `--everything`
-are still accepted, for commands copied from older pages.
+are still accepted, for commands copied from older pages. `--everything` adds
+`--with-purge` and `--with-boot-counting`.
 
 ## Next
 
