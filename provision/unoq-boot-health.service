@@ -1,0 +1,43 @@
+# Copyright (c) 2026 Jim Wyatt
+# SPDX-License-Identifier: MIT
+[Unit]
+Description=Mark a kernel on trial good once the board is up and SSH answers
+Documentation=file:/home/arduino/two-computers-one-board/provision/82-boot-counting.sh
+
+# Part of systemd-boot's boot counting (see 82-boot-counting.sh). A boot entry
+# installed with a try counter (...+3.conf) is marked good by
+# systemd-bless-boot.service, and this is what that waits for.
+#
+# NOT boot-complete.target, which is where systemd's documentation puts a check
+# like this. On this board boot-complete.target is also what qbootctl.service
+# waits for before it marks the Qualcomm boot slot (boot_a/boot_b) successful,
+# and it is pulled in on every boot. A check there would gate the FIRMWARE
+# slot: a boot without SSH would leave the slot unmarked, and enough of those
+# make the Qualcomm boot chain fall back to the other slot - the layer of
+# issue #93 that is to be looked at and never touched. So this gates only the
+# blessing of the kernel's entry, and boot-complete.target, and qbootctl with
+# it, are exactly as the stock image has them.
+#
+# Only on a counted boot. systemd-boot sets LoaderBootCountPath when the entry
+# it booted has a counter; without it the condition fails, which systemd
+# treats as nothing to do rather than as a failure.
+ConditionPathExists=/sys/firmware/efi/efivars/LoaderBootCountPath-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f
+Before=systemd-bless-boot.service
+After=multi-user.target ssh.service
+
+[Service]
+Type=oneshot
+# What a kernel can break and you need to get back in: the boot finished
+# (After=multi-user.target), and sshd is up. ssh.service is Type=notify, so
+# "active" means it is listening. Network and the microcontroller are left
+# out on purpose: a board with no cable and no wifi, or a firmware being
+# flashed, is not a reason to go back to an older kernel.
+#
+# The sleep is the same reasoning as unoq-usb-confirm.service: the first minute
+# is when a board is busiest, and a kernel that falls over then must not have
+# been marked good on the way past.
+ExecStart=/bin/sleep 60
+ExecStart=/usr/bin/systemctl is-active --quiet ssh.service
+
+[Install]
+RequiredBy=systemd-bless-boot.service

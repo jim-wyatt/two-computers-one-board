@@ -470,6 +470,7 @@ has the detail.
 |---|---|---|
 | `--with-purge` | A few hundred MB of disk back, by removing the remaining Arduino packages. (The ~2 GB of container images go in the default run.) | It is the one step that is hard to undo. The stock firmware is backed up first. |
 | `--with-watchdog` | The board resets itself if its kernel hangs, instead of waiting for someone to pull the cable. | It also resets if `systemd` merely stalls for 30 seconds. It has survived a clean firmware build with swap 80% full on one board, which is one measurement and not a promise. |
+| `--with-boot-counting` | A new kernel boots on trial. If it doesn't come up with SSH three boots running, the board goes back to the previous kernel by itself. | Nothing until the next kernel is installed. |
 | `--with-esp-lockdown` | The EFI partition, and the random seed on it, readable by root only. Run on one board, through a reboot. | It edits the line of `/etc/fstab` the board boots from. The edit is checked before it is installed and the old file is kept as `/etc/fstab.unoq-esp.bak`. |
 
 You can change your mind later by running `bootstrap.sh` again with a
@@ -478,7 +479,8 @@ later run does not remove what an earlier run installed;
 [Provisioning](reference/provisioning.md) has the command that undoes each.
 
 `--with-cpu-bars`, `--with-learning`, `--with-usb-gadget` and `--everything`
-are still accepted, for commands copied from older pages.
+are still accepted, for commands copied from older pages. `--everything` adds
+`--with-purge` and `--with-boot-counting`.
 
 ## Next
 

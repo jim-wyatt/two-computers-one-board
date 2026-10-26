@@ -58,6 +58,7 @@ WITH_USB_GADGET=1
 WITH_LEARNING=1
 WITH_WATCHDOG=0
 WITH_ESP_LOCKDOWN=0
+WITH_BOOT_COUNTING=0
 SKIP_MCU=0
 
 usage() {
@@ -79,13 +80,17 @@ Add something that is not:
                       to fire on purpose.
   --with-esp-lockdown also make the EFI partition root-only (85). Edits the
                       /etc/fstab entry the board boots from, backed up first.
+  --with-boot-counting
+                      also boot new kernels on trial (82): one that does not
+                      come up with SSH three times running is set aside for
+                      the previous kernel.
 
   --skip-mcu          do not build or flash the MCU firmware
   -h, --help          this
 
 --with-cpu-bars, --with-learning, --with-usb-gadget and --everything are still
 accepted: the first three ask for what now happens anyway, and --everything
-adds --with-purge.
+adds --with-purge and --with-boot-counting.
 EOF
 }
 
@@ -107,6 +112,7 @@ for arg in "$@"; do
     --with-learning) WITH_LEARNING=1 ;;
     --with-watchdog) WITH_WATCHDOG=1 ;;
     --with-esp-lockdown) WITH_ESP_LOCKDOWN=1 ;;
+    --with-boot-counting) WITH_BOOT_COUNTING=1 ;;
     # The watchdog and the EFI lockdown are in neither the default nor
     # --everything, on purpose. For those two the evidence is one board: each
     # ran there and came back from reboots, the watchdog through a firmware
@@ -114,8 +120,12 @@ for arg in "$@"; do
     # switch it on for everybody - one can reset the board mid-build, the other
     # edits the fstab entry it boots from. Each has to be asked for by name
     # until it has been seen on more than one.
+    # Boot counting is in --everything: on its own board it went through a
+    # counted boot and was marked good, and what it risks is a kernel that has
+    # yet to be installed, with the previous one there to fall back to.
     --everything)
       WITH_PURGE=1
+      WITH_BOOT_COUNTING=1
       WITH_CPU_BARS=1
       WITH_USB_GADGET=1
       WITH_LEARNING=1
@@ -172,6 +182,8 @@ echo "  - install the Zephyr SDK and workspace into $HOME (~3 GB)"
   echo "  - arm the hardware watchdog: the board RESETS ITSELF if systemd stalls (--with-watchdog; held through one loaded build, on one board)"
 [ "$WITH_ESP_LOCKDOWN" = 1 ] &&
   echo "  - edit the /boot/efi line of /etc/fstab, the partition this board boots from (--with-esp-lockdown; backed up first)"
+[ "$WITH_BOOT_COUNTING" = 1 ] &&
+  echo "  - boot every new kernel on trial, falling back to the previous one by itself (--with-boot-counting)"
 echo
 echo "Every change is listed, with how to undo it, in docs/setup.md."
 if [ -t 0 ]; then
@@ -444,6 +456,8 @@ fi
 # and 85 edits /etc/fstab after 70 has added its line, not before.
 [ "$WITH_WATCHDOG" = 1 ] &&
   run_step "80  hardware watchdog (root)" sudo "$PROJECT/provision/80-watchdog.sh"
+[ "$WITH_BOOT_COUNTING" = 1 ] &&
+  run_step "82  kernels boot on trial (root)" sudo "$PROJECT/provision/82-boot-counting.sh"
 [ "$WITH_ESP_LOCKDOWN" = 1 ] &&
   run_step "85  EFI partition permissions (root)" sudo "$PROJECT/provision/85-esp-permissions.sh"
 # Always, and after everything that downloads or installs: what the run

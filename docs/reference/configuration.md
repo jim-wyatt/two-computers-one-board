@@ -134,6 +134,7 @@ Set on the command line, for one run of `bootstrap.sh` or of the script named.
 | `UNOQ_ALLOW_UNVERIFIED_SDK` | `0` | `provision/user/25-zephyr-sdk.sh` | `1` lets an SDK release chosen with `ZEPHYR_SDK_VERSION` be unpacked, and its `setup.sh` run, when the release publishes no checksum for it. It says so when it does. It has no effect on the pinned release, which is never unpacked unverified, and it never excuses a checksum that is published and does not match. |
 | `UNOQ_USER` | whoever ran `sudo` | `provision/lib.sh` | The account that owns the checkout and is written into the units. |
 | `UNOQ_VENV` | `<checkout>/.venv` | `provision/user/35-python-venv.sh`, `tools/` | The Python environment. |
+| `UNOQ_BOOT_TRIES` | `3` | `provision/82-boot-counting.sh` | How many boots a new kernel gets to come up with SSH before the previous one takes over, from `1` to `9`. Written to `/etc/kernel/tries`. Only read with `--with-boot-counting`. |
 | `UNOQ_WATCHDOG_SEC` | `30` | `provision/80-watchdog.sh` | Whole seconds without a ping from `systemd` before the hardware watchdog resets the board. Refused below `10`: a timeout that short resets a board that is merely busy, and does it again after every reboot. Only read with `--with-watchdog`. |
 
 ## The MCU control lines
@@ -198,6 +199,8 @@ and setting one will mostly make a script look in the wrong place.
 | `UNOQ_IN_BOOTSTRAP` | unset | Set by `bootstrap.sh` for the steps it runs, so that a warning about the board as a whole is printed once at the end instead of after every step. |
 | `UNOQ_AUTOIPD` | `/usr/sbin/avahi-autoipd` | The link-local address daemon. |
 | `UNOQ_NSLOOKUP` | `nslookup` | The resolver probe. |
+| `UNOQ_UNIT_DIR` | `/etc/systemd/system` | Where `install_unit` (`provision/lib.sh`) installs a unit. |
+| `UNOQ_KERNEL_CONF_DIR` | `/etc/kernel` | Where `82-boot-counting.sh` writes `tries`. |
 | `UNOQ_WATCHDOG_CONF_DIR` | `/etc/systemd/system.conf.d` | Where `80-watchdog.sh` writes its `systemd` drop-in. |
 | `UNOQ_WATCHDOG_SYSFS` | `/sys/class/watchdog` | Where `80-watchdog.sh` looks for a watchdog device. |
 | `UNOQ_FSTAB` | `/etc/fstab` | The mount table `85-esp-permissions.sh` edits. Its backup is written beside it. |

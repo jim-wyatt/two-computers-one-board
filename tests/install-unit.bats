@@ -548,8 +548,9 @@ unoq-usb-bind.service" ]
 
 @test "no unit in the repository leaves root executing the checkout" {
   # The property the whole arrangement exists for, asserted of the real units
-  # rather than of fixtures: six run as root and name only root's copies, two
-  # run as the user and name only the venv.
+  # rather than of fixtures: seven run as root, and every program of ours they
+  # start is root's copy; two run as the user and name only the venv. One of
+  # the seven, unoq-boot-health, starts only the system's own binaries.
   REAL="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   load_lib "$REAL"
   RUNTIME_DIR="$BATS_TEST_TMPDIR/real-runtime"
@@ -562,7 +563,14 @@ unoq-usb-bind.service" ]
         echo "$src runs as root from the checkout: $execs"
         false
       fi
-      grep -qF "$RUNTIME_DIR/" <<<"$execs"
+      # Every program that is not the system's own is root's copy.
+      while IFS= read -r prog; do
+        case "$prog" in /usr/* | /bin/* | /sbin/* | "$RUNTIME_DIR"/*) ;; *)
+          echo "$src runs $prog as root, which is neither a system binary nor root's copy"
+          false
+          ;;
+        esac
+      done < <(sed -E 's/^Exec[A-Za-z]+=[-@:+!]*//; s/ .*//' <<<"$execs")
     else
       user_units=$((user_units + 1))
       if grep -qF "$RUNTIME_DIR" <<<"$execs"; then
@@ -572,7 +580,7 @@ unoq-usb-bind.service" ]
       grep -qF "$REAL/.venv/bin/" <<<"$execs"
     fi
   done
-  [ "$root_units" = 6 ]
+  [ "$root_units" = 7 ]
   [ "$user_units" = 2 ]
 }
 

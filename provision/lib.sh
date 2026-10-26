@@ -380,8 +380,9 @@ write_file() {
 #
 # WHY THERE ARE TWO COPIES OF SOME SCRIPTS
 # ----------------------------------------
-# Six of the units installed here run as root: unoq-link, unoq-leds and the four
-# USB ones. They used to execute the scripts in the checkout, which is in a home
+# Seven of the units installed here run as root: unoq-link, unoq-leds, the four
+# USB ones, and unoq-boot-health (which starts only system binaries). The first six
+# used to execute the scripts in the checkout, which is in a home
 # directory and belongs to the person who cloned it. So anything able to write
 # there - an editor plugin, a compromised user process, a `git pull`, a branch
 # switch - changed what root would run at the next boot or cable plug, with no
@@ -952,7 +953,8 @@ install_unit() {
     done
   done < <(grep -E '^Documentation=' <<<"$rendered" || true)
 
-  if render_unit "$src" | write_file 0644 "/etc/systemd/system/$name"; then
+  # UNOQ_UNIT_DIR is for the tests, which cannot write to /etc.
+  if render_unit "$src" | write_file 0644 "${UNOQ_UNIT_DIR:-/etc/systemd/system}/$name"; then
     systemctl daemon-reload
   fi
 }
