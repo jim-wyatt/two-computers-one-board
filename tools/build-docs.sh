@@ -6,7 +6,7 @@
 #   tools/build-docs.sh          # build into share/learn/
 #   tools/build-docs.sh --serve  # live-reloading preview on :8000
 #
-# --strict is not optional. MkDocs resolves every internal link against the
+# --strict is not optional. Zensical resolves every internal link against the
 # real directory tree, so a link that points at a file which no longer exists
 # is a build failure here rather than a 404 for a reader. The generator this
 # replaced flattened every page into one directory, which silently repaired
@@ -16,17 +16,20 @@
 # otherwise fetch at page load, so that the built site needs nothing. That
 # needs network access on the FIRST build; afterwards the copies are cached
 # under .cache/plugin/privacy/ and rebuilds work offline.
+#
+# PYTHONPATH: mkdocs.yml loads tools/site_markdown.py as a Markdown extension
+# by the name `site_markdown`, and Python-Markdown imports extensions by name.
 set -uo pipefail
 
 PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
 VENV="${UNOQ_VENV:-$PROJECT/.venv}"
-MKDOCS="$VENV/bin/mkdocs"
+ZENSICAL="$VENV/bin/zensical"
 
-if [ ! -x "$MKDOCS" ]; then
+if [ ! -x "$ZENSICAL" ]; then
   cat >&2 <<EOF
-$MKDOCS is missing.
+$ZENSICAL is missing.
 
-The site needs mkdocs-material, which lives in the 'docs' extra:
+The site needs zensical, which lives in the 'docs' extra:
 
   uv pip install --python $VENV/bin/python -c $PROJECT/python/requirements-lock.txt -b $PROJECT/python/requirements-lock.txt -e '$PROJECT/python[dev,docs]'
 
@@ -35,13 +38,15 @@ EOF
   exit 1
 fi
 
+export PYTHONPATH="$PROJECT/tools${PYTHONPATH:+:$PYTHONPATH}"
+
 if [ "${1:-}" = "--serve" ]; then
   # 0.0.0.0 so the preview is reachable from the machine the board is plugged
   # into, which is where it will actually be looked at.
-  exec "$MKDOCS" serve --strict -f "$PROJECT/mkdocs.yml" -a 0.0.0.0:8000
+  exec "$ZENSICAL" serve -f "$PROJECT/mkdocs.yml" -a 0.0.0.0:8000
 fi
 
-"$MKDOCS" build --strict -f "$PROJECT/mkdocs.yml" || {
+"$ZENSICAL" build --strict -f "$PROJECT/mkdocs.yml" || {
   echo >&2
   echo "docs build failed. Most often this is a link to a file that moved:" >&2
   echo "  paths in docs/ are relative to the page, and must resolve on GitHub too." >&2

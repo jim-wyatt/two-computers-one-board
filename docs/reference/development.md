@@ -121,12 +121,12 @@ that silently does nothing is worse than no gate.
 | | scripts | `ruff`, `mypy --strict` | `tools/*.py` and `mcu/sign-params.py`, with the package's configuration |
 | `shell` | lint | `shellcheck -x` | every tracked `*.sh` |
 | | format | `shfmt -i 2 -ci` | every tracked `*.sh` |
-| | behavior | `bats` | `tests/*.bats` — see [the suite's own guide](../../tests/README.md) |
+| | behavior | `bats` | `tests/*.bats` — see [the suite's own guide](../../tests/) |
 | | units | `tools/check-units.sh` | systemd accepts every unit file and udev rule as provisioning would install them, and everything they start exists — for a root unit, in the set of scripts that is copied for root |
 | `c` | version pin | `tools/check-zephyr-pin.sh` | the board and CI build the same Zephyr, and install the same uv |
 | | lock files | `tools/check-constraints.sh` | every Python package the project names is pinned in a lock file, and the Zephyr lock matches the pinned Zephyr |
 | | format | `clang-format` | `mcu/**/*.[ch]`, in Zephyr's own style |
-| `docs` | build | `mkdocs --strict` | every internal link and anchor resolves |
+| `docs` | build | `zensical --strict` | every internal link and anchor resolves |
 | `docs` | spelling | `tools/check-spelling.sh` | American spelling throughout, in comments and messages as well as prose. `.codespellrc` lists what is deliberately not a misspelling |
 | | offline | `tools/check-diagram-assets.sh` | the diagram library is on disk, not at a CDN |
 | | settings | `tools/check-config-docs.sh` | [What you can change](configuration.md) names every setting the code reads |
@@ -142,7 +142,7 @@ tools/install-dev-tools.sh       # no sudo, no apt
 tools/install-hooks.sh           # pre-commit -> check.sh --fast
 ```
 
-`install-dev-tools.sh` puts ruff, mypy, pytest, codespell, mkdocs and clang-format in the
+`install-dev-tools.sh` puts ruff, mypy, pytest, codespell, zensical and clang-format in the
 project venv, and fetches pinned `shellcheck`, `shfmt`, `bats` and `actionlint` into
 `~/.local/bin`, each checked against a SHA-256 recorded beside its version
 before it is unpacked. Bumping one means changing its version and its checksum
@@ -187,7 +187,7 @@ code needs a test — and it is one line in `pyproject.toml` if you want it
 lower.
 
 The shell suites run the *real* scripts with fake commands at the front of
-`PATH`. [tests/README.md](../../tests/README.md) explains how, what that does
+`PATH`. [tests/README.md](../../tests/) explains how, what that does
 and does not prove, and how to add one.
 
 ## CI
@@ -279,7 +279,7 @@ practice that means:
 
 - **Links are relative paths to `.md` files.** The strict build fails on one
   that does not resolve.
-- **Callouts use GitHub's syntax** (`> [!NOTE]`), which a build hook converts
+- **Callouts use GitHub's syntax** (`> [!NOTE]`), which a Markdown extension converts
   for the site. The site's own `!!!` syntax shows up as stray text on GitHub.
 - **Nothing is loaded from a CDN.** What the site needs is fetched at build
   time and shipped with it.
@@ -296,37 +296,38 @@ tools/check-links.sh             # do the external links in the docs still resol
 
 Nothing on the board updates itself, on purpose, so run the first of these now
 and then. The script's header lists the things that look out of date and are
-not — pydantic-core moving only with pydantic, mkdocs held below 2.0, OpenOCD built from master —
+not — pydantic-core moving only with pydantic, zensical held below 0.1, OpenOCD built from master —
 and why.
 
 Upgrading Zephyr has its own checklist: [mcu.md](mcu.md#upgrading-zephyr).
 
-### The documentation toolchain is held back on purpose
+### The documentation toolchain
 
-`mkdocs` is pinned below 2.0 and `mkdocs-material` below 10 in
-`python/pyproject.toml`. MkDocs 2.0 removes the plugin system, and this site
-depends on three plugins: `search`, `privacy` and `offline`. The last two are
-what make it work opened as a file from the USB drive with no network, which is
-the one requirement that cannot be traded away.
+The site is built by [Zensical](https://zensical.org/), from the author of
+Material for MkDocs, which built it until MkDocs 2.0 was announced to remove the
+plugin and theming systems this site depends on. The move waited for Zensical's
+`privacy` plugin
+([issue #52](https://github.com/jim-wyatt/two-computers-one-board/issues/52)):
+it is what puts the diagram library on disk instead of at a CDN, so that the
+site works opened as a file from the USB drive with no network - the one
+requirement that cannot be traded away.
 
-The successor is [Zensical](https://zensical.org/), from the same author. It
-builds this site faster and cannot yet build it *offline*: it leaves the
-diagram library at a CDN. That is the whole blocker, and
-[issue #52](https://github.com/jim-wyatt/two-computers-one-board/issues/52)
-holds the ten-minute test that says when it has gone.
+Zensical reads `mkdocs.yml` as it is, so the configuration kept its name. What
+it does not run is MkDocs hooks. The three jobs `tools/mkdocs_hooks.py` did -
+links out of `docs/` pointed at the repository, GitHub's `> [!NOTE]` callouts
+made admonitions, tables marked up for phones - are a Python-Markdown
+extension instead, `tools/site_markdown.py`, which `mkdocs.yml` lists with the
+other extensions and `tools/build-docs.sh` puts on the import path.
 
-So the rule is: **do not move on a version number.** Move when one of these is
-true.
+One rule follows from that, for anyone writing a page: link a README outside
+`docs/` by its **directory** (`../../tests/`), not by the file. Zensical checks
+every `.md` link against the pages it is building, and a README outside `docs/`
+is not one of them.
 
-- Zensical ships its `privacy` equivalent and the test in #52 passes.
-- The pinned range stops receiving security fixes.
-- A build with the pinned range stops working on a supported Python.
-
-`tools/check-versions.sh pins` prints the range and the newest release inside
-it, so a range that has gone quiet is visible. If it ever has to be replaced in
-a hurry, what would not survive is small: `tools/mkdocs_hooks.py`, the theme
-configuration in `mkdocs.yml`, and the two index pages. The chapters are plain
-Markdown and would.
+Zensical is still 0.0.x, so `python/pyproject.toml` holds it below 0.1 and the
+lock file holds the exact version. Move it deliberately and run the docs and
+diagram gates after: those are what notice an offline site breaking, and the
+mermaid 12 that came with this move was first caught by them.
 
 ### Rebuilding OpenOCD
 

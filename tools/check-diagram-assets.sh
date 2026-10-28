@@ -26,7 +26,7 @@
 #
 # (1) and (2) are the USB-drive constraint from the top of mkdocs.yml: a laptop
 # with no internet, opening the drive as file://. (3) and (4) are the bug that
-# started all this - Material loads the library and never calls mermaid.run().
+# started all this - the theme loads the library and never calls mermaid.run().
 #
 # What this canNOT catch is mermaid.run() throwing once it is called. That is
 # what the browser gate is for, and why both exist.
@@ -59,7 +59,7 @@ fi
 # 2. ...and the theme bundle must reference it RELATIVELY. Setting site_url is
 #    what breaks this: privacy then bakes in an absolute url and the vendored
 #    copy sits there unused. Looking at the bundle rather than the pages,
-#    because that is where Material puts the reference.
+#    because that is where the theme puts the reference.
 for bundle in "$SITE"/assets/javascripts/bundle.*.js; do
   [ -e "$bundle" ] || continue
   if grep -qo 'https://[a-z0-9.-]*/mermaid' "$bundle"; then

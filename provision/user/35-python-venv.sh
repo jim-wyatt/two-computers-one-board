@@ -100,10 +100,10 @@ fi
 step "unoq package (editable)"
 # The [docs] extra comes along at provisioning time, not just for developers:
 # share/build-image.sh renders the learning site during the same bootstrap, and
-# a board without mkdocs produces a USB drive and a web server with no content.
+# a board without zensical produces a USB drive and a web server with no content.
 if [ "$LOCKED" = 1 ] && "$VENV/bin/python" -c 'import unoq' 2>/dev/null &&
-  [ -x "$VENV/bin/unoq-cpu-bars" ] && [ -x "$VENV/bin/mkdocs" ]; then
-  skip "unoq importable, unoq-cpu-bars and mkdocs on PATH"
+  [ -x "$VENV/bin/unoq-cpu-bars" ] && [ -x "$VENV/bin/zensical" ]; then
+  skip "unoq importable, unoq-cpu-bars and zensical on PATH"
 else
   uv pip install --python "$VENV/bin/python" -q -c "$LOCK" -b "$LOCK" -e "$PROJECT/python[docs]" ||
     fail "could not install the unoq package"

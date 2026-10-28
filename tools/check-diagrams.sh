@@ -168,7 +168,7 @@ fi
 # same init script, so if it draws, the browser and the library both work and a
 # failure on a real page is genuinely that page's fault.
 #
-# They use the <code> wrapper because THAT IS WHAT MKDOCS EMITS.
+# They use the <code> wrapper because THAT IS WHAT THE BUILD EMITS.
 #
 # The first fixture once did not, and that single difference is why this gate
 # passed while every real page failed. superfences renders a fence as
@@ -177,7 +177,7 @@ fi
 # text inside the <pre>, which parses fine. A fixture that does not reproduce
 # the real markup only proves the browser works.
 #
-# Entities too: mkdocs escapes `-->` to `--&gt;` inside the block, so the
+# Entities too: the build escapes `-->` to `--&gt;` inside the block, so the
 # fixture has to carry it escaped or it is not testing the decode path either.
 fixture() {
   local name="$1" source="$2" init="$3"

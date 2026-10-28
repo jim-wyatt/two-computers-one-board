@@ -102,8 +102,8 @@ if wanted python; then
     fi
   fi
   have mypy "mypy (strict)" && run "mypy (strict)" "$VENV/bin/mypy"
-  # The Python that is not the package: the docs build's hooks, the diagram
-  # check, and the MCUboot signing helper. Linted and type-checked with the
+  # The Python that is not the package: the docs build's Markdown extension,
+  # the diagram check, and the MCUboot signing helper. Linted and type-checked with the
   # package's own configuration, which they were never given - so an unused
   # noqa in sign-params.py and a None that mkdocs_hooks.py did not handle had
   # nothing to find them.
@@ -198,8 +198,8 @@ if wanted docs; then
   if have codespell "spelling (en_US)"; then
     run "spelling (en_US)" "$PROJECT/tools/check-spelling.sh"
   fi
-  if have mkdocs "docs (mkdocs --strict)"; then
-    run "docs (mkdocs --strict)" "$PROJECT/tools/build-docs.sh"
+  if have zensical "docs (zensical --strict)"; then
+    run "docs (zensical --strict)" "$PROJECT/tools/build-docs.sh"
     # Deliberately not chained onto the build with &&: `run` always succeeds
     # (it records the failure rather than propagating it), so a && here would
     # look like a dependency and enforce nothing. If the build failed there is

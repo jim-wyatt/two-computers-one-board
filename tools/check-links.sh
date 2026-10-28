@@ -16,7 +16,7 @@
 # check.sh has to pass offline, on a board with no uplink, and give the same
 # answer twice. This needs the network and depends on a hundred other people's
 # servers; as a gate it would be a flaky one, and a dead third-party link is not
-# a reason to block a merge anyway. `mkdocs --strict` already checks the
+# a reason to block a merge anyway. `zensical --strict` already checks the
 # INTERNAL links, against the real directory tree, with no network.
 #
 # So it runs on a schedule instead: .github/workflows/links.yml, monthly, which

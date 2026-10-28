@@ -168,7 +168,7 @@
  * happened to end, its last five letters on a line of their own. Measured
  * over every page: of the 763 pieces of code in table cells, 74 were split
  * mid-word at 1440px and 196 at 390px. Here code breaks only where a browser
- * would break ordinary text, plus after each underscore: tools/mkdocs_hooks.py
+ * would break ordinary text, plus after each underscore: tools/site_markdown.py
  * puts a <wbr> there, and says what happened when there were none. */
 .md-typeset table:not([class]) code {
   word-break: normal;
@@ -184,7 +184,7 @@
  *
  * So each row is set as a block, with every cell the full width and its column
  * heading above it. The heading text comes from `data-label`, which
- * tools/mkdocs_hooks.py copies onto each cell at build time, along with the
+ * tools/site_markdown.py copies onto each cell at build time, along with the
  * `data-stack` that opts the table in. Two-column tables are left alone: a
  * name and its meaning fit side by side.
  *
@@ -396,7 +396,7 @@
  * callouts
  *
  * The GitHub-alert blockquotes in the source become title-less admonitions
- * (see tools/mkdocs_hooks.py), so the empty title bar has to go.
+ * (see tools/site_markdown.py), so the empty title bar has to go.
  * ----------------------------------------------------------------------- */
 
 .md-typeset .admonition > .admonition-title:empty,

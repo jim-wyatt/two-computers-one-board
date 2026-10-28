@@ -1,33 +1,36 @@
 # Copyright (c) 2026 Jim Wyatt
 # SPDX-License-Identifier: MIT
-"""Build-time hooks for the documentation site.
+"""A Python-Markdown extension for the documentation site.
 
-MkDocs loads this file directly from `hooks:` in mkdocs.yml - it is not a
-plugin and needs no package, no entry point and no extra dependency. Three
-jobs, all of which exist so that the SAME markdown reads correctly in two
-places: on GitHub, and on the rendered site the board serves.
+Zensical builds the site, and it runs no MkDocs hooks - but it renders every
+page through Python-Markdown with the extensions mkdocs.yml lists, so the jobs
+the hooks used to do are done from here instead. mkdocs.yml names this module
+as `site_markdown`, and tools/build-docs.sh puts tools/ on PYTHONPATH so that
+name can be imported. Three jobs, all of which exist so that the SAME markdown
+reads correctly in two places: on GitHub, and on the rendered site the board
+serves.
 
     docs/**/*.md  --+--> GitHub renders it raw
                     |
-                    +--> this hook --> python-markdown --> Material --> site
+                    +--> python-markdown + this extension --> Zensical --> site
 
 Neither transformation is allowed to make the source worse to read. That rules
 out the usual approach of writing site-flavored markdown and accepting that
 GitHub shows the syntax as literal text.
+
+The markdown passes run before pymdownx.snippets, as the hooks did before any
+extension ran, so what a page includes from elsewhere is left as it is.
 """
 
 from __future__ import annotations
 
 import posixpath
 import re
-from typing import TYPE_CHECKING
+from typing import Any
 
-from mkdocs.exceptions import PluginError
-
-if TYPE_CHECKING:  # pragma: no cover - import-time only, for type checkers
-    from mkdocs.config.defaults import MkDocsConfig
-    from mkdocs.structure.files import Files
-    from mkdocs.structure.pages import Page
+from markdown import Extension, Markdown
+from markdown.postprocessors import Postprocessor
+from markdown.preprocessors import Preprocessor
 
 # --------------------------------------------------------------------------
 # 1. links that point out of docs/
@@ -42,6 +45,12 @@ if TYPE_CHECKING:  # pragma: no cover - import-time only, for type checkers
 # network) instead of another (needs a file that was never shipped). A reader
 # offline on the USB drive can still see WHERE to look, which is most of the
 # value; a 404 tells them nothing.
+#
+# A page outside docs/ is linked by its DIRECTORY, not its README: `../../tests/`
+# rather than `../../tests/README.md`. Zensical checks every `.md` link against
+# the pages it is building before this extension has run, and a README outside
+# docs/ is not one of them. GitHub shows a directory with its README under it,
+# so the reader there loses nothing, and the site gets the `tree/` URL below.
 
 _LINK = re.compile(r"(?<!!)\[([^\]]*)\]\(([^)\s]+)(\s+\"[^\"]*\")?\)")
 _FENCE = re.compile(r"^\s*(```|~~~)")
@@ -51,7 +60,7 @@ def _is_local(target: str) -> bool:
     return not target.startswith(("http://", "https://", "#", "mailto:", "/"))
 
 
-def _rewrite_target(target: str, page_dir: str, repo_blob: str) -> str:
+def _rewrite_target(target: str, page_dir: str, repo_url: str) -> str:
     """Return `target` unchanged, or an absolute repository URL for it."""
     if not _is_local(target):
         return target
@@ -60,12 +69,40 @@ def _rewrite_target(target: str, page_dir: str, repo_blob: str) -> str:
         return target
     resolved = posixpath.normpath(posixpath.join(page_dir, path))
     if not resolved.startswith("../"):
-        return target  # still inside docs/ - MkDocs will resolve and validate it
-    return repo_blob + resolved.removeprefix("../") + (f"#{anchor}" if anchor else "")
+        return target  # still inside docs/ - Zensical will resolve and validate it
+    # normpath drops a trailing slash, and the slash is what says "directory".
+    kind = "tree" if path.endswith("/") else "blob"
+    return f"{repo_url}/{kind}/main/{resolved.removeprefix('../')}" + (
+        f"#{anchor}" if anchor else ""
+    )
+
+
+def _rewrite_links(lines: list[str], page_dir: str, repo_url: str) -> list[str]:
+    def replace(match: re.Match[str]) -> str:
+        label, target, title = match.group(1), match.group(2), match.group(3) or ""
+        return f"[{label}]({_rewrite_target(target, page_dir, repo_url)}{title})"
+
+    # Same fence-awareness as the alert pass: a code sample that shows markdown
+    # link syntax must come out the other side unedited.
+    out: list[str] = []
+    fence = ""
+    for line in lines:
+        opener = _FENCE.match(line)
+        if fence:
+            out.append(line)
+            if opener and line.strip().startswith(fence):
+                fence = ""
+            continue
+        if opener:
+            fence = opener.group(1)
+            out.append(line)
+            continue
+        out.append(_LINK.sub(replace, line))
+    return out
 
 
 # --------------------------------------------------------------------------
-# 2. GitHub alerts -> Material admonitions
+# 2. GitHub alerts -> admonitions
 # --------------------------------------------------------------------------
 #
 # GitHub renders this as a colored callout:
@@ -74,10 +111,10 @@ def _rewrite_target(target: str, page_dir: str, repo_blob: str) -> str:
 #     > **Go deeper** - the reference pages have the exact detail.
 #
 # python-markdown renders it as a blockquote whose first line is the literal
-# text "[!TIP]". Material's own syntax (`!!! tip`) has the mirror-image problem:
-# GitHub shows the bangs. Converting here means the source keeps the form that
-# degrades most gracefully - a plain blockquote - and the site still gets a
-# proper admonition.
+# text "[!TIP]". The admonition syntax (`!!! tip`) has the mirror-image
+# problem: GitHub shows the bangs. Converting here means the source keeps the
+# form that degrades most gracefully - a plain blockquote - and the site still
+# gets a proper admonition.
 
 _ALERT = re.compile(r"^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$")
 _ADMONITION = {
@@ -89,9 +126,8 @@ _ADMONITION = {
 }
 
 
-def _convert_alerts(markdown: str) -> str:
+def _convert_alerts(lines: list[str]) -> list[str]:
     out: list[str] = []
-    lines = markdown.splitlines()
     i = 0
     fence = ""
     while i < len(lines):
@@ -129,7 +165,7 @@ def _convert_alerts(markdown: str) -> str:
         # a multi-paragraph callout survives the trip.
         out.extend(f"    {b}" if b.strip() else "" for b in body)
         out.append("")
-    return "\n".join(out)
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -143,7 +179,7 @@ def _convert_alerts(markdown: str) -> str:
 #
 # NAMES THAT BREAK WHERE THEIR WORDS DO. A long name in a narrow column has to
 # break somewhere, and a browser offers two choices. Anywhere at all is
-# Material's default, and it cut names wherever the column happened to end,
+# the theme's default, and it cut names wherever the column happened to end,
 # leaving the last five letters of a setting on a line of their own: measured
 # over every page, 74 of the 763 pieces of code in table cells were split
 # mid-word at 1440px, and 196 at 390px. Nowhere at all is the other, and it
@@ -154,7 +190,7 @@ def _convert_alerts(markdown: str) -> str:
 # is 15618px tall without them and 13640px with, and no table on the site
 # scrolls sideways at either width. <wbr> is an empty element:
 # the name is still one unbroken string to select and copy, and none of it
-# reaches the search index (checked in the built search_index.js).
+# reaches the search index.
 #
 # ROWS A PHONE CAN SET AS CARDS. Most tables in these pages hold sentences,
 # and three columns of sentences do not fit a phone: measured at 390px, the
@@ -215,52 +251,65 @@ def _fit_tables(html: str) -> str:
 
 
 # --------------------------------------------------------------------------
-# the hooks MkDocs calls
+# the extension Python-Markdown loads
 # --------------------------------------------------------------------------
 
 
-def on_page_content(
-    html: str,
-    *,
-    page: Page,  # noqa: ARG001 - part of the MkDocs hook signature
-    config: MkDocsConfig,  # noqa: ARG001
-    files: Files,  # noqa: ARG001
-) -> str:
-    return _fit_tables(html)
+def _page_path(md: Markdown) -> str:
+    """The page being rendered, relative to docs/, from Zensical's context.
+
+    Zensical registers its rendering context as a preprocessor carrying the
+    page. Looked up by name rather than imported, so this module still loads -
+    and the tests still run - without Zensical installed.
+    """
+    if "rendering_context" in md.preprocessors:
+        page = getattr(md.preprocessors["rendering_context"], "page", None)
+        path = getattr(page, "path", None)
+        if isinstance(path, str):
+            return path.replace("\\", "/")
+    # Without it there is no way to tell where a relative link starts from, and
+    # rewriting from the wrong place sends a reader to the wrong file. Failing
+    # the build is better than that.
+    raise RuntimeError(
+        "site_markdown: no page in the rendering context - is this being run by Zensical?"
+    )
 
 
-def on_page_markdown(
-    markdown: str,
-    *,
-    page: Page,
-    config: MkDocsConfig,
-    files: Files,  # noqa: ARG001 - part of the MkDocs hook signature
-) -> str:
-    # mkdocs.yml sets repo_url; without it there is nowhere for a link out of
-    # docs/ to point, and the build should say so rather than fail on None.
-    if not config.repo_url:
-        raise PluginError("mkdocs.yml has no repo_url: links to files outside docs/ need one")
-    repo_blob = config.repo_url.rstrip("/") + "/blob/main/"
-    page_dir = posixpath.dirname(page.file.src_uri)
+class _SourcePreprocessor(Preprocessor):
+    def __init__(self, md: Markdown, repo_url: str) -> None:
+        super().__init__(md)
+        self.repo_url = repo_url.rstrip("/")
 
-    def replace(match: re.Match[str]) -> str:
-        label, target, title = match.group(1), match.group(2), match.group(3) or ""
-        return f"[{label}]({_rewrite_target(target, page_dir, repo_blob)}{title})"
+    def run(self, lines: list[str]) -> list[str]:
+        page_dir = posixpath.dirname(_page_path(self.md))
+        return _convert_alerts(_rewrite_links(lines, page_dir, self.repo_url))
 
-    # Same fence-awareness as the alert pass: a code sample that shows markdown
-    # link syntax must come out the other side unedited.
-    out: list[str] = []
-    fence = ""
-    for line in markdown.splitlines():
-        opener = _FENCE.match(line)
-        if fence:
-            out.append(line)
-            if opener and line.strip().startswith(fence):
-                fence = ""
-            continue
-        if opener:
-            fence = opener.group(1)
-            out.append(line)
-            continue
-        out.append(_LINK.sub(replace, line))
-    return _convert_alerts("\n".join(out))
+
+class _TablePostprocessor(Postprocessor):
+    def run(self, text: str) -> str:
+        return _fit_tables(text)
+
+
+class SiteExtension(Extension):
+    def __init__(self, **kwargs: Any) -> None:
+        self.config = {
+            "repo_url": ["", "The repository that links out of docs/ point into"],
+        }
+        super().__init__(**kwargs)
+
+    def extendMarkdown(self, md: Markdown) -> None:
+        repo_url = self.getConfig("repo_url")
+        # Without it there is nowhere for a link out of docs/ to point, and the
+        # build should say so rather than write links to nowhere.
+        if not repo_url:
+            raise ValueError("site_markdown: repo_url is required")
+        # Above pymdownx.snippets (32) and normalize_whitespace (30), so this
+        # sees the page as it is written, before anything is pulled into it.
+        md.preprocessors.register(_SourcePreprocessor(md, repo_url), "unoq_source", 40)
+        # Below raw_html (30), which is what puts stashed HTML back: tables
+        # written as markdown and tables written as HTML are both whole by then.
+        md.postprocessors.register(_TablePostprocessor(md), "unoq_tables", 5)
+
+
+def makeExtension(**kwargs: Any) -> SiteExtension:
+    return SiteExtension(**kwargs)

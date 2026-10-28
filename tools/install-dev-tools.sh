@@ -124,7 +124,7 @@ echo "=== Python tooling -> $VENV ==="
 uv pip install --python "$VENV/bin/python" -q -c "$PROJECT/python/requirements-lock.txt" \
   -b "$PROJECT/python/requirements-lock.txt" \
   -e "$PROJECT/python[dev,docs]"
-echo "  ruff $("$VENV"/bin/ruff --version | awk '{print $2}'), mypy $("$VENV"/bin/mypy --version | awk '{print $2}'), mkdocs $("$VENV"/bin/mkdocs --version | awk '{print $3}')"
+echo "  ruff $("$VENV"/bin/ruff --version | awk '{print $2}'), mypy $("$VENV"/bin/mypy --version | awk '{print $2}'), zensical $("$VENV"/bin/zensical --version | awk '{print $NF}')"
 
 echo "=== shellcheck $SHELLCHECK_VERSION -> $BIN ==="
 have=""

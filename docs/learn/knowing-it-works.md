@@ -48,7 +48,7 @@ minute). A `--fast` run that passes ends like this:
   PASS  lock files cover the dependencies
   PASS  clang-format
   PASS  spelling (en_US)
-  PASS  docs (mkdocs --strict)
+  PASS  docs (zensical --strict)
   PASS  diagram assets (offline)
   PASS  settings page matches the code
   PASS  site inputs are watched
@@ -72,7 +72,7 @@ What each one looks for:
 | `lock files cover the dependencies` | a Python package installed at a version no lock file names |
 | `clang-format` | C layout |
 | `spelling (en_US)` | a misspelling, or British spelling, in the project's own files |
-| `docs (mkdocs --strict)` | a documentation link that does not resolve |
+| `docs (zensical --strict)` | a documentation link that does not resolve |
 | `diagram assets (offline)` | a diagram that would need the internet to draw |
 | `settings page matches the code` | a setting the code reads and the documentation omits |
 | `site inputs are watched` | a page embedding a file whose changes would not republish the site |

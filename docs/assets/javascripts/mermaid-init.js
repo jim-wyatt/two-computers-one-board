@@ -3,12 +3,15 @@
  * SPDX-License-Identifier: MIT
  *
  * Render the ```mermaid fences. The library itself is NOT loaded by this file
- * and is not next to it: Material vendors mermaid (the `privacy` plugin turns
+ * and is not next to it: the theme vendors mermaid (the `privacy` plugin turns
  * its CDN reference into a local copy under assets/external/) and emits its own
  * script tag for it. All this file supplies is the call that draws them.
  *
- * WHY NOT MATERIAL'S BUILT-IN INTEGRATION
- * ---------------------------------------
+ * WHY NOT THE THEME'S BUILT-IN INTEGRATION
+ * ----------------------------------------
+ * Found under Material for MkDocs, which built this site before Zensical did;
+ * Zensical carries on the same theme and the same bundle.
+ *
  * Material knows how to render mermaid, and it was doing so - but it fetches
  * the library itself, at a path baked into its shared JavaScript bundle, and
  * neither available form of that path works here:
@@ -122,7 +125,15 @@
       todo.push(el);
     });
 
-    if (todo.length) mermaid.run({ nodes: todo });
+    // Marked once mermaid has finished with them, whether it drew them or
+    // drew its error graphic. Nothing on the page needs this; the diagram gate
+    // (tools/check_diagrams.py) does. From mermaid 12 a block first holds a
+    // placeholder <svg width="100%"> that fits any column, and only the mark
+    // says the real drawing has replaced it.
+    const finished = () => {
+      todo.forEach((el) => el.setAttribute("data-unoq-drawn", ""));
+    };
+    if (todo.length) mermaid.run({ nodes: todo }).then(finished, finished);
   };
 
   // Three chances, deliberately. DOMContentLoaded is usually enough; `load`

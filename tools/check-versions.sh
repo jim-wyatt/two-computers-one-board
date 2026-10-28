@@ -23,7 +23,7 @@
 #   arm64 extensions- the Marketplace "latest" is often x64-only. If a version
 #                     bump reports "not found", that build has no linux-arm64
 #                     package and you already have the newest usable one.
-#   mkdocs          - held below 2.0 on purpose (python/pyproject.toml says why),
+#   zensical        - held below 0.1 on purpose (python/pyproject.toml says why),
 #                     so "latest is outside the range" there is not a to-do.
 #
 # THE PROJECT'S OWN PINS
@@ -149,10 +149,10 @@ tag_pin() {
   pin_row "$1" "$2" "$latest"
 }
 
-# name, PEP 440 specifier as pyproject.toml has it ("==22.1.8", ">=1.6,<2").
+# name, PEP 440 specifier as pyproject.toml has it ("==22.1.8", ">=0.0.73,<0.1").
 # Prints the newest release on PyPI and the newest one the specifier allows,
-# because for a range those are different questions: mkdocs 2.x existing is not
-# news, a new 1.x is. Only the comparison operators this project uses are
+# because for a range those are different questions: zensical 0.1 existing is
+# not news, a new 0.0.x is. Only the comparison operators this project uses are
 # understood; anything else comes back empty and reads as "could not check".
 pypi_row() {
   local name="$1" spec="$2" latest="" allowed="" note=""
@@ -183,9 +183,9 @@ print(d["info"]["version"], max(ok, key=key) if ok else "?")
   esac
 }
 
-# The specifier after a package name in pyproject.toml: "mkdocs>=1.6,<2" gives
-# >=1.6,<2. The quote in the pattern keeps "mkdocs" from matching
-# "mkdocs-material", and keeps the prose in the comments out of it.
+# The specifier after a package name in pyproject.toml: "zensical>=0.0.73,<0.1"
+# gives >=0.0.73,<0.1. The quote in the pattern keeps a name from matching a
+# longer one that starts with it, and keeps the prose in the comments out of it.
 pyproject_pin() { grep -oE "\"$1[<>=!~][^\"]*\"" "$PROJECT/python/pyproject.toml" 2>/dev/null |
   head -1 | tr -d '"' | sed "s/^$1//"; }
 
@@ -255,7 +255,7 @@ pins() {
   tag_pin uv "$(shell_pin UV_VERSION "$PROJECT/provision/user/20-host-tools.sh")" astral-sh/uv
 
   echo "=== project pins: python (python/pyproject.toml) ==="
-  for p in clang-format mkdocs mkdocs-material; do
+  for p in clang-format zensical; do
     pypi_row "$p" "$(pyproject_pin "$p")"
   done
 

@@ -23,11 +23,14 @@ flowchart TB
     W["wifi / BT"]
     E["eMMC 29 GB"]
     L12["LED 1 · LED 2<br/><small>/sys/class/leds</small>"]
+    U ~~~ E
+    W ~~~ L12
   end
   subgraph MCU["STM32U585 — Zephyr"]
     M["8×13 LED matrix<br/><small>PF0..PF10</small>"]
     L34["LED 3 · LED 4"]
     H["Arduino headers<br/><small>GPIO, I²C, SPI</small>"]
+    M ~~~ H
   end
   X["the wires between them<br/><small>lpuart1 → /dev/ttyHS1 · 115200</small><br/><small>gpio 37 BOOT0 · gpio 38 NRST</small><br/><small>gpio 70 serial link enable</small><br/><small>gpio 25/26 SWD</small>"]
   MPU --- X --- MCU

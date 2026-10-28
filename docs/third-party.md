@@ -79,7 +79,7 @@ completeness because the firmware links against them:
 | [Zephyr RTOS](https://github.com/zephyrproject-rtos/zephyr) (+ MCUboot) | Apache-2.0 |
 | [OpenOCD](https://openocd.org/) — built by `tools/build-openocd.sh` | GPL-2.0-or-later |
 | `pyserial`, `gpiod`, `smpclient`, `smbus2`, `spidev` | BSD-3-Clause / LGPL-2.1 / Apache-2.0 / MIT / MIT |
-| [MkDocs](https://www.mkdocs.org/) + [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/) | BSD-2-Clause / MIT |
+| [Zensical](https://zensical.org/) | MIT |
 
 OpenOCD is GPL. `tools/build-openocd.sh` builds it from upstream source into
 `/opt/openocd-rebuilt`, and puts it in place of `/opt/openocd` only when run with
@@ -94,29 +94,26 @@ it.
 
 ## Inside the site you are reading
 
-This page is part of a site built by Material for MkDocs, and the build copies
-some of that project's work into the output. That output ships on the USB drive
+This page is part of a site built by Zensical, and the build copies some of
+that project's work into the output. That output ships on the USB drive
 and is served over the network, so it is redistribution and belongs here.
 
 | In `share/learn/` | Owner | License |
 |---|---|---|
-| `assets/stylesheets/`, `assets/javascripts/bundle.*.js` | Martin Donath (squidfunk) and contributors — Material for MkDocs | MIT |
-| inside that bundle | RxJS; tslib; clipboard.js; escape-html; focus-visible | Apache-2.0; 0BSD; MIT; MIT; W3C |
-| `assets/javascripts/workers/search.*.js` | Oliver Nightingale — lunr.js | MIT |
-| `assets/javascripts/lunr/min/` | Mihai Valentin and others — lunr-languages, with the Snowball stemmers | MPL-1.1 |
-| `assets/javascripts/lunr/tinyseg.js`, `wordcut.js` | Taku Kudo — TinySegmenter; Vee Satayamas — wordcut | see each project |
-| `assets/external/unpkg.com/mermaid@11/` | The Mermaid authors. It bundles DOMPurify, d3, dagre, cytoscape, KaTeX, lodash and others, each under its own permissive license | MIT |
+| `assets/stylesheets/`, `assets/javascripts/bundle.*.js`, `assets/javascripts/workers/search.*.js` | Zensical and contributors, carrying on Material for MkDocs by Martin Donath (squidfunk) | MIT |
+| inside that bundle, listed in `assets/javascripts/LICENSE` | RxJS; clipboard.js; escape-html; focus-visible | Apache-2.0; MIT; MIT; W3C |
+| `assets/external/unpkg.com/mermaid@12/` | The Mermaid authors. It bundles DOMPurify, d3, dagre, cytoscape, KaTeX, lodash and others, each under its own permissive license | MIT |
 | `assets/external/unpkg.com/iframe-worker/` | Martin Donath | MIT |
 | Icons, inlined as SVG | Pictogrammers — Material Design Icons; GitHub — Octicons; Fonticons — Font Awesome Free | Apache-2.0; MIT; CC BY 4.0 |
 
-The site is in English only, so the language files under `lunr/` are never
-loaded. They are there because the theme ships them.
+`assets/stylesheets/` holds two designs, `classic` and `modern`, and only
+`classic` is used. The other is there because the theme ships both.
 
 `assets/javascripts/mermaid-init.js` sits beside those and is ours, not
 third-party - it is the few lines that actually call `mermaid.run()`, which the
 theme does not.
 
-The `privacy` plugin is what puts the mermaid and lunr copies there: it downloads at build
+The `privacy` plugin is what puts the mermaid and iframe-worker copies there: it downloads at build
 time anything the theme would otherwise fetch from a CDN while the page is
 loading, so that a reader with no network still gets a complete site. The
 consequence is that the copies travel with the drive, which is the point, and

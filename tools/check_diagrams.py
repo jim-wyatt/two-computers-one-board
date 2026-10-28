@@ -40,10 +40,17 @@ CI runner and on a laptop, and "a browser and python3" is all three have.
 WHAT IT ASSERTS
 ---------------
 A diagram has drawn when its <pre class="unoq-mermaid"> CONTAINS an <svg> that
-is not mermaid's error graphic. That is stricter than counting `data-processed`,
-which mermaid sets before it has drawn anything and sets just the same on a
-diagram it could not parse. A page passes when every block it has on disk has
-drawn and there is no error graphic anywhere in the document.
+is not mermaid's error graphic, AND the init script has marked the block
+`data-unoq-drawn` - which it does once mermaid.run() has finished with it. That
+is stricter than counting `data-processed`, which mermaid sets before it has
+drawn anything and sets just the same on a diagram it could not parse. A page
+passes when every block it has on disk has drawn and there is no error graphic
+anywhere in the document.
+
+The mark is needed from mermaid 12 on. It puts a placeholder <svg width="100%">
+into the block first and the real drawing over it seconds later, and the
+placeholder is exactly as wide as its column: measured then, the self-test's
+fourteen-box diagram fitted, and the gate passed it about half the time.
 
 A diagram that drew must also be READABLE: its lettering displayed at a legible
 size and the drawing no wider than its column, at a desktop window. See
@@ -86,16 +93,18 @@ MARKER = 'class="unoq-mermaid"'
 STATE_JS = """
 (() => {
   const blocks = [...document.querySelectorAll("pre.unoq-mermaid")];
-  const drawn = blocks.filter((el) => {
+  const finished = (el) => {
     const svg = el.querySelector("svg");
-    return svg && svg.getAttribute("aria-roledescription") !== "error";
-  }).length;
+    return el.hasAttribute("data-unoq-drawn") && svg &&
+      svg.getAttribute("aria-roledescription") !== "error";
+  };
+  const drawn = blocks.filter(finished).length;
   // How each drawn diagram ended up on the screen: the size its smallest
   // lettering is DISPLAYED at, which is the font size times however much the
   // drawing was scaled, and whether it is wider than the block that holds it.
   const sizes = blocks.map((el, i) => {
+    if (!finished(el)) return null;
     const svg = el.querySelector("svg");
-    if (!svg || svg.getAttribute("aria-roledescription") === "error") return null;
     const box = svg.getBoundingClientRect();
     const natural = svg.viewBox.baseVal.width;
     const scale = natural ? box.width / natural : 1;
