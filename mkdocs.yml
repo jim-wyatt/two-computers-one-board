@@ -12,7 +12,13 @@
 # sitting next to the board wondering why it will not enumerate.
 #
 #   build:  tools/build-docs.sh
-#   watch:  .venv/bin/mkdocs serve -f mkdocs.yml -a 0.0.0.0:8000
+#   watch:  tools/build-docs.sh --serve
+#
+# Built by Zensical, which reads this file as it is: the name and the format
+# are MkDocs', kept so that nothing that already looks for mkdocs.yml has to
+# change. What it does not do is run MkDocs hooks or plugins, so the jobs a
+# hook used to do here are a Markdown extension instead - site_markdown, near
+# the bottom.
 
 site_name: Two computers, one board
 site_description: >-
@@ -29,7 +35,7 @@ copyright: >-
   STMicroelectronics or the Zephyr Project.
 
 # site_url is deliberately NOT set, and this is load-bearing rather than an
-# omission. With it, the `privacy` plugin bakes an ABSOLUTE url into the theme
+# omission. With it, the `privacy` plugin can bake an ABSOLUTE url into the theme
 # bundle for the assets it vendors - so the mermaid renderer would be fetched
 # from the public site every time a page with a diagram was opened. On the USB
 # drive, on a laptop with no network, that is a diagram that never appears.
@@ -39,7 +45,8 @@ copyright: >-
 #
 #   grep -o '.\{30\}unpkg.com/mermaid' share/learn/assets/javascripts/bundle.*.js
 #
-# It must NOT start with https://. The cost is a sitemap without absolute URLs
+# It must NOT start with https://. (A leading / is fine: the bundle resolves it
+# against the page's own `base`, which is relative.) The cost is a sitemap without absolute URLs
 # and no canonical link tag; the offline case is worth more than the SEO.
 
 repo_url: https://github.com/jim-wyatt/two-computers-one-board
@@ -57,15 +64,19 @@ site_dir: share/learn
 use_directory_urls: false
 
 # docs/includes/ is raw material for pymdownx.snippets, not pages. Without this
-# MkDocs renders abbreviations.md as its own (empty) page and then complains it
-# is not in the nav - which --strict turns into a build failure.
+# abbreviations.md is rendered as a page of its own and shipped.
 exclude_docs: |
   includes/
 
 theme:
   name: material
+  # The look this site was designed in, and the one docs/stylesheets/extra.css
+  # is written against. Zensical's default, `modern`, is a different design -
+  # its own typeface, icon set and spacing - and would be a redesign arrived at
+  # as a side effect of changing the build.
+  variant: classic
   language: en
-  # No web fonts. Material's default pulls Roboto from Google's servers on
+  # No web fonts. The theme's default pulls Roboto from Google's servers on
   # every page load; the system stack looks native everywhere and costs nothing.
   font: false
   favicon: assets/favicon.svg
@@ -116,16 +127,16 @@ theme:
 extra_css:
   - stylesheets/extra.css
 
-# Material vendors mermaid itself (the `privacy` plugin turns its CDN reference
+# The theme vendors mermaid itself (the `privacy` plugin turns its CDN reference
 # into a local copy) and emits a script tag for it that resolves correctly from
-# every page - but nothing then RENDERS the diagrams. Measured with a headless
-# Chromium: the library loads, and `data-processed` stays at 0 on every page.
+# every page - but nothing then RENDERS our diagrams, which are classed
+# `unoq-mermaid` for the reason given under superfences below.
 #
-# So the library comes from Material, and the one missing piece - calling
+# So the library comes from the theme, and the one missing piece - calling
 # mermaid.run() over the `pre.mermaid` blocks - is supplied here. extra_javascript
 # is emitted as an ordinary <script> tag, per page, with the right number of ../
 # for that page's depth. The script itself waits for DOMContentLoaded (and
-# retries) rather than acting when it loads, because Material's copy of the
+# retries) rather than acting when it loads, because the theme's copy of the
 # library has to have defined `mermaid` first.
 #
 # Verify after changing anything here, because nothing fails when this breaks -
@@ -140,33 +151,48 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/jim-wyatt/two-computers-one-board
       name: The project on GitHub
-  # Material's "Made with Material for MkDocs" line stays; it is the license
-  # condition for the free edition and it is fair credit.
+  # The theme's "Made with Zensical" line stays; it is fair credit.
 
 plugins:
   - search
   # Downloads anything the theme would otherwise fetch at page load (the
-  # search worker shim, most notably) and rewrites the reference to a local
-  # copy. This is what makes requirement (3) at the top of this file true.
-  # It needs network access at BUILD time, once; the result never does.
-  - privacy
+  # search worker shim and mermaid, most notably) and rewrites the reference to
+  # a local copy. This is what makes requirement (3) at the top of this file
+  # true. It needs network access at BUILD time, once; the result never does.
+  - privacy:
+      # The theme's bundle also names the scripts behind features this site
+      # does not use: video embeds (a player, Vimeo's API, and the Google ad
+      # SDKs those pull in), runnable code (an editor and a Python runtime) and
+      # an image lightbox. Nothing here would ever load them - but left alone
+      # they are downloaded and shipped, onto Pages and onto the drive, about
+      # 1 MB of it. Left as links instead, and never followed.
+      assets_exclude:
+        - unpkg.com/ace-builds@*
+        - unpkg.com/glightbox@*
+        - unpkg.com/pyodide@*
+        - cdn.plyr.io/*
+        - player.vimeo.com/*
+        - imasdk.googleapis.com/*
+        - pagead2.googlesyndication.com/*
+        - s0.2mdn.net/*
   # Must come after search: it turns the search index into a plain script the
   # page can load without XHR, which is the only way search works off a drive.
   - offline
 
-hooks:
-  - tools/mkdocs_hooks.py
-
 # Broken links are a build failure, not a log line. `tools/build-docs.sh` runs
 # with --strict, and CI runs the same script - the flat one-directory output of
-# the previous generator hid nineteen links that were dead on GitHub.
+# the generator before MkDocs hid nineteen links that were dead on GitHub.
 validation:
-  omitted_files: warn
-  absolute_links: warn
-  unrecognized_links: warn
-  anchors: warn
+  invalid_links: true
+  invalid_link_anchors: true
 
 markdown_extensions:
+  # What tools/mkdocs_hooks.py did when MkDocs built this: links out of docs/
+  # pointed at the repository, GitHub's `> [!TIP]` alerts made admonitions,
+  # and tables marked up for narrow screens. tools/site_markdown.py says why
+  # for each. tools/build-docs.sh puts tools/ on the import path.
+  - site_markdown:
+      repo_url: https://github.com/jim-wyatt/two-computers-one-board
   - abbr
   - admonition
   - attr_list
@@ -181,8 +207,8 @@ markdown_extensions:
   # Icons and emoji rendered as INLINE SVG, not as a font and not as an image
   # fetched from a CDN. Same reason as `font: false` above.
   - pymdownx.emoji:
-      emoji_index: !!python/name:material.extensions.emoji.twemoji
-      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+      emoji_index: !!python/name:zensical.extensions.emoji.twemoji
+      emoji_generator: !!python/name:zensical.extensions.emoji.to_svg
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
@@ -207,13 +233,13 @@ markdown_extensions:
   # plugin above, so no page ever fetches it.
   #
   # The class is `unoq-mermaid`, NOT `mermaid`, and that is the whole point of
-  # it. Material's own bundle renders anything classed `mermaid`, and it got
+  # it. The theme's own bundle renders anything classed `mermaid`, and it got
   # there first: it handed the parser the fence including its <code> wrapper,
   # drew mermaid's "Syntax error in text" graphic, and left the temp container
   # (`<div id="d__mermaid_0">`) behind at the end of every page. Two renderers
   # raced on every diagram and the losing one's wreckage stayed in the DOM.
   #
-  # Renaming the class takes Material out of it entirely, so assets/javascripts/
+  # Renaming the class takes the theme out of it entirely, so assets/javascripts/
   # mermaid-init.js is the only thing that draws these - which is already the
   # arrangement that file exists to create, for the vendored-library path
   # reasons documented in it. GitHub is unaffected: it renders the ```mermaid
@@ -237,7 +263,7 @@ markdown_extensions:
 # the course is making, and they are the same four the home page uses.
 #
 # A few entries carry a title of their own. Every page opens with a license
-# comment, so MkDocs does not find the heading under it and names the page
+# comment, so the generator does not find the heading under it and names the page
 # after its file instead - and a file name has no capitals to give. Seen in the
 # sidebar: "Mpu", "Mcu", "Usb", "The linux side", "The led matrix". Only the
 # ones a file name gets wrong are spelled out; the rest read correctly as

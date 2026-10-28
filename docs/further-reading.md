@@ -280,9 +280,10 @@ when mixed. This site is split along exactly that line: the course is
 explanation, [the reference](reference/hardware.md) is reference, and
 [troubleshooting](reference/troubleshooting.md) is how-to.
 
-**[Material for MkDocs](https://squidfunk.github.io/mkdocs-material/)** and
-**[MkDocs](https://www.mkdocs.org/)** — what builds this site, and what to read
-if you want to change how it looks.
+**[Zensical](https://zensical.org/docs/)** — what builds this site, and what
+to read if you want to change how it looks. It reads the `mkdocs.yml` this site
+was first written for, so most of what is written about MkDocs configuration
+still applies.
 
 **[SPDX](https://spdx.dev/)** and **[Choose a
 License](https://choosealicense.com/)** — why every file here starts with a

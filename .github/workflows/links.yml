@@ -10,7 +10,7 @@ name: external links
 # or green. That is the point: tools/check.sh has to pass offline and give the
 # same answer twice, and a hundred other people's servers do neither. A dead
 # third-party link is a chore for somebody, not a reason to block a merge.
-# Internal links are a different matter and ARE gated - `mkdocs --strict`, in
+# Internal links are a different matter and ARE gated - `zensical --strict`, in
 # the `checks` workflow, with no network.
 #
 # The checking is all in tools/check-links.sh, which runs the same on a laptop.

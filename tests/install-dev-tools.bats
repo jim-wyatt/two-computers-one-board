@@ -31,7 +31,7 @@ setup() {
   # that does nothing.
   stub uv
   local t
-  for t in python ruff mypy mkdocs; do
+  for t in python ruff mypy zensical; do
     printf '#!/bin/bash\necho "%s 1.0 1.0"\n' "$t" >"$UNOQ_VENV/bin/$t"
     chmod +x "$UNOQ_VENV/bin/$t"
   done

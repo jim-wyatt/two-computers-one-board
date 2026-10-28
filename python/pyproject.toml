@@ -30,17 +30,20 @@ Issues = "https://github.com/jim-wyatt/two-computers-one-board/issues"
 # teaches people to ignore the gate. Bump it deliberately, reformat in the same
 # commit, and never as a side effect of someone re-running the installer.
 # Same reasoning as the shellcheck and shfmt pins in tools/install-dev-tools.sh.
-dev = ["pytest>=8", "pytest-cov", "mypy", "ruff", "clang-format==23.1.3", "codespell"]
+# types-Markdown: mypy --strict over tests/test_site_markdown.py, which drives
+# Python-Markdown (from the [docs] extra) the way the site build does.
+dev = ["pytest>=8", "pytest-cov", "mypy", "ruff", "clang-format==23.1.3", "codespell", "types-Markdown"]
 # The documentation site (tools/build-docs.sh). Separate from `dev` because it
 # is the only part of the toolchain the board needs at PROVISIONING time - the
 # drive and the web server are built from it - while `dev` is only needed by
 # someone changing the code.
 #
-# mkdocs is pinned below 2.0 deliberately. Material's maintainers have said
-# MkDocs 2.0 removes the plugin system and the theming system outright, with no
-# migration path; this site uses three plugins and a theme. Revisit when the
-# situation is clearer, not when the version number goes up.
-docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9.7,<10"]
+# Zensical, which replaced MkDocs and Material for MkDocs here once MkDocs 2.0
+# was announced to remove the plugin and theming systems this site depends on
+# (#52). It is 0.0.x, so any release may change behavior: held below 0.1, with
+# the exact version in requirements-lock.txt, and moved deliberately - then
+# tools/check.sh, whose diagram gates are what notice an offline site breaking.
+docs = ["zensical>=0.0.73,<0.1"]
 # What the board's REPL has beyond what `unoq` itself imports: the Qwiic and SPI
 # headers. provision/user/35-python-venv.sh installs these by name; they are
 # listed here so that python/requirements-lock.txt pins them with the rest.

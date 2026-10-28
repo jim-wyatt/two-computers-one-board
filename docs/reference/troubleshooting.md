@@ -451,7 +451,7 @@ sudo systemctl restart unoq-cpu-bars unoq-learn
 The `rm -rf` is not belt-and-braces. Re-running the install over a moved venv
 fixes only the packages it reinstalls: `uv` sees everything else as already
 present and never rewrites those shebangs. That leaves a venv where `python`
-works and `mypy`, `clang-format` and `mkdocs` all fail with
+works and `mypy`, `clang-format` and `zensical` all fail with
 
 ```
 cannot execute: required file not found

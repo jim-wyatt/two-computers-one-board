@@ -34,7 +34,7 @@ on:
       - 'docs/**'
       - 'mkdocs.yml'
       - 'tools/build-docs.sh'
-      - 'tools/mkdocs_hooks.py'
+      - 'tools/site_markdown.py'
       - 'python/pyproject.toml'
       - 'python/requirements-lock.txt'
       - '.github/workflows/pages.yml'
