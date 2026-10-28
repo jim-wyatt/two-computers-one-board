@@ -201,12 +201,18 @@ step "preflight"
 # board, so this check warned "unrecognized board" on every UNO Q and every
 # VENTUNO Q it ever ran on - an identity check that had never once identified
 # anything.
-BOARD="$(tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | head -1)"
-case "$BOARD" in
-  arduino,imola) skip "board: Arduino UNO Q ($BOARD)" ;;
-  arduino,monza) skip "board: Arduino VENTUNO Q ($BOARD)" ;;
+#
+# Not called BOARD. env.sh exports BOARD=arduino_uno_q for west, and a login
+# shell has sourced it on every board that has been bootstrapped once - so
+# assigning to BOARD here changed the EXPORTED value, and zbuild.sh asked west
+# to build for "arduino,imola". The first run on a fresh board, with nothing
+# exported yet, built fine; every re-run failed the build and skipped the flash.
+COMPATIBLE="$(tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | head -1)"
+case "$COMPATIBLE" in
+  arduino,imola) skip "board: Arduino UNO Q ($COMPATIBLE)" ;;
+  arduino,monza) skip "board: Arduino VENTUNO Q ($COMPATIBLE)" ;;
   "") warn "cannot read the devicetree - this may not be an UNO Q. Continuing." ;;
-  *) warn "unrecognized board '$BOARD' - written for arduino,imola. Continuing." ;;
+  *) warn "unrecognized board '$COMPATIBLE' - written for arduino,imola. Continuing." ;;
 esac
 
 # SUDO, ONCE, AND THEN KEPT

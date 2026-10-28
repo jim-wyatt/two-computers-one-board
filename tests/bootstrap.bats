@@ -72,6 +72,7 @@ SH
 printf '%s\n' "bash${*:+ $*}" >>"$STUB_LOG"
 case "$1" in
   */mcu/zbuild.sh)
+    printf 'zbuild BOARD=%s\n' "${BOARD-<unset>}" >>"$STUB_LOG"
     # The one step here that takes any time at all, so that the sudo refresher
     # (a "minute" of a twentieth of a second, in these tests) gets to run.
     /bin/sleep 0.25
@@ -104,6 +105,14 @@ bootstrap() {
   ran_like "^bash $PROJECT/mcu/zbuild\.sh "
   ran "bash $PROJECT/mcu/flash-all.sh"
   [[ "$output" != *"FAILED"* ]]
+}
+
+@test "the build gets the BOARD env.sh exported, not the devicetree's name" {
+  # Every board bootstrapped once has a login shell that sourced env.sh. The
+  # preflight's board check used to assign to BOARD, which overwrote this.
+  BOARD=arduino_uno_q bootstrap
+  [ "$status" -eq 0 ]
+  ran "zbuild BOARD=arduino_uno_q"
 }
 
 @test "a build that fails: nothing was written, and it says so" {
