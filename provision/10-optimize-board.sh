@@ -84,6 +84,25 @@ fi
 step "unattended apt"
 disable_unit apt-daily.timer apt-daily-upgrade.timer
 
+# --- Keep Arduino's alsa-ucm-conf ahead of Debian backports. ---------------
+# The stock image pins src:alsa-ucm-conf to trixie-backports at 900, and once
+# backports shipped a newer version (1.2.16.1, October 2026) the upgrade below
+# swapped Arduino's build for it. Debian's package has no profile for this
+# board and no /opt/arduino/scripts/restart_remoteproc_audio.sh, so
+# remoteproc_audio_fixup.service failed at every boot and LED 2 blinked red.
+#
+# 1001 beats the backports pin, and anything above 1000 also lets apt go back
+# down to Arduino's version on a board that has already taken Debian's. Written
+# before the upgrade, whether or not the upgrade runs, so a later hand-run
+# `apt upgrade` is covered too.
+# REVERT: rm /etc/apt/preferences.d/arduino-alsa-ucm-conf.pref
+step "audio package pin"
+write_file 0644 /etc/apt/preferences.d/arduino-alsa-ucm-conf.pref <<'PIN' || true
+Package: alsa-ucm-conf
+Pin: origin apt-repo.arduino.cc
+Pin-Priority: 1001
+PIN
+
 # --- Bring the factory image up to date. ------------------------------------
 # A freshly restored board is a snapshot of whenever the image was built, and
 # it is further behind than it looks: this one came up 70 packages short of
