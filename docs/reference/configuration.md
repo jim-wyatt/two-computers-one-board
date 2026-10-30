@@ -211,7 +211,7 @@ and setting one will mostly make a script look in the wrong place.
 | `UNOQ_GIT_DIR` | the checkout's `.git` | Where `provision/user/40-shell-env.sh` looks for the git hooks directory. |
 | `UNOQ_PROC` | `/proc` | Where the scripts in `usb/` check that a pid file names the daemon it claims to (`usb/common.sh`). |
 | `UNOQ_APT_CACHE_DIR` | `/var/cache/apt` | Where `90-cleanup.sh` looks for downloaded packages. |
-| `UNOQ_UDC_DIR` | `/sys/class/udc` | Where `usb/handover.sh` looks for a USB controller to bind to, and `status/leds.sh` for whether a host has configured it. |
+| `UNOQ_UDC_DIR` | `/sys/class/udc` | Where `usb/handover.sh` and `usb/gadget-up.sh` look for a USB controller to bind to, and `status/leds.sh` for whether a host has configured it. |
 | `UNOQ_SSH_DIR` | `/etc/ssh` | Where provisioning looks for SSH host keys before switching `sshd` on. |
 | `UNOQ_CGROUP_FILE` | `/proc/self/cgroup` | What a provisioning step reads to find out whether it was started from `adb shell`. |
 

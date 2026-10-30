@@ -2,8 +2,8 @@
 # Copyright (c) 2026 Jim Wyatt
 # SPDX-License-Identifier: MIT
 #
-# gadget-up.sh - one question only: WHICH FILE does it hand the host as the
-# drive?
+# gadget-up.sh - two questions: WHICH FILE does it hand the host as the
+# drive, and does it BIND the gadget when, and only when, it should?
 #
 # The image lives in the home directory of the person the board belongs to,
 # and this script used to find that person by asking who owned the script.
@@ -17,6 +17,9 @@
 # So provisioning writes the owner's home into an `env` file beside the copies
 # and the script reads it. Both layouts are run here, the real script each
 # time: from the checkout, and as the copy install_root_scripts makes.
+#
+# The bind is about twenty lines at the end, and it decides whether the host
+# sees anything at all. Its tests are at the bottom.
 #
 # Everything else this script does is writes into configfs, which is the
 # kernel's to interpret and the board's to test.
@@ -37,6 +40,12 @@ setup() {
   export UNOQ_GADGET_DIR="$BATS_TEST_TMPDIR/usb_gadget/unoq"
   LUN="$UNOQ_GADGET_DIR/functions/mass_storage.0/lun.0"
   unset UNOQ_SHARE_IMG
+
+  # No USB controller, as when the board is not plugged in, unless a test adds
+  # one. Never the real /sys/class/udc: a suite run on the board must not find
+  # the board's own controller there.
+  export UNOQ_UDC_DIR="$BATS_TEST_TMPDIR/udc"
+  mkdir -p "$UNOQ_UDC_DIR"
 
   # The script refuses to run as anyone but root. Everything else id is asked
   # goes to the real one.
@@ -210,4 +219,95 @@ SH
   run "$PROJECT/usb/gadget-up.sh" --build
   [ "$status" -eq 0 ]
   [ "$(cat "$UNOQ_GADGET_DIR/configs/c.1/MaxPower")" = 500 ]
+}
+
+# --- the bind ---------------------------------------------------------------
+#
+# configfs binds a gadget when a controller's name is written to its UDC file.
+# Here that file is a plain one, so what the script wrote can be read back.
+
+@test "with no USB controller it builds, says why nothing is bound, and succeeds" {
+  # Not an error: a controller exists only while a host is plugged in, and the
+  # udev rule runs the script again when one appears.
+  run "$PROJECT/usb/gadget-up.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"gadget built"* ]]
+  [[ "$output" == *"no UDC present - the board is not plugged into a computer. Nothing bound."* ]]
+  [ ! -e "$UNOQ_GADGET_DIR/UDC" ]
+}
+
+@test "with a controller it writes that controller's name to the gadget's UDC" {
+  touch "$UNOQ_UDC_DIR/4e00000.usb"
+  run "$PROJECT/usb/gadget-up.sh"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$UNOQ_GADGET_DIR/UDC")" = 4e00000.usb ]
+  [[ "$output" == *"bound to 4e00000.usb"* ]]
+}
+
+@test "an existing gadget that came unbound is bound again" {
+  # The case the udev rule exists for: unplugged, then plugged back in.
+  run "$PROJECT/usb/gadget-up.sh" --build
+  [ "$status" -eq 0 ]
+  : >"$UNOQ_GADGET_DIR/UDC"
+  touch "$UNOQ_UDC_DIR/4e00000.usb"
+  run "$PROJECT/usb/gadget-up.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"gadget already defined"* ]]
+  [ "$(cat "$UNOQ_GADGET_DIR/UDC")" = 4e00000.usb ]
+}
+
+@test "a gadget already bound to the controller is not written again" {
+  run "$PROJECT/usb/gadget-up.sh" --build
+  [ "$status" -eq 0 ]
+  touch "$UNOQ_UDC_DIR/4e00000.usb"
+  # The kernel's own spacing, which the script strips to compare. Writing the
+  # file again would replace it, so it surviving byte for byte means no write.
+  printf '4e00000.usb \n' >"$UNOQ_GADGET_DIR/UDC"
+  run "$PROJECT/usb/gadget-up.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already bound to 4e00000.usb"* ]]
+  [ "$(od -An -c "$UNOQ_GADGET_DIR/UDC" | tr -s ' ')" = "$(printf '4e00000.usb \n' | od -An -c | tr -s ' ')" ]
+}
+
+@test "a gadget bound to some other controller is moved to the one present" {
+  run "$PROJECT/usb/gadget-up.sh" --build
+  [ "$status" -eq 0 ]
+  echo gone.usb >"$UNOQ_GADGET_DIR/UDC"
+  touch "$UNOQ_UDC_DIR/4e00000.usb"
+  run "$PROJECT/usb/gadget-up.sh"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$UNOQ_GADGET_DIR/UDC")" = 4e00000.usb ]
+}
+
+@test "the first controller is the one used when there is more than one" {
+  touch "$UNOQ_UDC_DIR/4e00000.usb" "$UNOQ_UDC_DIR/5f00000.usb"
+  run "$PROJECT/usb/gadget-up.sh"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$UNOQ_GADGET_DIR/UDC")" = 4e00000.usb ]
+}
+
+@test "a bind the kernel refuses fails loudly" {
+  # A directory cannot be written to, by root either, which stands in for the
+  # kernel answering the write with an error (EBUSY, ENODEV).
+  run "$PROJECT/usb/gadget-up.sh" --build
+  [ "$status" -eq 0 ]
+  mkdir "$UNOQ_GADGET_DIR/UDC"
+  touch "$UNOQ_UDC_DIR/4e00000.usb"
+  run "$PROJECT/usb/gadget-up.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not bind to 4e00000.usb"* ]]
+  [[ "$output" != *"unoq-gadget: bound to"* ]]
+}
+
+@test "--build never binds, even with a controller present" {
+  touch "$UNOQ_UDC_DIR/4e00000.usb"
+  run "$PROJECT/usb/gadget-up.sh" --build
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"built only, not binding (--build)"* ]]
+  [ ! -e "$UNOQ_GADGET_DIR/UDC" ]
+
+  # Nor for a gadget that already exists.
+  run "$PROJECT/usb/gadget-up.sh" --build
+  [ "$status" -eq 0 ]
+  [ ! -e "$UNOQ_GADGET_DIR/UDC" ]
 }

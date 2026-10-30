@@ -268,9 +268,10 @@ fi
 # --- bind ------------------------------------------------------------------
 
 # Glob rather than `ls`: there is normally exactly one UDC, and the first is
-# the one dwc3 registered.
+# the one dwc3 registered. The directory is overridable for the tests, as in
+# usb/handover.sh.
 UDC_NAME=""
-for udc in /sys/class/udc/*; do
+for udc in "${UNOQ_UDC_DIR:-/sys/class/udc}"/*; do
   [ -e "$udc" ] || break
   UDC_NAME="$(basename "$udc")"
   break
