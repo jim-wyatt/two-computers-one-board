@@ -90,6 +90,7 @@ without touching `/var/lib`.
 | [`watchdog.bats`](watchdog.bats) | A board that resets itself: the watchdog armed when nobody asked, armed with a timeout too short to survive a busy moment, or PID 1 re-executed on every run for no reason. |
 | [`esp-permissions.bats`](esp-permissions.bats) | An edit to the `/etc/fstab` line the board boots from, which has no `nofail`: a line systemd cannot mount is emergency mode on a board with no screen. |
 | [`site-inputs.bats`](site-inputs.bats) | The gate that notices a page embedding a file the site's path filters do not watch, so an edit to it would never republish the site. |
+| [`mcu-link.bats`](mcu-link.bats) | The unit that keeps the board from looking dead after a reboot. If it names the checkout, root runs whatever was last saved there; if its check requests the lines, the check breaks the link; if its REVERT line misses a unit, following it leaves that unit pointing at nothing. |
 
 The first two were written first, because both scripts had already failed:
 
