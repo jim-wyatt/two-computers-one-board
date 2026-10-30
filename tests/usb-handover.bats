@@ -292,6 +292,17 @@ SH
   [ "$stop" -lt "$ask" ]
 }
 
+@test "Arduino's audio package is pinned before the upgrade that would replace it" {
+  # Debian's backports build has no profile for this board, and taking it
+  # leaves remoteproc_audio_fixup.service failed at every boot.
+  F="$PROJECT/provision/10-optimize-board.sh"
+  pin="$(grep -n '^write_file 0644 /etc/apt/preferences.d/arduino-alsa-ucm-conf.pref' "$F" | cut -d: -f1)"
+  upgrade="$(grep -n 'apt-get upgrade -y' "$F" | cut -d: -f1)"
+  [ -n "$pin" ] && [ -n "$upgrade" ]
+  [ "$pin" -lt "$upgrade" ]
+  grep -q '^Pin-Priority: 1001$' "$F"
+}
+
 @test "bootstrap reports failed units at its end" {
   grep -q '^warn_failed_units$' "$PROJECT/bootstrap.sh"
 }
