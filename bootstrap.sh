@@ -43,6 +43,9 @@
 #     partition's permissions (--with-esp-lockdown). Each has been run on one
 #     board, through reboots, and that is all: one can reset the board and the
 #     other edits the fstab entry it boots from
+#   - add a rescue boot entry (--with-rescue-entry, or --with-recovery for it
+#     and boot counting together). It is built and tested as code and has not
+#     been booted on a board yet
 #
 # TIME AND SPACE: 18 minutes 59 seconds on a factory-restored board over home
 # broadband, with no options, timed on 2026-10-11. The Zephyr workspace (~2 GB) and SDK (~0.8 GB) are most of the
@@ -62,6 +65,7 @@ WITH_LEARNING=1
 WITH_WATCHDOG=0
 WITH_ESP_LOCKDOWN=0
 WITH_BOOT_COUNTING=0
+WITH_RESCUE_ENTRY=0
 WITH_TEMP_LOG=0
 SKIP_MCU=0
 
@@ -92,6 +96,12 @@ Add something that is not:
                       also boot new kernels on trial (82): one that does not
                       come up with SSH three times running is set aside for
                       the previous kernel.
+  --with-rescue-entry also add a rescue boot entry (84): SSH over the USB
+                      cable at 169.254.77.1 from a system that mounts no root
+                      filesystem. Sorts below every kernel, so it is reached
+                      only by fallback or on purpose. Never booted by this
+                      run; needs your SSH key in ~/.ssh/authorized_keys.
+  --with-recovery     --with-boot-counting and --with-rescue-entry together
 
   --skip-mcu          do not build or flash the MCU firmware
   -h, --help          this
@@ -121,6 +131,14 @@ for arg in "$@"; do
     --with-watchdog) WITH_WATCHDOG=1 ;;
     --with-esp-lockdown) WITH_ESP_LOCKDOWN=1 ;;
     --with-boot-counting) WITH_BOOT_COUNTING=1 ;;
+    --with-rescue-entry) WITH_RESCUE_ENTRY=1 ;;
+    # The "one command" of #170, as far as it exists: both halves of the
+    # recovery path that are built. The rescue entry is not in --everything:
+    # it has yet to be booted on any board.
+    --with-recovery)
+      WITH_BOOT_COUNTING=1
+      WITH_RESCUE_ENTRY=1
+      ;;
     --with-temp-log) WITH_TEMP_LOG=1 ;;
     # The watchdog and the EFI lockdown are in neither the default nor
     # --everything, on purpose. For those two the evidence is one board: each
@@ -210,6 +228,8 @@ fi
   echo "  - edit the /boot/efi line of /etc/fstab, the partition this board boots from (--with-esp-lockdown; backed up first)"
 [ "$WITH_BOOT_COUNTING" = 1 ] &&
   echo "  - boot every new kernel on trial, falling back to the previous one by itself (--with-boot-counting)"
+[ "$WITH_RESCUE_ENTRY" = 1 ] &&
+  echo "  - add a rescue boot entry to the EFI partition, below every kernel; the default is not changed (--with-rescue-entry; never booted on a board yet)"
 echo
 echo "Every change is listed, with how to undo it, in docs/setup.md."
 if [ -t 0 ]; then
@@ -312,6 +332,16 @@ elif [ "$FREE_MB" -lt 6000 ]; then
   warn "only ${FREE_MB} MB free in $HOME - the SDK and workspace need ~3 GB, and the builds more"
 else
   skip "${FREE_MB} MB free in $HOME"
+fi
+
+# The rescue entry takes no passwords, so 84 refuses without a key to let in.
+# Asked here, before an hour of work, rather than by 84 near the end, where a
+# refusal stops the run ahead of the USB link.
+if [ "$WITH_RESCUE_ENTRY" = 1 ]; then
+  grep -qE '^[^#]*(ssh-|ecdsa-|sk-)' "$HOME/.ssh/authorized_keys" 2>/dev/null ||
+    fail "--with-rescue-entry needs an SSH key in $HOME/.ssh/authorized_keys: the
+        rescue system takes no passwords. From your computer: ssh-copy-id $(id -un)@<board>"
+  skip "an SSH key in $HOME/.ssh/authorized_keys, for the rescue entry"
 fi
 
 curl -fsS --max-time 20 -o /dev/null https://github.com 2>/dev/null ||
@@ -507,6 +537,10 @@ fi
   run_step "80  hardware watchdog (root)" sudo "$PROJECT/provision/80-watchdog.sh"
 [ "$WITH_BOOT_COUNTING" = 1 ] &&
   run_step "82  kernels boot on trial (root)" sudo "$PROJECT/provision/82-boot-counting.sh"
+# After 82: with --with-recovery, kernels are counted before anything is put
+# below them to fall through to.
+[ "$WITH_RESCUE_ENTRY" = 1 ] &&
+  run_step "84  rescue boot entry (root)" sudo "$PROJECT/provision/84-rescue-entry.sh"
 [ "$WITH_ESP_LOCKDOWN" = 1 ] &&
   run_step "85  EFI partition permissions (root)" sudo "$PROJECT/provision/85-esp-permissions.sh"
 # Always, and after everything that downloads or installs: what the run

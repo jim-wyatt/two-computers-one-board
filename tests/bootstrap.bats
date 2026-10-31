@@ -375,6 +375,7 @@ line_of() { grep -nE "$1" "$STUB_LOG" | head -1 | cut -d: -f1; }
   refute ran_step provision/80-watchdog.sh
   refute ran_step provision/85-esp-permissions.sh
   refute ran_step provision/82-boot-counting.sh
+  refute ran_step provision/84-rescue-entry.sh
   refute ran_step provision/66-temp-log.sh
 }
 
@@ -388,6 +389,49 @@ line_of() { grep -nE "$1" "$STUB_LOG" | head -1 | cut -d: -f1; }
   bootstrap --with-boot-counting
   [ "$status" -eq 0 ]
   ran_step provision/82-boot-counting.sh
+}
+
+@test "the rescue entry runs by name, after boot counting, and is not in --everything" {
+  # Never booted on a board yet: asked for by name only.
+  mkdir -p "$HOME/.ssh"
+  echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample someone@laptop" >"$HOME/.ssh/authorized_keys"
+  bootstrap --everything
+  [ "$status" -eq 0 ]
+  refute ran_step provision/84-rescue-entry.sh
+  : >"$STUB_LOG"
+  bootstrap --with-rescue-entry
+  [ "$status" -eq 0 ]
+  ran_step provision/84-rescue-entry.sh
+  refute ran_step provision/82-boot-counting.sh
+  [[ "$output" == *"--with-rescue-entry"* ]]
+}
+
+@test "--with-recovery is boot counting and then the rescue entry, both before the clean-up and the USB link" {
+  mkdir -p "$HOME/.ssh"
+  echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample someone@laptop" >"$HOME/.ssh/authorized_keys"
+  bootstrap --with-recovery
+  [ "$status" -eq 0 ]
+  counting="$(line_of "^sudo -E bash $PROJECT/provision/82-boot-counting\.sh\$")"
+  rescue="$(line_of "^sudo -E bash $PROJECT/provision/84-rescue-entry\.sh\$")"
+  clean="$(line_of "^sudo -E bash $PROJECT/provision/90-cleanup\.sh\$")"
+  usb="$(line_of "^sudo -E bash $PROJECT/provision/95-usb-gadget\.sh\$")"
+  [ -n "$counting" ] && [ -n "$rescue" ]
+  [ "$counting" -lt "$rescue" ]
+  [ "$rescue" -lt "$clean" ]
+  [ "$clean" -lt "$usb" ]
+  refute ran_step provision/80-watchdog.sh
+  refute ran_step provision/85-esp-permissions.sh
+}
+
+@test "the rescue entry without an SSH key stops in the preflight, before anything runs" {
+  # The rescue system takes no passwords; 84 would refuse near the end of the
+  # run, ahead of the USB link.
+  bootstrap --with-recovery
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"authorized_keys"* ]]
+  [[ "$output" == *"ssh-copy-id"* ]]
+  refute ran_like "provision/10-optimize-board\.sh"
+  refute ran_step provision/84-rescue-entry.sh
 }
 
 @test "--minimal leaves out all three, and the drive image with them" {

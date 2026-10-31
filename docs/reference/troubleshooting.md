@@ -622,3 +622,66 @@ cd /boot/efi/loader
 sudo mv loader.conf.unoq-test.bak loader.conf
 sudo rm entries/unoq-test*.conf
 ```
+
+### Booting the rescue entry once
+
+With `--with-rescue-entry` ([provisioning.md](provisioning.md)), the EFI partition has a third entry, `<machine-id>-rescue.conf`: a rescue system that brings up the USB cable as a network link at `169.254.77.1`, starts an SSH server, and mounts no root filesystem at all. It sorts below every kernel entry, so the board only reaches it when every kernel entry has run out of tries, or when you point it there. Until it has been booted once, nobody knows that it works: that is this test.
+
+**The risk.** This boots the board into a system that has never run on it. The test is built so that whatever happens, a power cycle brings the board back on its ordinary kernel: the entry is a counted copy with one try, and systemd-boot spends the try *before* it starts the kernel. So:
+
+- if the rescue system comes up, you get a shell over the cable, and `reboot -f` brings the board back;
+- if it comes up but nobody logs in within ten minutes (no USB link, say), it reboots itself (`unoq.rescue_timeout=600`), and if it panics it reboots after ten seconds (`panic=10`);
+- if it hangs before either of those can act, nothing restarts it: **unplug the board and plug it in again.** That is the one case that needs a hand on the board. Plan the test for when one is free.
+
+The rescue boot also never runs `qbootctl`, so the Qualcomm slot is not marked good for that one boot. It was marked good by the boot before, and the next ordinary boot marks it again; how many unmarked boots the firmware tolerates is not known ([hardware.md](hardware.md#the-qualcomm-boot-chain-look-do-not-touch)), so do not repeat the test in a loop.
+
+**Before you start**, check that your computer can talk link-local on the cable. Windows and macOS give the adapter a `169.254.x.y` address by themselves about a minute after no DHCP server answers. On Linux with NetworkManager, set that connection's IPv4 method to *Link-Local Only*, or add an address by hand: `sudo ip addr add 169.254.77.2/16 dev <the adapter>`. Log in with the key that logs you in to the board now: the rescue system has a copy of your `~/.ssh/authorized_keys` and takes no passwords.
+
+**The test.** `bootctl set-oneshot` cannot be used, because Linux cannot write U-Boot's EFI variables, so as in the boot-counting test above, `loader.conf`'s `default` is pointed at the test entry for one boot:
+
+```bash
+sudo bash ~/two-computers-one-board/provision/84-rescue-entry.sh   # if it is not installed yet
+cd /boot/efi/loader
+M="$(cat /etc/machine-id)"
+sudo sh -c "sed -e 's/^title .*/title rescue test/' \
+  -e 's/^options .*/& panic=10 unoq.rescue_timeout=600/' \
+  entries/$M-rescue.conf > entries/$M-rescue-test+1.conf"
+sudo cp loader.conf loader.conf.unoq-rescue-test.bak
+sudo sed -i "s/^default .*/default $M-rescue-test+1.conf/" loader.conf
+sudo bootctl list | grep -B1 -A3 'rescue test'   # it should say (default)
+sudo reboot
+```
+
+The `default` line names the file **exactly, counter and all**, and that is what makes it a one-shot. systemd-boot matches `default` against each entry's file name, and at boot it renames the test entry to `…-rescue-test+0-1.conf` before starting it. On the boot after, `default` matches nothing, so systemd-boot takes the first entry in its own order, which is the kernel (`config_select_default_entry` in systemd's `src/boot/boot.c`). A pattern such as `…-rescue-test*` would go on matching the spent entry and boot the rescue system every time.
+
+Then, from the computer, with the cable in the board's USB-C port:
+
+```bash
+ssh root@169.254.77.1
+```
+
+`ssh` warns that the host key is not the one it knows for that address, or asks about a new one: the rescue system has its own key, made when the entry was installed, and the step printed its fingerprint (`rescue host key fingerprint`) for you to compare. Inside:
+
+```bash
+dmesg | grep unoq-rescue     # what the rescue system did, in order
+cat /proc/cmdline            # unoq.rescue=1, and no root=
+reboot -f                    # back to the ordinary kernel
+```
+
+A few minutes later, back on the board as usual:
+
+| What you see | Means |
+|---|---|
+| `ssh root@169.254.77.1` gave a shell, and `bootctl status` now shows the kernel as *Current Entry* | It works: the rescue entry boots, the cable comes up, SSH answers, and the board comes back by itself. |
+| No SSH, and the board came back on its own about ten minutes later | The rescue system booted, but the cable never worked. The likeliest causes are the unknowns it was built with: the USB controller not coming up as a device without the running system's help, or the Type-C controller's driver not loading early enough. Only the MPU's serial console (`/dev/ttyMSM0`) would show its messages. |
+| No SSH, and the board did not come back | A hang before the rescue system could time out. Power-cycle it; it boots the ordinary kernel. |
+
+`sudo ls /boot/efi/loader/entries` shows the test entry as `…-rescue-test+0-1.conf` in every case where the rescue system was started. Put things back as they were:
+
+```bash
+cd /boot/efi/loader
+sudo mv loader.conf.unoq-rescue-test.bak loader.conf
+sudo rm entries/*-rescue-test*.conf
+```
+
+If you need to do that from inside the rescue system itself, the EFI partition is `mmcblk0p67`: `mkdir -p /mnt && mount -t vfat /dev/mmcblk0p67 /mnt`, then the same two commands in `/mnt/loader`, then `umount /mnt`.
