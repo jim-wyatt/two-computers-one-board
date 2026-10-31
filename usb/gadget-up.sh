@@ -1,7 +1,8 @@
 #!/bin/bash
 # Copyright (c) 2026 Jim Wyatt
 # SPDX-License-Identifier: MIT
-# Build and bind the composite USB gadget: network + the fileshare drive.
+# Build and bind the composite USB gadget: network + the fileshare drive, and a
+# serial port beside them when UNOQ_GADGET_ACM=1.
 #
 #   sudo ~/two-computers-one-board/usb/gadget-up.sh          # build, and bind if a UDC exists
 #   sudo ~/two-computers-one-board/usb/gadget-up.sh --build  # build only, never bind
@@ -19,6 +20,7 @@
 # WHAT THE HOST SEES
 # ------------------
 #   config 1   network + UNO-Q drive   <- the only configuration there is
+#              (+ a serial port, with UNOQ_GADGET_ACM=1 - in the same one)
 #
 # ONE configuration, not two. An earlier version of this script put NCM in c.1
 # and RNDIS in c.2 and let each host pick the one it supported. That cost us
@@ -115,6 +117,24 @@ case "$PRIMARY" in
   *) die "UNOQ_GADGET_PRIMARY must be ncm or rndis, not '$PRIMARY'" ;;
 esac
 
+# A serial port beside the network and the drive: CDC-ACM, which every host
+# has a class driver for (usbser.sys on Windows, cdc_acm on Linux and macOS),
+# and which the board sees as /dev/ttyGS0. Off by default until a Windows host
+# has been seen binding all three functions in one configuration (#9).
+#
+# Anything but 1 is off, and a value that is neither 0 nor 1 is said out loud
+# rather than refused. This runs at boot and decides whether the cable carries
+# a network at all; a typo in an optional extra must not cost the board its
+# link the way a typo in UNOQ_GADGET_PRIMARY has to.
+ACM="${UNOQ_GADGET_ACM:-0}"
+case "$ACM" in
+  0 | 1) ;;
+  *)
+    log "WARNING: UNOQ_GADGET_ACM is '$ACM', not 0 or 1 - leaving the serial port off"
+    ACM=0
+    ;;
+esac
+
 if [ -d "$G" ]; then
   log "gadget already defined at $G"
   # Say so when UNOQ_GADGET_PRIMARY asks for something the built gadget is not.
@@ -129,6 +149,14 @@ if [ -d "$G" ]; then
     log "  never rebuilt. To actually switch, purge it first:"
     log "    sudo $(dirname "$0")/gadget-down.sh --purge"
     log "    sudo UNOQ_GADGET_PRIMARY=$PRIMARY $0"
+  fi
+  # The same trap for the serial port: asked for, and not there, because this
+  # definition was built before it was asked for.
+  if [ "$ACM" = 1 ] && [ ! -d "$G/functions/acm.usb0" ]; then
+    log "WARNING: UNOQ_GADGET_ACM=1, but this gadget has no serial port, and an"
+    log "  existing definition is never rebuilt. Purge it, then build it again:"
+    log "    sudo $(dirname "$0")/gadget-down.sh --purge"
+    log "    sudo systemctl restart unoq-usb-gadget && sudo systemctl start unoq-usb-bind"
   fi
 else
   mkdir -p "$G" || die "could not create $G"
@@ -220,6 +248,14 @@ else
     log "WARNING: $IMG missing - build it with share/build-image.sh"
   fi
 
+  # Nothing to configure: creating the instance is what makes /dev/ttyGS0, and
+  # it exists from here on, bound to a host or not. That is what lets
+  # serial-getty@ttyGS0, which is bound to the device, start at boot.
+  if [ "$ACM" = 1 ]; then
+    mkdir -p "$G/functions/acm.usb0"
+    CFG_NAME="$CFG_NAME + serial"
+  fi
+
   # --- configuration ---
   #
   # Exactly one. WHAT THE HOST SEES at the top of this file explains why a
@@ -234,6 +270,15 @@ else
   echo 500 >"$G/configs/c.1/MaxPower"
   ln -sf "$G/functions/$NET_FN" "$G/configs/c.1/"
   ln -sf "$G/functions/mass_storage.0" "$G/configs/c.1/"
+  # The serial port goes into the SAME configuration, not a second one: a
+  # second configuration is what cost the drive on Windows (WHAT THE HOST SEES,
+  # above), and a third function does not change that rule. It is linked
+  # last, because configfs numbers interfaces in link order: the network and
+  # the drive keep the interface numbers they have without it, and a host that
+  # has already set up the network adapter finds it where it was.
+  if [ "$ACM" = 1 ]; then
+    ln -sf "$G/functions/acm.usb0" "$G/configs/c.1/"
+  fi
 
   # --- Microsoft OS descriptors ---
   #
@@ -257,7 +302,11 @@ else
     ln -sf "$G/configs/c.1" "$G/os_desc/" 2>/dev/null
   fi
 
-  log "gadget built (c.1 = $NET_FN + mass_storage)"
+  if [ "$ACM" = 1 ]; then
+    log "gadget built (c.1 = $NET_FN + mass_storage + acm.usb0)"
+  else
+    log "gadget built (c.1 = $NET_FN + mass_storage)"
+  fi
 fi
 
 [ "$BUILD_ONLY" = 1 ] && {
