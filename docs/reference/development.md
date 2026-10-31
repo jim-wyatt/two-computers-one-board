@@ -105,6 +105,7 @@ One command runs everything, and it is the same command CI runs:
 ```bash
 tools/check.sh              # every gate
 tools/check.sh --fast       # skip the slow ones: the firmware tests and the browser check
+tools/check.sh --staged     # --fast, with shellcheck and bats cut to what this commit touches
 tools/check.sh --fix        # reformat in place, then check
 tools/check.sh python       # one area: python | shell | c | docs | workflows | diagrams | mcu
 ```
@@ -135,12 +136,22 @@ that silently does nothing is worse than no gate.
 | `diagrams` | render | `tools/check-diagrams.sh` | every diagram actually draws, and can be read: lettering displayed at 12px or more and no diagram wider than the text column, in a 1440px window. One headless browser, driven over every page that has one, a few seconds |
 | `mcu` | tests | `ztest` on `native_sim` | the protocol in `app_proto.h`, the rasterizer in `bars.c`, and the status LED decisions in `status_leds.c` |
 
-Install the tools, and the pre-commit hook that runs `--fast`:
+Install the tools, and the pre-commit hook that runs `--staged`:
 
 ```bash
 tools/install-dev-tools.sh       # no sudo, no apt
-tools/install-hooks.sh           # pre-commit -> check.sh --fast
+tools/install-hooks.sh           # pre-commit -> check.sh --staged
 ```
+
+`--staged` is a `--fast` run with its two slowest gates cut down to the commit.
+On the board those two are most of a full run: `shellcheck -x` over every
+script takes about eight minutes, because it follows `provision/lib.sh` into
+each one, and the whole bats suite about eleven. So the hook checks only the
+scripts being committed, and runs only the suites that are being committed,
+that name one of its files by path, or all of them if `tests/helpers/` changed.
+CI runs every gate in full on every pull request, and merging needs it green,
+so what the hook leaves out is still checked before anything reaches `main`.
+Run `tools/check.sh` yourself when you want the whole thing locally.
 
 `install-dev-tools.sh` puts ruff, mypy, pytest, codespell, zensical and clang-format in the
 project venv, and fetches pinned `shellcheck`, `shfmt`, `bats` and `actionlint` into

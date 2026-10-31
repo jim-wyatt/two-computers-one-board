@@ -274,7 +274,7 @@ ratchet that makes one specific kind of omission impossible to miss.
 
 ```mermaid
 flowchart TD
-  A["you type: git commit"] --> B["pre-commit hook<br/><small>check.sh --fast</small>"]
+  A["you type: git commit"] --> B["pre-commit hook<br/><small>check.sh --staged</small>"]
   B -->|passes| C["commit lands"]
   C --> D["git push"]
   D --> E["GitHub Actions<br/><small>checks · changes · firmware</small>"]
@@ -282,8 +282,12 @@ flowchart TD
 ```
 
 The hook runs the fast gates on every commit; ~70 seconds of Zephyr build and a
-minute of browser are too slow to sit in front of one. CI runs the same script —
-that matters, because a green CI then means the same thing as a clean local run
+minute of browser are too slow to sit in front of one. It also cuts the two
+slowest of the rest, `shellcheck` and the bats suites, down to what the commit
+touches: on the board those two take about twenty minutes over the whole tree,
+and a commit that changes one script does not need every other one checked
+again. CI runs the same script in full, and merging waits for it — that
+matters, because a green CI then means the same thing as a clean local run
 rather than something adjacent to it.
 
 CI splits it into four jobs, and the shape is worth copying:

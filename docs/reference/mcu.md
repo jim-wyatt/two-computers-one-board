@@ -212,7 +212,7 @@ command documented on this page or in
 | **Test: on target** | `mcu/ztest.sh -p arduino_uno_q` |
 | **Test: python (pytest + coverage)** | `pytest`, all against fakes |
 | **Check: all quality gates** | `tools/check.sh` |
-| **Check: fast (skip the MCU build)** | `tools/check.sh --fast`, which is what the pre-commit hook runs |
+| **Check: fast (skip the MCU build)** | `tools/check.sh --fast` (the pre-commit hook runs `--staged`, which is this cut to the commit) |
 | **Check: reformat in place** | `tools/check.sh --fix` |
 | **Maint: check dependency versions** | `tools/check-versions.sh` |
 

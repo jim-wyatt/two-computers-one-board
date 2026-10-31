@@ -6,6 +6,7 @@
 #   ~/two-computers-one-board/tools/check.sh              # everything
 #   ~/two-computers-one-board/tools/check.sh --fix        # reformat in place, then check
 #   ~/two-computers-one-board/tools/check.sh --fast       # skip the slow ones (firmware tests, diagrams)
+#   ~/two-computers-one-board/tools/check.sh --staged     # --fast, with the shell gates cut to this commit
 #   ~/two-computers-one-board/tools/check.sh python       # one area: python | shell | c | docs | workflows | diagrams | mcu
 #
 # Every gate runs even if an earlier one fails, so one pass shows you all the
@@ -22,13 +23,18 @@ export PATH="$HOME/.local/bin:$PATH"
 
 FIX=0
 FAST=0
+STAGED=0
 AREAS=()
 for arg in "$@"; do
   case "$arg" in
     --fix) FIX=1 ;;
     --fast) FAST=1 ;;
+    --staged)
+      STAGED=1
+      FAST=1
+      ;;
     -h | --help)
-      sed -n '2,14p' "$0"
+      sed -n '2,15p' "$0"
       exit 0
       ;;
     python | shell | c | mcu | docs | workflows | diagrams) AREAS+=("$arg") ;;
@@ -88,6 +94,61 @@ wanted() {
   return 1
 }
 
+# --staged is what the pre-commit hook runs. Two gates are most of a full run
+# on the board: shellcheck over every script (about eight minutes there, since
+# -x follows lib.sh into each one) and the whole bats suite (about eleven).
+# CI runs both in full on every pull request, and merging needs it green, so
+# the hook checks what the commit touches and leaves the rest to CI: the
+# scripts being committed, and the suites that are, or that name one of those
+# files by path. Everything else in a --fast run stays, being seconds.
+
+# staged [pattern...] - the files this commit adds or changes, those matching
+# a pattern if any are given. The hook works the list out and passes it in
+# UNOQ_STAGED, because it runs this without git's GIT_INDEX_FILE, and a
+# `git commit -a` stages into an index of its own: asked from here, git would
+# answer from the wrong one. Run by hand, the index is the ordinary one.
+staged() {
+  local f p
+  if [ -n "${UNOQ_STAGED+x}" ]; then
+    printf '%s\n' "$UNOQ_STAGED"
+  else
+    git -C "$PROJECT" diff --cached --name-only --diff-filter=ACMR
+  fi | while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    [ $# -eq 0 ] && {
+      echo "$f"
+      continue
+    }
+    for p in "$@"; do
+      # shellcheck disable=SC2053 # the patterns are globs: '*.sh', 'tests/*.bats'
+      [[ "$f" == $p ]] && {
+        echo "$f"
+        break
+      }
+    done
+  done
+}
+
+# suites_for_staged - the bats suites this commit touches: those it changes,
+# every one if it changes their shared helpers, and those that name a file it
+# changes by its path in the checkout.
+suites_for_staged() {
+  local f
+  if [ -n "$(staged 'tests/helpers/*')" ]; then
+    git -C "$PROJECT" ls-files 'tests/*.bats'
+    return
+  fi
+  {
+    staged 'tests/*.bats'
+    staged | grep -v '^tests/' | while IFS= read -r f; do
+      grep -lF -- "$f" "$PROJECT"/tests/*.bats 2>/dev/null | sed "s#^$PROJECT/##"
+    done
+  } | sort -u
+}
+
+# skipped <gate> <why> - a gate this run leaves out, said rather than silent.
+skipped() { printf '%s>>> %s (skipped: %s)%s\n\n' "$DIM" "$1" "$2" "$OFF"; }
+
 # --- python ----------------------------------------------------------------
 
 if wanted python; then
@@ -126,7 +187,12 @@ fi
 
 if wanted shell; then
   cd "$PROJECT" || exit 1
-  mapfile -t SCRIPTS < <(git ls-files '*.sh' 2>/dev/null || find . -name '*.sh' -not -path './.venv/*')
+  if [ "$STAGED" = 1 ]; then
+    mapfile -t SCRIPTS < <(staged '*.sh')
+    [ ${#SCRIPTS[@]} -gt 0 ] || skipped "shellcheck and shfmt" "no shell script in this commit"
+  else
+    mapfile -t SCRIPTS < <(git ls-files '*.sh' 2>/dev/null || find . -name '*.sh' -not -path './.venv/*')
+  fi
   if [ ${#SCRIPTS[@]} -gt 0 ]; then
     need shellcheck "shellcheck" && run "shellcheck" shellcheck -x "${SCRIPTS[@]}"
     if need shfmt "shfmt"; then
@@ -142,8 +208,18 @@ if wanted shell; then
   # the largest thing in this project by a factor of five and every finding in
   # docs/reference/clean-board-findings.md was in it or in a unit file, so it
   # is the last place that should have been checked for syntax only.
-  need bats "bats (shell behavior)" &&
-    run "bats (shell behavior)" bats "$PROJECT/tests"
+  if [ "$STAGED" = 1 ]; then
+    mapfile -t SUITES < <(suites_for_staged)
+    if [ ${#SUITES[@]} -eq 0 ]; then
+      skipped "bats (shell behavior)" "no suite is in this commit or names a file in it; CI runs them all"
+    else
+      need bats "bats (shell behavior)" &&
+        run "bats (${#SUITES[@]} of $(git ls-files 'tests/*.bats' | wc -l) suites)" bats "${SUITES[@]}"
+    fi
+  else
+    need bats "bats (shell behavior)" &&
+      run "bats (shell behavior)" bats "$PROJECT/tests"
+  fi
   # The unit files and udev rules are what start all of that shell on a board,
   # and systemd will say whether it accepts them without one.
   run "units and udev rules (systemd)" "$PROJECT/tools/check-units.sh"
