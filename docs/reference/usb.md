@@ -419,6 +419,76 @@ read interface 0 as the whole device, reporting this board as
 On the board, the chosen function registers a netdev, which is enslaved to a
 bridge (`br-usb`) that carries the address.
 
+### A serial login over the cable
+
+The gadget can carry a third function: a serial port (CDC-ACM), with a login
+on it. It is **off by default**.
+
+With it on, the computer sees a serial port beside the network adapter and the
+drive. Every host has a class driver for it, so nothing needs installing:
+Windows binds `usbser.sys` and lists a COM port in Device Manager, Linux makes
+`/dev/ttyACM0`, macOS `/dev/cu.usbmodem*`. Open it at any speed (the speed is
+ignored on a USB serial port) and press Enter for a login prompt:
+
+```bash
+tio /dev/ttyACM0              # or: screen /dev/ttyACM0, or PuTTY on COMn
+```
+
+It needs no IP, no DHCP and no mDNS, so it is a way in when the network half
+of the link is the thing that is broken. It is not a console: it starts with
+userspace, needs the gadget built, and is gone in exactly the failures the
+board's own UART (`/dev/ttyMSM0`) is still there for.
+
+To turn it on, the setting goes in the file the units read, the step is run
+again to set up the login, and the gadget is rebuilt:
+
+```bash
+echo 'UNOQ_GADGET_ACM=1' | sudo tee -a /etc/default/unoq-usb
+sudo bash ~/two-computers-one-board/provision/95-usb-gadget.sh  # the login
+sudo ~/two-computers-one-board/usb/gadget-down.sh --purge       # required
+sudo systemctl restart unoq-usb-gadget                          # builds it again, from the file
+sudo systemctl start unoq-usb-bind                              # binds it, if a computer is plugged in
+```
+
+Or set the line, run the step, and reboot: the gadget is rebuilt at every boot.
+The purge drops a session on the cable, as in
+[Switching to RNDIS](#switching-to-rndis), and the same two rules apply: the
+setting belongs in the file (`sudo UNOQ_GADGET_ACM=1 usb/gadget-up.sh` reaches
+one run, and `UNOQ_GADGET_ACM=1 sudo ...` reaches none, since `sudo` clears the
+environment), and an existing gadget is never rebuilt in place. `gadget-up.sh`
+warns when the setting asks for a port the built gadget does not have, and the
+step warns when the line is not in the file.
+
+What the step does is one link: `dev-ttyGS0.device` wants
+`serial-getty@ttyGS0.service`. That getty is already `BindsTo=` the device, so
+it starts whenever `/dev/ttyGS0` appears and stops when it goes. It is not
+enabled into `getty.target`, the usual place, because then every boot would
+wait up to 90 seconds for a device that a gadget built without the port never
+makes. To undo it: remove the line from the file, then
+`sudo systemctl remove-wants dev-ttyGS0.device serial-getty@ttyGS0.service`
+(or `sudo rm /etc/systemd/system/dev-ttyGS0.device.wants/serial-getty@ttyGS0.service`
+and `sudo systemctl daemon-reload`), and rebuild the gadget.
+
+**The step warns if `arduino-router-serial.path` is still enabled.** Arduino's
+factory image ships it with `PathExists=/dev/ttyGS0`: as soon as the port
+exists, it starts a proxy that `Requires=` Arduino's router, which takes
+`/dev/ttyHS1` from this project and `/dev/ttyGS0` from the login.
+`provision/15-dev-tools.sh` disables it; on a board that has not run that step,
+`sudo systemctl disable --now arduino-router-serial.path arduino-router-serial.service`.
+
+**Why it is off by default.** It changes the descriptors of a composite device
+that Windows has already mishandled once ([Why not two
+configurations](#why-not-two-configurations)). The port goes into the same
+single configuration, linked last, so the network and the drive keep their
+interface numbers; that is the arrangement Windows' composite rules ask for. It
+**has not yet been checked on Windows** with three functions in one
+configuration, nor on a board and host at all. It stays off until a Windows host
+has been seen binding NCM, the drive and the COM port together.
+
+The MCU's serial console on the same port is the next step, and a separate one:
+it needs a relay to `/dev/ttyHS1`, which has one owner at a time. See
+[#9](https://github.com/jim-wyatt/two-computers-one-board/issues/9).
+
 ---
 
 ## Running on the USB link alone
