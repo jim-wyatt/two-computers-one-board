@@ -97,9 +97,10 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 INTERVAL="${UNOQ_LED_INTERVAL:-5}"
-# The only expensive check here, so it runs every Nth pass. Link state changes
-# in seconds; reachability does not, and pinging every five seconds forever is
-# rude to whatever is upstream.
+# The slow checks run every Nth pass: the ping, and the list of boot entries.
+# Link state changes in seconds; reachability does not, and pinging every five
+# seconds forever is rude to whatever is upstream. A kernel is set aside only
+# at boot, or when one is installed or removed, so a minute late is on time.
 NET_EVERY="${UNOQ_LED_NET_EVERY:-12}"
 PROBE_IP="${UNOQ_LED_PROBE_IP:-1.1.1.1}"
 # The two rhythms, as milliseconds lit and then the same again dark. The
@@ -121,6 +122,13 @@ LEDS="${UNOQ_LED_DIR:-/sys/class/leds}"
 # assumed the two scripts live in the same directory, which made this untestable
 # and would have broken silently the moment either moved.
 GUARD="${UNOQ_BIND_GUARD:-$HERE/../usb/bind-guard.sh}"
+# systemd-bless-boot is not on PATH: it lives with systemd's other helpers.
+# PATH is asked first, which is also how the tests put a fake in its place.
+BLESS_BOOT="$(command -v systemd-bless-boot 2>/dev/null)"
+for b in /usr/lib/systemd/systemd-bless-boot /lib/systemd/systemd-bless-boot; do
+  [ -n "$BLESS_BOOT" ] && break
+  [ -x "$b" ] && BLESS_BOOT="$b"
+done
 
 # LED 1, driven from here as one color at a time. Order: red, green, blue.
 # Reached by name through a nameref in set_led, which shellcheck cannot follow.
@@ -233,10 +241,9 @@ SETTLE=0.05
 #                                              few microseconds apart
 #
 # A single-channel color has nobody to keep step with and skips the waiting.
-# Linux's own states are all single-channel today; the two-channel path is
-# there because set_led offers yellow and white, and offering a color that
-# blinks wrongly would be a trap. It is reasoned from the kernel source and has
-# not yet been watched on the board - `show 1 yellow slow` is how to watch it.
+# One of Linux's own states needs the two-channel path: LED 2's yellow, for a
+# kernel on trial. It is reasoned from the kernel source and has not yet been
+# watched on the board - `show 2 yellow slow` is how to watch it.
 set_led() {
   local -n chans="$1"
   local rhythm="${3:-steady}" ms=0 same=1 i c
@@ -361,14 +368,48 @@ units_failed() {
 
 have_internet() { ping -c1 -W3 "$PROBE_IP" >/dev/null 2>&1; }
 
+# BOOT COUNTING: A KERNEL ON TRIAL, AND ONE SET ASIDE
+#
+# With provision/82-boot-counting.sh, a new kernel's entry carries a try
+# counter in its file name (foo+3.conf). systemd-boot takes a try at each boot
+# of it, and systemd-bless-boot drops the counter once unoq-boot-health has
+# passed. An entry that runs out of tries sorts below the good ones, and the
+# board boots the previous kernel by itself. All of which works, and none of
+# which shows: a board on trial and a board that has quietly fallen back both
+# look exactly like a healthy one.
+#
+# On trial: systemd-bless-boot reads one EFI variable and stats one file, and
+# says `indeterminate` for a counted boot that has not been marked good yet.
+# Uncounted boots say `clean`, blessed ones `good`, and a missing tool says
+# nothing, so a board without boot counting never gets here. It is cheap, and
+# it changes within a minute or two of boot, so it is asked every pass.
+on_trial() {
+  [ -n "$BLESS_BOOT" ] || return 1
+  [ "$("$BLESS_BOOT" status 2>/dev/null)" = indeterminate ]
+}
+
+# Set aside: an entry with no tries left. bootctl reads the boot partition and
+# never writes it with `list`; its JSON says "triesLeft":0, and JSON numbers
+# have no leading zeros, so that is never the start of a 10. The entry being
+# booted is left out: on its last try it reads 0 too, and it is on trial, not
+# set aside yet. The JSON is one line, so it is cut at each entry first. It
+# stays lit until the kernel is reinstalled or removed: the board coped, but a
+# kernel did not boot, and someone should find out why.
+kernel_set_aside() {
+  bootctl list --json=short --no-pager 2>/dev/null |
+    sed 's/},{/}\n{/g' | grep '"triesLeft":0' | grep -qv '"isSelected":true'
+}
+
 # --- one pass ---------------------------------------------------------------
 
-NET_OK=1 # assumed until the first probe says otherwise
+NET_OK=1    # assumed until the first probe says otherwise
+SET_ASIDE=0 # likewise
 
 sample_and_set() {
   local probe="${1:-1}"
   if [ "$probe" = 1 ]; then
     have_internet && NET_OK=1 || NET_OK=0
+    kernel_set_aside && SET_ASIDE=1 || SET_ASIDE=0
   fi
 
   # LED 1 - can this board reach anything?
@@ -382,10 +423,20 @@ sample_and_set() {
 
   # LED 2 - systemd's opinion of the board. Green is not decoration: it is the
   # difference between "nothing is wrong" and "this checker is not running",
-  # which a dark LED cannot tell you. There is no slow blink here because there
-  # is no middle state: anything that would recover by itself is not reported.
+  # which a dark LED cannot tell you. The two slow blinks are the middle
+  # states, both from boot counting: degraded, and in progress.
+  #
+  # Yellow for on trial is LED 3's yellow, for the same idea one chip over: an
+  # image that has not been confirmed yet. Blue for set aside, because the two
+  # share a rhythm, and blue against yellow is the pair that red-green color
+  # blindness leaves apart. Red stays for fast, and outranks both: a failed
+  # health check is a failed unit, and that needs a human now.
   if guard_tripped || units_failed; then
     set_led LED2 red fast
+  elif [ "$SET_ASIDE" = 1 ]; then
+    set_led LED2 blue slow # a kernel used its tries; the board fell back
+  elif on_trial; then
+    set_led LED2 yellow slow # a counted boot, not marked good yet
   else
     set_led LED2 green steady
   fi
@@ -421,7 +472,7 @@ case "${1:-}" in
       sleep 3
     done
     set_led LED1 off
-    for look in "green steady" "red fast"; do
+    for look in "green steady" "yellow slow" "blue slow" "red fast"; do
       echo "  LED 2  ${look#* }, ${look% *}"
       # shellcheck disable=SC2086
       set_led LED2 $look
@@ -466,6 +517,15 @@ LED 1 - can this board reach anything?
 LED 2 - systemd's opinion of this board
 
   steady      green   every unit is healthy, and the bind guard has not tripped
+  slow blink  yellow  on trial: this boot is a new kernel's counted try, and
+                      it has not been marked good yet. It turns green once
+                      unoq-boot-health passes, a minute or two after boot.
+                      If it never does, the next boot is another try, and
+                      after the last one the board falls back by itself.
+  slow blink  blue    a kernel was set aside: its entry used up its tries
+                      and the board booted the one before. The board is fine;
+                      the new kernel is not. Which one:  sudo bootctl list
+                      Clears when that kernel is reinstalled or removed.
   fast blink  red     SOMETHING NEEDS A HUMAN: a systemd unit has failed, or
                       the bind guard has refused to bind the gadget. Everything
                       else on this board recovers by itself; these do not.
@@ -478,8 +538,8 @@ difference between "nothing is wrong" and "the thing that checks is not
 running", and those need very different responses.
 
 Sampled every ${INTERVAL}s, so the lights correct themselves rather than
-remembering something that has stopped being true. Reachability is probed every
-$((INTERVAL * NET_EVERY))s.
+remembering something that has stopped being true. Reachability, and whether a
+kernel was set aside, are probed every $((INTERVAL * NET_EVERY))s.
 
 eMMC activity is deliberately NOT shown, on any of the four. The kernel's mmc0,
 disk-activity and disk-write triggers are all offered by this kernel and none
