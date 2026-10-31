@@ -327,6 +327,61 @@ firmware updates.
 already enables — and the driver applies ST's factory calibration values, so
 the reading is calibrated but no better than a few degrees.
 
+### The temperature log
+
+`app temp` is a reading taken when Linux asks. The temperature log is the other
+way round: from boot, a `k_timer` in
+[`templog.c`](../../mcu/app/src/templog.c) samples the same sensor once a
+second, whether or not anything is listening, into a ring of the last 600
+samples (ten minutes). Each sample carries a sequence number, counting up from
+1 at boot, and the MCU's own uptime in milliseconds, so the record keeps time
+by a clock Linux's load cannot delay. The ring is 9.6 KB of the chip's RAM;
+with its timer and the 32-sample batch it is copied into, the log costs about
+10.5 KB.
+
+Linux collects the record with two commands. Every line is a format in
+[`app_proto.h`](../../mcu/app/include/app_proto.h), and
+`python/tests/test_contract.py` pins each to the regex `unoq/mcu.py` reads it
+with.
+
+```
+unoq:~$ app temp log stat
+head=610 count=600 size=600 dropped=10 period_ms=1000
+unoq:~$ app temp log 4
+gap first=5 last=10
+seq=11 ms=11002 temp_mc=31250
+seq=12 ms=12002 temp_err=-5
+...
+seq=42 ms=42002 temp_mc=31312
+end head=610 more=568
+```
+
+| Line | When |
+|---|---|
+| `gap first=<seq> last=<seq>` | First, and only when samples after `since` were overwritten before anyone asked: the numbers lost, inclusive |
+| `seq=<n> ms=<uptime> temp_mc=<millidegrees>` | One per sample, oldest first, at most 32 per reply |
+| `seq=<n> ms=<uptime> temp_err=<errno>` | A sample whose sensor read failed. It keeps its number, so a failure is never mistaken for a loss |
+| `end head=<seq> more=<n>` | Always, last: the newest sample held, and how many newer than this reply are waiting |
+| `head=… count=… size=… dropped=… period_ms=…` | The whole reply to `app temp log stat`. `dropped` counts every sample overwritten, read or not |
+
+`app temp log` with no argument starts at the oldest sample held and reports no
+gap. `app temp log <since>` starts after `since`, so `0` means from boot and
+reports whatever has been lost since. A `since` beyond the newest sample is
+refused with `Error:`: the MCU has restarted since that number was read, and
+its count has started again.
+
+From Python, `MCU.temp_log(since)` asks again from the last sample it got until
+`more` is 0 and returns a list of `TempSample(seq, ms, temp_c, err)`, with
+`temp_c` `None` for a failed read; `MCU.temp_log_stat()` returns the counters.
+
+```python
+from unoq import MCU
+
+with MCU() as mcu:
+    samples = mcu.temp_log()          # everything held, oldest first
+    later = mcu.temp_log(samples[-1].seq)  # only what is new since
+```
+
 ## Debugging
 
 Open this folder in VS Code and pick **Debug (attach to running MCU)** or
@@ -373,7 +428,7 @@ The serial tasks (FOTA, confirm, console, status) need the port: stop
 Use `native_sim/native/64`; plain `native_sim` is 32-bit and fails on aarch64
 with a `CONFIG_64BIT` error.
 
-Three suites run. `ztest.sh` ends by saying how many cases passed; the number
+Four suites run. `ztest.sh` ends by saying how many cases passed; the number
 is not repeated here, where it would be wrong the next time one was added.
 
 - **`bars`** compiles [`mcu/app/src/bars.c`](../../mcu/app/src/bars.c) — the
@@ -391,6 +446,12 @@ is not repeated here, where it would be wrong the next time one was added.
   gets, and that no two states of one LED share a rhythm. They touch no
   hardware, which is why they can run on the host. One of them holds the fast
   blink under three flashes a second.
+- **`templog`** compiles [`mcu/app/src/templog.c`](../../mcu/app/src/templog.c)
+  — the firmware's own temperature log — with a fake in place of the sensor,
+  and checks the bookkeeping a reader relies on: sequence numbers from 1,
+  wraparound, what `since` means at each edge, the gap reported when it is
+  older than the oldest sample held, the cap on one reply, the drop count,
+  and that the timer samples on its own.
 
 ### The MCU suite tests the firmware, not a copy of it
 

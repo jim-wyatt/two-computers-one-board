@@ -22,7 +22,16 @@ from . import fota
 from .cpu import CpuSampler, read_cpu_times
 from .cpufreq import Policy, read_policies
 from .link import BOOT0_LINE, LINK_ENABLE_LINE, link_state, link_up
-from .mcu import MCU, MCUError, PortBusy, ShellTimeout, open_port, port_holders
+from .mcu import (
+    MCU,
+    MCUError,
+    PortBusy,
+    ShellTimeout,
+    TempLogStat,
+    TempSample,
+    open_port,
+    port_holders,
+)
 from .thermal import hottest, read_temps
 
 __all__ = [
@@ -31,6 +40,8 @@ __all__ = [
     "MCUError",
     "PortBusy",
     "ShellTimeout",
+    "TempSample",
+    "TempLogStat",
     "open_port",
     "port_holders",
     "link_up",

@@ -22,6 +22,8 @@ import re
 import termios
 import time
 from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import NamedTuple
 
 import serial
 
@@ -61,6 +63,14 @@ _SHELL_REFUSALS = ("command not found", "wrong parameter count")
 # tests/test_contract.py rebuilds both from the header and fails if they drift.
 _TEMP = re.compile(r"^temp_mc=(-?\d+)$")
 _TEMP_ERR = re.compile(r"^temp_err=(-?\d+)$")
+# The lines `app temp log` and `app temp log stat` answer with: APP_TEMPLOG_* in
+# app_proto.h, %u as an unsigned group and %d and %lld as signed ones.
+# tests/test_contract.py rebuilds each from the header and fails if they drift.
+_TEMPLOG = re.compile(r"^seq=(\d+) ms=(-?\d+) temp_mc=(-?\d+)$")
+_TEMPLOG_ERR = re.compile(r"^seq=(\d+) ms=(-?\d+) temp_err=(-?\d+)$")
+_TEMPLOG_GAP = re.compile(r"^gap first=(\d+) last=(\d+)$")
+_TEMPLOG_END = re.compile(r"^end head=(\d+) more=(\d+)$")
+_TEMPLOG_STAT = re.compile(r"^head=(\d+) count=(\d+) size=(\d+) dropped=(\d+) period_ms=(\d+)$")
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 _PROMPT = re.compile(r"^\s*\S*:~\$\s*$")
 
@@ -208,6 +218,55 @@ def set_exclusive(s: serial.Serial) -> None:
 
 class ShellTimeout(MCUError):
     """No prompt came back before the deadline."""
+
+
+class TempSample(NamedTuple):
+    """One sample from the MCU's temperature log.
+
+    `seq` counts up by one per sample from 1 at the MCU's boot, so a reader
+    that sees 41 and then 45 knows 42 to 44 are gone. `ms` is the MCU's own
+    uptime when it was taken - its clock, not Linux's. `temp_c` is None when
+    the sensor read failed, and `err` is then the negative Zephyr errno; the
+    sample keeps its number either way, so a failed read is never mistaken
+    for a lost one.
+    """
+
+    seq: int
+    ms: int
+    temp_c: float | None
+    err: int = 0
+
+
+@dataclass(frozen=True)
+class TempLogStat:
+    """`app temp log stat`: where the MCU's temperature log stands.
+
+    `head` is the newest sequence number, 0 before the first sample. A
+    `head` lower than one seen before means the MCU has restarted.
+    `dropped` is how many samples have been overwritten, read or not.
+    """
+
+    head: int
+    count: int
+    size: int
+    dropped: int
+    period_ms: int
+
+
+_NO_TEMP_LOG = (
+    "this firmware has no temperature log (`app temp log`) - it predates it. "
+    "Rebuild and update it (mcu/zbuild.sh, then unoq.fota)"
+)
+
+
+def _predates_temp_log(line: str) -> bool:
+    """Is this what a firmware without `app temp log` says to it?
+
+    One of two things: the help for `app`, from a firmware without `app temp`
+    at all, or a plain reading, from one whose `app temp` has no subcommands
+    and takes the words after it as arguments it ignores.
+    """
+    return line == "Subcommands:" or bool(_TEMP.match(line))
 
 
 def _clean(text: str) -> list[str]:
@@ -369,6 +428,78 @@ class MCU:
         if not m:
             raise MCUError(f"could not parse app temp: {out!r}")
         return int(m.group(1)) / 1000
+
+    # -- the temperature log -------------------------------------------------
+
+    def temp_log(self, since: int | None = None) -> list[TempSample]:
+        """Every sample in the MCU's temperature log newer than `since`.
+
+        The MCU samples its die temperature once a second on its own timer and
+        keeps the last ten minutes. This collects them, oldest first: the
+        firmware sends at most 32 per reply, so this asks again from the last
+        one it got until nothing is left.
+
+        With no `since` it starts from the oldest sample still held. With one
+        - the last `seq` the caller stored - it starts after it, and anything
+        overwritten in between shows up as a jump in `seq` between that
+        number and the first sample returned. `since=0` means from boot.
+
+        Raises MCUError if `since` is beyond the newest sample, which means
+        the MCU has restarted since that number was read and its sequence has
+        started again: start over with temp_log_stat() or no `since`. Raises
+        too on a firmware that predates the log, and on a reply that does not
+        parse.
+        """
+        samples: list[TempSample] = []
+        cursor = since
+        while True:
+            command = "app temp log" if cursor is None else f"app temp log {int(cursor)}"
+            batch, more = self._temp_log_batch(command, cursor)
+            samples += batch
+            if not more or not batch:
+                return samples
+            cursor = batch[-1].seq
+
+    def _temp_log_batch(self, command: str, since: int | None) -> tuple[list[TempSample], int]:
+        """One `app temp log` reply: its samples, and how many are still waiting."""
+        out = self.cmd(command)
+        if any(_predates_temp_log(line) for line in out):
+            raise MCUError(_NO_TEMP_LOG)
+        batch: list[TempSample] = []
+        gap: tuple[int, int] | None = None
+        for line in out:
+            if m := _TEMPLOG.match(line):
+                batch.append(TempSample(int(m[1]), int(m[2]), int(m[3]) / 1000))
+            elif m := _TEMPLOG_ERR.match(line):
+                batch.append(TempSample(int(m[1]), int(m[2]), None, int(m[3])))
+            elif m := _TEMPLOG_GAP.match(line):
+                gap = (int(m[1]), int(m[2]))
+            elif m := _TEMPLOG_END.match(line):
+                # The firmware's promise is that a batch starts right after
+                # `since`, or right after the gap it reported. One that does
+                # not would put a hole in the record nobody was told about.
+                if gap:
+                    expected: int | None = gap[1] + 1
+                elif since is not None:
+                    expected = since + 1
+                else:
+                    expected = None
+                if batch and expected is not None and batch[0].seq != expected:
+                    raise MCUError(f"{command!r}: the first sample does not follow on: {out!r}")
+                return batch, int(m[2])
+            else:
+                raise MCUError(f"could not parse {command!r}: {line!r}")
+        raise MCUError(f"{command!r} ended without its end line: {out!r}")
+
+    def temp_log_stat(self) -> TempLogStat:
+        """The temperature log's counters: newest seq, count, size, dropped, period."""
+        out = self.cmd("app temp log stat")
+        if any(_predates_temp_log(line) for line in out):
+            raise MCUError(_NO_TEMP_LOG)
+        m = _TEMPLOG_STAT.match(out[0]) if out else None
+        if not m:
+            raise MCUError(f"could not parse app temp log stat: {out!r}")
+        return TempLogStat(*(int(g) for g in m.groups()))
 
     # -- LED matrix --------------------------------------------------------
 
