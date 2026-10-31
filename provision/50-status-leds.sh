@@ -36,17 +36,19 @@ need_root
 step "the LEDs this board has"
 # Six writable channels, which are two RGB packages rather than six lights - a
 # distinction that cost an afternoon the first time. See docs/reference/hardware.md.
+# UNOQ_LED_DIR is the one status/leds.sh reads, and is for the tests.
+LED_DIR="${UNOQ_LED_DIR:-/sys/class/leds}"
 found=0
 for ch in unoq:user-red1 unoq:user-green1 unoq:user-blue1 \
   unoq:panic-red2 unoq:wlan-green2 unoq:bt-blue2; do
-  [ -w "/sys/class/leds/$ch/brightness" ] && found=$((found + 1))
+  [ -w "$LED_DIR/$ch/brightness" ] && found=$((found + 1))
 done
 if [ "$found" = 6 ]; then
   skip "all six channels present and writable"
 elif [ "$found" -gt 0 ]; then
   warn "only $found of 6 LED channels found - the service will drive what it can"
 else
-  warn "no unoq:* LEDs under /sys/class/leds - is this an UNO Q?"
+  warn "no unoq:* LEDs under $LED_DIR - is this an UNO Q?"
   warn "  the service is still installed; it degrades to doing nothing"
 fi
 
@@ -69,9 +71,12 @@ step "systemd unit"
 # The same goes for a changed SCRIPT, now that the unit runs a copy: the unit
 # file is byte for byte what it was, and the process is still the old leds.sh,
 # which bash read from a file that has since been replaced underneath it.
-before="$(cat /etc/systemd/system/unoq-leds.service 2>/dev/null)"
+# Read from where install_unit writes it, UNOQ_UNIT_DIR included: reading /etc
+# while the unit went somewhere else compares two copies of nothing.
+UNIT_FILE="${UNOQ_UNIT_DIR:-/etc/systemd/system}/unoq-leds.service"
+before="$(cat "$UNIT_FILE" 2>/dev/null)"
 install_unit "$PROJECT/status/unoq-leds.service"
-after="$(cat /etc/systemd/system/unoq-leds.service 2>/dev/null)"
+after="$(cat "$UNIT_FILE" 2>/dev/null)"
 
 if [ "$before" != "$after" ] && systemctl is-active --quiet unoq-leds.service; then
   systemctl restart unoq-leds.service >/dev/null 2>&1 ||
