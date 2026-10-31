@@ -15,16 +15,24 @@ from typing import Any
 import pytest
 
 from unoq import cpubars
-from unoq.mcu import BARS_MAX
+from unoq.mcu import BARS_MAX, MCUError
 
 
 class FakeMCU:
     """Records what the runner sent, in order."""
 
-    def __init__(self) -> None:
+    def __init__(self, reset: list[str] | Exception | None = None) -> None:
         self.frames: list[list[int]] = []
         self.off = 0
         self.closed = False
+        self.reset: list[str] | Exception = ["watchdog", "pin"] if reset is None else reset
+        self.reset_asked = 0
+
+    def reset_cause(self) -> list[str]:
+        self.reset_asked += 1
+        if isinstance(self.reset, Exception):
+            raise self.reset
+        return self.reset
 
     def bars(self, pct: Any) -> None:
         self.frames.append(list(pct))
@@ -193,6 +201,31 @@ def test_main_says_so_when_there_are_more_cores_than_bars(
 
     err = capsys.readouterr().err
     assert f"panel fits {BARS_MAX} bars" in err
+
+
+def test_main_logs_the_reset_cause_once_before_drawing(
+    wired: dict[str, Any], capsys: pytest.CaptureFixture[str]
+) -> None:
+    main_with(wired, ["--count", "3", "--interval", "0"])
+
+    assert wired["mcu"].reset_asked == 1
+    assert "MCU last reset: watchdog,pin" in capsys.readouterr().err
+
+
+def test_log_reset_cause_with_nothing_recorded(capsys: pytest.CaptureFixture[str]) -> None:
+    cpubars.log_reset_cause(FakeMCU(reset=[]))
+    assert "MCU last reset: no cause recorded" in capsys.readouterr().err
+
+
+def test_an_old_firmware_costs_the_line_not_the_demo(
+    wired: dict[str, Any], capsys: pytest.CaptureFixture[str]
+) -> None:
+    wired["mcu"].reset = MCUError("this firmware has no `app reset` command")
+    rc = main_with(wired, ["--count", "2", "--interval", "0"])
+
+    assert rc == 0
+    assert len(wired["mcu"].frames) == 2
+    assert "MCU reset cause not available: this firmware" in capsys.readouterr().err
 
 
 def main_with(wired: dict[str, Any], argv: list[str]) -> int:

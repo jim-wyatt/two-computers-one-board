@@ -207,3 +207,8 @@ uint32_t matrix_sweeps(void)
 {
 	return sweeps;
 }
+
+bool matrix_running(void)
+{
+	return running;
+}

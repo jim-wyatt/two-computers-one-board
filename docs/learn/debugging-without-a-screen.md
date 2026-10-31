@@ -232,6 +232,75 @@ the code could simply make X unnecessary or impossible to forget.
 > firmware — fault handlers, coredumps and post-mortem debugging on chips with
 > no operating system to help you.
 
+## Try it: let the watchdog fire
+
+The MCU has a watchdog of its own: a timer that resets the chip unless the
+firmware keeps proving it is alive. Here that proof is fed four times a second,
+and only while the LED panel's refresh is making progress. The way to trust it
+is the same as the way to trust the error above: make it fire.
+
+The demo owns the serial port, so stop it, and open a console you can type
+into. `mcucon` only watches; `tio` types as well:
+
+```bash
+sudo systemctl stop unoq-cpu-bars
+tio /dev/ttyHS1 -b 115200             # Ctrl-T then q to leave
+```
+
+At the prompt, ask why the MCU last reset, then hang it on purpose:
+
+```
+unoq:~$ app reset
+reset=software,pin
+unoq:~$ app hang yes
+hanging: the watchdog resets the MCU in 8000 ms
+```
+
+(Your first answer depends on how the MCU last started; `software` after an
+update, `brownout` after power was applied.) Now the prompt does not come back.
+The command has locked the scheduler and is spinning, so nothing else on the
+MCU gets to run, including the beat that feeds the watchdog. Count. About eight
+seconds later the boot banner scrolls past in `tio`:
+
+```
+=== UNO Q MCU up: arduino_uno_q/stm32u585xx ===
+reset cause: watchdog,pin
+watchdog armed: 8000 ms, fed while the panel refresh runs
+```
+
+Press Enter for a prompt, and ask again:
+
+```
+unoq:~$ app reset
+reset=watchdog,pin
+```
+
+`watchdog` is the cause. `pin` comes with nearly every reset on this chip,
+because it pulls its own reset pin whatever started the reset. Leave `tio`
+and start the demo again; its first line in the journal says the same thing:
+
+```bash
+sudo systemctl start unoq-cpu-bars
+journalctl -u unoq-cpu-bars -n 5      # "MCU last reset: watchdog,pin"
+```
+
+What you saw is the method of this whole page, turned on a safety net:
+**until it has fired once, you do not know it works.** A watchdog that is fed
+from the wrong place looks exactly like a good one, right up to the day it
+does not reset a hung board. If the panel had a frame on it when you hung the
+MCU, notice that it stayed lit: the refresh interrupt kept running, and a
+watchdog fed from the refresh alone would never have fired. That is why it is
+fed from the workqueue, and only when the refresh is moving too.
+
+**The watchdog and firmware updates.** An update is uploaded with the watchdog
+armed, so the upload must keep feeding it: every flash erase it does is a few
+milliseconds, and the timeout is eight seconds. The swap MCUboot does
+afterwards runs before the firmware has armed anything. Seeing one update go
+all the way through, upload, test, reset and confirm, with this firmware
+running is the check that matters; [Updating safely](updating-safely.md)
+walks through one. The reasoning is in
+[MCU workflow](../reference/mcu.md#the-watchdog).
+
 ## Check yourself
 
 1. Your firmware works until you remove a `printk`, then fails. What kind of bug

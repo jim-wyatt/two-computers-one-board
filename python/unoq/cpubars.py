@@ -21,7 +21,7 @@ from time import sleep as _sleep
 from typing import Protocol
 
 from .cpu import PROC_STAT, CpuSampler
-from .mcu import BARS_MAX, MCU, PORT
+from .mcu import BARS_MAX, MCU, PORT, MCUError
 
 # Fast enough to feel live, slow enough that the shell round-trip is a rounding
 # error next to it. Below ~0.1s the sampling window gets short enough that
@@ -38,6 +38,27 @@ class Panel(Protocol):
 
 class Load(Protocol):
     def sample(self) -> list[int]: ...
+
+
+class Explains(Protocol):
+    def reset_cause(self) -> list[str]: ...
+
+
+def log_reset_cause(mcu: Explains) -> None:
+    """Say once, on stderr, why the MCU last reset.
+
+    Under systemd stderr is the journal, so `journalctl -u unoq-cpu-bars`
+    shows the MCU's reset causes next to the demo's own starts: a watchdog
+    reset there is the MCU having hung and recovered while nobody watched.
+    The demo owns the port, so it is the one that can ask. A firmware too old
+    to answer, or a link that does not, costs this line and not the demo.
+    """
+    try:
+        causes = mcu.reset_cause()
+    except MCUError as e:
+        print(f"MCU reset cause not available: {e}", file=sys.stderr)
+        return
+    print(f"MCU last reset: {','.join(causes) or 'no cause recorded'}", file=sys.stderr)
 
 
 def run(
@@ -90,6 +111,7 @@ def main(argv: list[str] | None = None) -> int:
 
     with MCU(port=args.port) as mcu:
         try:
+            log_reset_cause(mcu)
             run(mcu, sampler, args.interval, args.count)
         except KeyboardInterrupt:
             pass  # Ctrl-C is how you stop this, not a failure.
