@@ -283,6 +283,7 @@ nav:
           - learn/from-source-to-chip.md
           - learn/how-the-build-knows-your-hardware.md
           - The LED matrix: learn/the-led-matrix.md
+          - learn/two-clocks-one-record.md
       - Living with real hardware:
           - learn/updating-safely.md
           - One cable, many devices: learn/one-cable-many-devices.md

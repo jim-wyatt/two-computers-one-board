@@ -220,5 +220,6 @@ background, `sleep 6` waits, and `kill %1` stops the background job.
 
 </details>
 
-Next: [Updating safely](updating-safely.md) — replacing the firmware on a
-running board without being able to visit it.
+Next: [Two clocks, one record](two-clocks-one-record.md) — the other
+direction: the microcontroller measures on its own clock, and Linux keeps the
+record.

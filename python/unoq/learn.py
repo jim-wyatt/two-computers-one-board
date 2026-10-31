@@ -5,6 +5,7 @@ Static web server for the on-board learning content.
 
     unoq-learn                         # serve /srv/unoq-share on :8080
     python -m unoq.learn --root ./share --port 9000
+    unoq-learn --data /var/lib/unoq/templog   # ...and that directory at /data/
 
 The board is often the only computer in the room with the material on it - it
 is plugged into a laptop that may have no internet at all. So this serves from
@@ -15,6 +16,12 @@ need it.
 It is deliberately read-only and unauthenticated. It is reachable over the USB
 link (and whatever else the board is on), so treat it as public to anyone who
 can plug in a cable - do not put anything here you would not hand out.
+
+`--data` adds a second directory beside the root, at /data/: what the board
+records as it runs (the temperature log, unoq.templog), as opposed to what it
+was built with. The share image is read-only and rebuilt only at
+provisioning, so a log cannot live in it. The same rules hold there: read-only,
+and nothing outside the directory can be reached through it.
 """
 
 from __future__ import annotations
@@ -22,12 +29,15 @@ from __future__ import annotations
 import argparse
 import contextlib
 import ipaddress
+import posixpath
 import socket
 import sys
+import urllib.parse
 from collections.abc import Callable
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 # The read-only mount of the FAT32 image, which is also what the USB drive
 # exports - so the web page and the drive can never disagree. NOT
@@ -42,6 +52,28 @@ DEFAULT_PORT = 8080
 # Every interface: the point is to be reachable over the USB gadget link, whose
 # address the board does not know until a host is plugged in.
 DEFAULT_HOST = "0.0.0.0"
+# Where --data appears. A directory of that name in the root is hidden by it.
+DATA_PREFIX = "/data"
+
+
+def data_path(path: str) -> str | None:
+    """The part of a request path below /data/, or None if it is not below it.
+
+    Decided on the path as the base class will see it - decoded, with `..`
+    resolved - so that /data/../index.html is the root's index and
+    /%64ata/x is /data/x. What is returned is quoted again, because the base
+    class decodes it a second time: unquoted, a name that contains `%41`
+    would be served as the file called `A`.
+    """
+    path = path.split("?", 1)[0].split("#", 1)[0]
+    trailing = path.endswith("/")
+    normal = posixpath.normpath(urllib.parse.unquote(path))
+    if normal != DATA_PREFIX and not normal.startswith(DATA_PREFIX + "/"):
+        return None
+    rest = normal[len(DATA_PREFIX) :] or "/"
+    if trailing and not rest.endswith("/"):
+        rest += "/"
+    return urllib.parse.quote(rest)
 
 
 class QuietHandler(SimpleHTTPRequestHandler):
@@ -51,7 +83,29 @@ class QuietHandler(SimpleHTTPRequestHandler):
     systemd that lands in the journal as an error stream, which makes a normal
     page load look like a fault. Routing it to stdout keeps `journalctl` honest
     about what is and is not a problem.
+
+    With `data`, requests under /data/ are served from that directory instead
+    of the root. Only the routing is new: the base class's translate_path,
+    which drops `..` and anything with a separator in it, still builds every
+    path, so nothing outside either directory can be named.
     """
+
+    def __init__(self, *args: Any, data: str | None = None, **kwargs: Any) -> None:
+        # Before super().__init__, which handles the request there and then.
+        self.data = data
+        super().__init__(*args, **kwargs)
+
+    def translate_path(self, path: str) -> str:
+        data = self.data
+        rest = None if data is None else data_path(path)
+        if data is None or rest is None:
+            return super().translate_path(path)
+        root = self.directory
+        self.directory = data
+        try:
+            return super().translate_path(rest)
+        finally:
+            self.directory = root
 
     # Sent on every response. The content is static and the board's clock is
     # often wrong (no battery-backed RTC), so a validator-based cache would
@@ -70,16 +124,24 @@ def make_server(
     root: str | Path = DEFAULT_ROOT,
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
+    data: str | Path | None = None,
 ) -> ThreadingHTTPServer:
     """Build a server rooted at `root`, bound but not yet serving.
 
     Binding here rather than inside serve() is what lets a test ask for port 0
     and then find out which port it actually got.
+
+    `data` need not exist yet. The unit always names the temperature log's
+    directory, and on a board without the logger, or before its first start,
+    /data/ is a 404 rather than a server that will not start.
     """
     path = Path(root).expanduser()
     if not path.is_dir():
         raise FileNotFoundError(f"{path} is not a directory - nothing to serve")
-    handler: Callable[..., SimpleHTTPRequestHandler] = partial(QuietHandler, directory=str(path))
+    extra = None if data is None else str(Path(data).expanduser())
+    handler: Callable[..., SimpleHTTPRequestHandler] = partial(
+        QuietHandler, directory=str(path), data=extra
+    )
     # Threading, so one slow client fetching a 120 MB installer does not block
     # the page load behind it. allow_reuse_address so a restart does not have
     # to wait out TIME_WAIT on a board you are iterating on.
@@ -133,10 +195,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", default=DEFAULT_ROOT, help="directory to serve")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="TCP port")
     parser.add_argument("--host", default=DEFAULT_HOST, help="address to bind")
+    parser.add_argument(
+        "--data", default=None, help=f"a second directory to serve, at {DATA_PREFIX}/"
+    )
     args = parser.parse_args(argv)
 
     try:
-        server = make_server(args.root, args.host, args.port)
+        server = make_server(args.root, args.host, args.port, data=args.data)
     except FileNotFoundError as exc:
         print(f"unoq-learn: {exc}", file=sys.stderr)
         return 1
@@ -148,6 +213,8 @@ def main(argv: list[str] | None = None) -> int:
 
     bound = server.server_address[1]
     print(f"serving {args.root} on port {bound}", flush=True)
+    if args.data is not None:
+        print(f"serving {args.data} at {DATA_PREFIX}/", flush=True)
     found = addresses(bound)
     for url in found:
         print(f"  {url}", flush=True)

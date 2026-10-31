@@ -36,6 +36,9 @@
 # ---------------------------------------
 #   - purge the Arduino packages (--with-purge; it is the one step you cannot
 #     casually undo, and the stock MCU firmware is not ours to redistribute)
+#   - keep the microcontroller's temperature log on Linux, with a graph on the
+#     web server (--with-temp-log). It takes the serial port over from the
+#     CPU-bars demo, so it is that demo's alternative and not an addition
 #   - arm the hardware watchdog (--with-watchdog) or tighten the EFI
 #     partition's permissions (--with-esp-lockdown). Each has been run on one
 #     board, through reboots, and that is all: one can reset the board and the
@@ -59,6 +62,7 @@ WITH_LEARNING=1
 WITH_WATCHDOG=0
 WITH_ESP_LOCKDOWN=0
 WITH_BOOT_COUNTING=0
+WITH_TEMP_LOG=0
 SKIP_MCU=0
 
 usage() {
@@ -74,6 +78,10 @@ Leave out something that is on by default:
 
 Add something that is not:
   --with-purge        also remove the Arduino Debian packages (55)
+  --with-temp-log     keep the microcontroller's temperature log on Linux
+                      instead of running the CPU-bars demo (66), with a graph
+                      at http://<board>:8080/data/. The two cannot share the
+                      serial port. A board that has it keeps it on a re-run.
   --with-watchdog     also arm the hardware watchdog (80): the board resets if
                       systemd stops for 30s. It came through one firmware build
                       under heavy swap without firing; it has never been made
@@ -113,6 +121,7 @@ for arg in "$@"; do
     --with-watchdog) WITH_WATCHDOG=1 ;;
     --with-esp-lockdown) WITH_ESP_LOCKDOWN=1 ;;
     --with-boot-counting) WITH_BOOT_COUNTING=1 ;;
+    --with-temp-log) WITH_TEMP_LOG=1 ;;
     # The watchdog and the EFI lockdown are in neither the default nor
     # --everything, on purpose. For those two the evidence is one board: each
     # ran there and came back from reboots, the watchdog through a firmware
@@ -144,6 +153,18 @@ done
 
 [ "$(id -u)" = 0 ] && fail "run this as yourself, not with sudo - it calls sudo where needed"
 
+# The temperature logger and the CPU-bars demo both hold /dev/ttyHS1, so a run
+# sets up one of them. A board that already logs goes on logging: re-running
+# this is the recovery path, and handing the port back to the demo is not a
+# recovery, it is a choice - provision/66-temp-log.sh says how to make it.
+TEMP_LOG_KEPT=0
+if [ "$WITH_TEMP_LOG" = 0 ] &&
+  [ "$(systemctl show unoq-temp-log.service -p UnitFileState --value 2>/dev/null)" = enabled ]; then
+  WITH_TEMP_LOG=1
+  TEMP_LOG_KEPT=1
+fi
+[ "$WITH_TEMP_LOG" = 1 ] && WITH_CPU_BARS=0
+
 # The user-level steps install cmake, ninja, west and uv into ~/.local/bin. On a
 # board that has been logged into since, the login shell put that on PATH. On a
 # first run it did not exist at login, so nothing did - and everything after
@@ -174,6 +195,11 @@ echo "  - install the Zephyr SDK and workspace into $HOME (~3 GB)"
   echo "  - REMOVE THE ARDUINO PACKAGES (--with-purge; hard to undo)"
 [ "$WITH_CPU_BARS" = 1 ] &&
   echo "  - run the CPU-bars demo from boot, which holds the serial port to the microcontroller (--no-cpu-bars to leave it out)"
+if [ "$TEMP_LOG_KEPT" = 1 ]; then
+  echo "  - keep the temperature logger this board already runs, instead of the CPU-bars demo"
+elif [ "$WITH_TEMP_LOG" = 1 ]; then
+  echo "  - log the microcontroller's temperature from boot INSTEAD OF the CPU-bars demo, which it stops and disables (--with-temp-log)"
+fi
 [ "$WITH_LEARNING" = 1 ] &&
   echo "  - serve the course on port 8080, with no password, to anything that can reach the board (--no-learning)"
 [ "$WITH_USB_GADGET" = 1 ] &&
@@ -410,12 +436,16 @@ if [ "$SKIP_MCU" = 0 ]; then
   # "activating" as well as "active": between attempts the unit sits in
   # activating (auto-restart) for RestartSec, and a run that began in that
   # gap would have left it retrying through the whole flash.
-  DEMO_PAUSED=0
-  case "$(systemctl show unoq-cpu-bars.service -p ActiveState --value 2>/dev/null)" in
-    active | activating)
-      sudo systemctl stop unoq-cpu-bars.service && DEMO_PAUSED=1
-      ;;
-  esac
+  # The temperature logger the same way: it holds the same port, and has the
+  # same twelve retries.
+  PAUSED=""
+  for unit in unoq-cpu-bars.service unoq-temp-log.service; do
+    case "$(systemctl show "$unit" -p ActiveState --value 2>/dev/null)" in
+      active | activating)
+        sudo systemctl stop "$unit" && PAUSED="$PAUSED $unit"
+        ;;
+    esac
+  done
   # flash-all.sh derives the workspace itself.
   if bash "$PROJECT/mcu/flash-all.sh" >"$FLASH_LOG" 2>&1; then
     did "MCUboot + application flashed"
@@ -431,13 +461,21 @@ if [ "$SKIP_MCU" = 0 ]; then
           $PROJECT/mcu/flash-all.sh"
     warn "the microcontroller may be partly written. Recover with: $PROJECT/mcu/flash-all.sh"
   fi
-  if [ "$DEMO_PAUSED" = 1 ] && [ "$WITH_CPU_BARS" = 0 ]; then
+  for unit in $PAUSED; do
+    # Started again by its own step, 65 or 66, when this run includes it.
+    # Started here when it does not: leaving stopped a service this run did
+    # not install would be a change nobody asked for. 66 takes the port from
+    # the demo, so a run with it leaves the demo stopped.
+    case "$unit" in
+      unoq-cpu-bars.service) [ "$WITH_CPU_BARS" = 1 ] || [ "$WITH_TEMP_LOG" = 1 ] && continue ;;
+      unoq-temp-log.service) [ "$WITH_TEMP_LOG" = 1 ] && continue ;;
+    esac
     # The count of recent starts first, for the same reason step 65 clears it:
-    # a demo stopped on its last permitted attempt would be refused this start.
-    sudo systemctl reset-failed unoq-cpu-bars.service 2>/dev/null || true
-    sudo systemctl start unoq-cpu-bars.service ||
-      warn "could not start unoq-cpu-bars again - check: journalctl -u unoq-cpu-bars -n 20"
-  fi
+    # a unit stopped on its last permitted attempt would be refused this start.
+    sudo systemctl reset-failed "$unit" 2>/dev/null || true
+    sudo systemctl start "$unit" ||
+      warn "could not start $unit again - check: journalctl -u ${unit%.service} -n 20"
+  done
 fi
 
 # --- optional extras -------------------------------------------------------
@@ -456,6 +494,11 @@ if [ "$WITH_LEARNING" = 1 ] || [ "$WITH_USB_GADGET" = 1 ]; then
 fi
 [ "$WITH_LEARNING" = 1 ] &&
   run_step "75  learning content web server (root)" sudo "$PROJECT/provision/75-learning-web.sh"
+# After 75, though numbered before it: 66 checks that the web server it finds
+# serves the graph, and on a board being brought up to date that is the server
+# 75 has just installed, not the one from before.
+[ "$WITH_TEMP_LOG" = 1 ] &&
+  run_step "66  temperature log, instead of the CPU bars (root)" sudo "$PROJECT/provision/66-temp-log.sh"
 # The two that are asked for by name only (see the argument parsing). Down
 # here, after the firmware build and the image build, so the watchdog is never
 # armed for the first time with the longest jobs of the run still ahead of it,
@@ -485,8 +528,13 @@ cat <<EOF
   hpy -c "from unoq import MCU; print(MCU().status())"   # ask the MCU how it is
 
 EOF
-[ "$WITH_CPU_BARS" = 0 ] &&
+if [ "$WITH_TEMP_LOG" = 1 ]; then
+  echo "  The CPU-bars demo again:  sudo systemctl disable --now unoq-temp-log && sudo bash provision/65-cpu-bars.sh"
+elif [ "$WITH_CPU_BARS" = 0 ]; then
   echo "  LED matrix demo at boot:  sudo bash provision/65-cpu-bars.sh"
+fi
+[ "$WITH_TEMP_LOG" = 0 ] &&
+  echo "  Log the MCU's temperature: sudo bash provision/66-temp-log.sh   (instead of the demo)"
 [ "$WITH_PURGE" = 0 ] &&
   echo "  Reclaim the Arduino disk: sudo bash provision/55-purge-arduino.sh"
 [ "$WITH_USB_GADGET" = 0 ] &&

@@ -183,7 +183,10 @@ revert() {
   with_venv
   run "$STEP"
   [ "$status" -eq 0 ]
-  grep -qx "ExecStart=$PROJECT/.venv/bin/unoq-learn --root $MOUNT --port 8080" "$UNIT"
+  # /data/ is the temperature log (66-temp-log.sh), named whether or not
+  # that is installed, at the path its own unit writes to.
+  grep -qx "ExecStart=$PROJECT/.venv/bin/unoq-learn --root $MOUNT --port 8080 --data /var/lib/unoq/templog" "$UNIT"
+  grep -q -- "--dir /var/lib/unoq/templog " "$PROJECT/python/unoq-temp-log.service"
   grep -qx "RequiresMountsFor=$MOUNT" "$UNIT"
   grep -qx "User=$UNOQ_USER" "$UNIT"
   ran "systemctl enable --now $U"

@@ -1,0 +1,45 @@
+# Copyright (c) 2026 Jim Wyatt
+# SPDX-License-Identifier: MIT
+[Unit]
+Description=Arduino UNO Q temperature log: the MCU's samples, kept on Linux
+Documentation=file:/home/arduino/two-computers-one-board/docs/reference/mpu.md
+
+# The serial port to the MCU has one owner at a time: MCU() opens it with an
+# exclusive lock. The CPU-bars demo is the other program that holds it from
+# boot, so the two are alternatives. Starting this one stops that one, and
+# the other way round. provision/66-temp-log.sh also disables the demo, since
+# two enabled units that conflict leave which one runs at boot to chance.
+Conflicts=unoq-cpu-bars.service
+
+# /dev/ttyHS1 reads nothing until link-up.sh has driven the UART enable GPIO;
+# see unoq-cpu-bars.service, whose reasoning this copies.
+Requires=unoq-link.service
+After=unoq-link.service
+# The same limit as the CPU-bars demo, for the same reasons: twelve starts in
+# five minutes is about two and a half minutes of an MCU that does not answer,
+# and then the unit is failed and LED 2 says so. A firmware without the log
+# fails every start the same way, and the journal says how to update it.
+# Recover, once the MCU is answering again:
+#   sudo systemctl reset-failed unoq-temp-log && sudo systemctl start unoq-temp-log
+StartLimitIntervalSec=300
+StartLimitBurst=12
+
+[Service]
+Type=simple
+User=arduino
+Group=arduino
+# The directory is created by provision/66-temp-log.sh, owned by the user
+# above. The MCU keeps ten minutes, so a pull every ten seconds loses nothing.
+ExecStart=/home/arduino/two-computers-one-board/.venv/bin/unoq-temp-log --dir /var/lib/unoq/templog --interval 10
+
+# The MCU may still be coming up at boot; the next attempt finds it.
+Restart=on-failure
+RestartSec=5
+
+# SIGTERM reaches Python as a plain kill. SIGINT takes the Ctrl-C path, which
+# closes the port; every pull is already fsynced either way.
+KillSignal=SIGINT
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -132,6 +132,21 @@ matches it.
 | `UNOQ_SHARE_MOUNT` | `/srv/unoq-share` | `provision/75`, `share/build-image.sh`, `share/fetch-vscode.sh`, and `install_unit`, which writes it into `unoq-learn.service` | Where the image is mounted for the web server. |
 | `UNOQ_SHARE` | `/var/lib/unoq-share` | `share/build-image.sh` | The staging directory the image is built from. |
 
+## The temperature log
+
+Read by `unoq-temp-log` ([`python/unoq/templog.py`](../../python/unoq/templog.py)),
+the daemon `--with-temp-log` installs. Its unit passes `--dir` and `--interval`,
+which win over these, so they are for running it by hand:
+`UNOQ_TEMPLOG_INTERVAL=2 hpy -m unoq.templog --dir /tmp/tl`. To change what the
+service does, change its `ExecStart` in
+[`python/unoq-temp-log.service`](../../python/unoq-temp-log.service), and for
+the directory the `--data` of `unoq-learn.service` with it.
+
+| Variable | Default | Read by | What it does |
+|---|---|---|---|
+| `UNOQ_TEMPLOG_DIR` | `/var/lib/unoq/templog` | `unoq-temp-log` | Where `temps.csv` and the graph page beside it are written. |
+| `UNOQ_TEMPLOG_INTERVAL` | `10` | `unoq-temp-log` | Seconds between pulls of the MCU's log. It holds ten minutes, so anything well under 600 loses nothing. |
+
 ## Provisioning switches
 
 Set on the command line, for one run of `bootstrap.sh` or of the script named.
@@ -201,7 +216,7 @@ and setting one will mostly make a script look in the wrong place.
 
 | Variable | Default | What it stands in for |
 |---|---|---|
-| `UNOQ_STATE_DIR` | `/var/lib/unoq` | Where the bind guard's counter and the last DHCP lease are kept. |
+| `UNOQ_STATE_DIR` | `/var/lib/unoq` | Where the bind guard's counter and the last DHCP lease are kept, and where `provision/66-temp-log.sh` makes `templog/`. |
 | `UNOQ_USB_DHCP_STATE` | `/run/unoq-usb-dhcp.state` | The current lease, as `usb/status.sh` reports it. |
 | `UNOQ_USB_PROFILE_STATE` | `/run/unoq-usb-profile.state` | The address claimed when no lease was offered. |
 | `UNOQ_RESOLV_CONF` | `/etc/resolv.conf` | The resolver configuration `usb-dhcp.sh` edits. |

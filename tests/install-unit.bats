@@ -581,7 +581,7 @@ unoq-usb-bind.service" ]
     fi
   done
   [ "$root_units" = 7 ]
-  [ "$user_units" = 2 ]
+  [ "$user_units" = 3 ]
 }
 
 @test "the udev rule names no script, so it has no path to rewrite" {

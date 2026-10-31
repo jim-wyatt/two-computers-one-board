@@ -225,16 +225,18 @@ See [mcu.md](mcu.md#update-over-serial-no-swd).
 
 ## What runs at boot
 
-Eight systemd units. A plain `./bootstrap.sh` installs all of them; `--no-cpu-bars`,
+Nine systemd units. A plain `./bootstrap.sh` installs eight of them; `--no-cpu-bars`,
 `--no-learning` and `--no-usb-gadget` (or `--minimal`, for all three) leave out
-the ones named.
+the ones named. `--with-temp-log` installs the ninth, `unoq-temp-log`, in place
+of `unoq-cpu-bars`: both hold the serial port.
 
 | Unit | What it does | Installed by | Runs as | Kind |
 |---|---|---|---|---|
 | `unoq-link` | Drives BOOT0 low and the serial-link enable high, so the MCU runs its firmware and `/dev/ttyHS1` carries data | always (`provision/45-mcu-link.sh`) | root | one-shot, stays active |
 | `unoq-leds` | Drives LED 1 (connectivity) and LED 2 (does anything need a human) | always (`provision/50-status-leds.sh`) | root | long-running, always restarted |
 | `unoq-cpu-bars` | Draws CPU load on the LED matrix. Holds `/dev/ttyHS1` | default; not with `--no-cpu-bars` (`provision/65-cpu-bars.sh`) | you | long-running |
-| `unoq-learn` | Serves the documentation and installers over HTTP on port 8080 | default; not with `--no-learning` (`provision/75-learning-web.sh`) | you | long-running |
+| `unoq-temp-log` | Keeps the MCU's temperature log in `/var/lib/unoq/templog`. Holds `/dev/ttyHS1`, and conflicts with `unoq-cpu-bars` | with `--with-temp-log`, instead of `unoq-cpu-bars` (`provision/66-temp-log.sh`) | you | long-running |
+| `unoq-learn` | Serves the documentation and installers over HTTP on port 8080, and the temperature log at `/data/` | default; not with `--no-learning` (`provision/75-learning-web.sh`) | you | long-running |
 | `unoq-usb-gadget` | Builds the USB gadget definition and prepares the `br-usb` bridge. Never binds | default; not with `--no-usb-gadget` (`provision/95-usb-gadget.sh`) | root | one-shot, stays active |
 | `unoq-usb-bind` | Asks the bind guard, then binds the gadget and brings the USB network up. Not enabled at boot: udev starts it when a USB device controller or the gadget's network interface appears | default; not with `--no-usb-gadget` | root | one-shot, re-run on every plug-in |
 | `unoq-usb-confirm` | Waits 120 seconds, then clears the bind guard's counter: this boot survived | default; not with `--no-usb-gadget` | root | one-shot |
@@ -247,7 +249,7 @@ The six that run as root do not run the scripts in the checkout. They run
 root-owned copies in `/usr/local/lib/unoq/`, which the step that installs each
 unit makes first. After editing one of those scripts, run the step again for
 the board to use it: see [What root runs](provisioning.md#what-root-runs).
-The two that run as you run from the Python environment in the checkout.
+The three that run as you run from the Python environment in the checkout.
 
 The four USB units are explained in
 [usb.md](usb.md#you-cannot-switch-the-role-from-software) and
@@ -493,6 +495,9 @@ timer and releases the pins.
 ```
 app status                      uptime_ms, flip, sweeps
 app temp                        temp_mc=<n>: the MCU's die temperature, millidegrees C
+app temp log [since]            the temperature log after seq `since` (all of it without),
+                                at most 32 samples, then `end head=<n> more=<n>`
+app temp log stat               head=, count=, size=, dropped=, period_ms=
 app bars <pct> [pct ...]        1..7 values, 0..100 each
 app matrix px <row> <col> <lvl> light one LED; row 0..7, col 0..12, lvl 0..7
 app matrix flip                 rotate 180 degrees, persisted
@@ -546,3 +551,95 @@ directly instead of calling `gpio_pin_configure_dt()`: pins must change
   maintenance notes in [Working on this project](development.md#maintenance).
 - Reading `/dev/ttyHS1` returns zero bytes if GPIO line 70 is not driven high.
   `MCU()` calls `link_up()` for you; raw `pyserial` does not.
+
+---
+
+## Temperature log
+
+The MCU samples its die temperature once a second on its own timer and keeps
+the last ten minutes in a ring (`mcu/app/src/templog.c`). Each sample carries a
+sequence number from 1 and the MCU's uptime when it was taken. `unoq-temp-log`
+is the Linux half: every ten seconds it collects what is new and appends it to
+a CSV file, with the host's own thermal zones beside it. The course chapter
+[Two clocks, one record](../learn/two-clocks-one-record.md) walks through why
+it is built this way.
+
+```bash
+sudo bash ~/two-computers-one-board/provision/66-temp-log.sh   # install + enable
+journalctl -u unoq-temp-log -f
+```
+
+Then open `http://<board>:8080/data/` for the graph, if the web server is
+installed (`75-learning-web.sh`; re-run it on a board set up before the
+logger existed, so that it serves `/data/`).
+
+> **It replaces the CPU-bars demo.** Both hold `/dev/ttyHS1`, so the units say
+> `Conflicts=` on each other and the step disables the demo. To go back:
+>
+> ```bash
+> sudo systemctl disable --now unoq-temp-log
+> sudo bash ~/two-computers-one-board/provision/65-cpu-bars.sh
+> ```
+>
+> A plain `./bootstrap.sh` re-run on a board with the logger keeps the logger.
+
+By hand, with the service stopped:
+
+```bash
+hpy -m unoq.templog --dir /tmp/tl --interval 2 --count 5
+```
+
+```python
+from unoq.mcu import MCU
+
+with MCU() as mcu:
+    print(mcu.temp_log_stat())        # TempLogStat(head=..., count=..., ...)
+    print(mcu.temp_log()[-3:])        # the newest three TempSample(seq, ms, temp_c, err)
+```
+
+### The file
+
+`/var/lib/unoq/templog/temps.csv`, one row per sample:
+
+| Column | What it is |
+|---|---|
+| `time` | Linux wall-clock seconds, worked out from the MCU's clock: the time of the pull, minus how much older than the newest sample of that pull this one is |
+| `seq` | The MCU's sequence number. Starts again at 1 when the MCU restarts |
+| `mcu_ms` | The MCU's uptime when it took the sample |
+| `mcu_temp_c` | The die temperature, °C. Empty when the read failed |
+| `mcu_err` | The negative errno of a failed read; empty otherwise |
+| `note` | On a row of its own: `gap <first>-<last>` for samples the MCU overwrote before they were read, or `mcu-restart` |
+| `linux_<zone>` | One per thermal zone, as `unoq.thermal.read_temps()` names them. Filled on the newest row of each pull only, because they were read once, then |
+
+The columns are fixed when the file is created; a zone the kernel adds later
+is not added to an existing file. The page beside it, `index.html`, is written
+by the daemon when it starts and draws the file with no outside assets.
+
+### Carrying on, and noticing
+
+On start it reads the end of the file, finds the last sample, and asks the MCU
+for everything after it. The MCU keeps ten minutes, so a daemon stopped for less
+than that loses nothing; stopped for longer, the samples it missed become a
+`gap` row rather than a silent jump.
+
+Each pull asks again for the newest sample it already has, and checks that the
+MCU still holds the same one under that number. If not, or if the MCU's newest
+number is below it, the MCU has restarted: it writes `mcu-restart` and starts
+from the oldest sample the new boot holds. The one case it cannot tell is an
+MCU that restarted while the daemon was stopped for longer than the ring holds:
+that is written as a gap, and the times are still right, because every time is
+worked out afresh from the pull.
+
+### Cost
+
+On the MCU, about 10.5 KB of RAM, always: the log runs whether or not anything
+reads it. On Linux, one Python process, a pull of a few hundred bytes every ten
+seconds, and about 4 MB of disk a day. The file is never trimmed; delete it, or
+its older part, whenever you like.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `UNOQ_TEMPLOG_DIR` | `/var/lib/unoq/templog` | Where the daemon writes. `--dir` overrides it |
+| `UNOQ_TEMPLOG_INTERVAL` | `10` | Seconds between pulls. `--interval` overrides it |
+
+The unit passes both as arguments, so these are for running it by hand.

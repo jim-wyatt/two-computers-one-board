@@ -1,0 +1,279 @@
+<!doctype html>
+<!--
+Copyright (c) 2026 Jim Wyatt
+SPDX-License-Identifier: MIT
+
+Written into the log directory by unoq-temp-log (python/unoq/templog.py) and
+served by unoq-learn at /data/. Self-contained on purpose: the board is often
+on a cable to a laptop with no internet, and a page that needs a CDN is blank
+exactly then. It reads temps.csv next to it, and nothing else.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Temperature log</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface: #fcfcfb;
+  --text: #0b0b0b;
+  --text-2: #52514e;
+  --muted: #8a8984;
+  --grid: #e6e5e0;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface: #1a1a19; --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e86; --grid: #33332f;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #1a1a19; --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e86; --grid: #33332f;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+}
+body { margin: 0; background: var(--surface); color: var(--text);
+  font: 15px/1.45 system-ui, sans-serif; }
+main { max-width: 960px; margin: 0 auto; padding: 16px; }
+h1 { font-size: 1.3rem; margin: 0 0 4px; }
+p { margin: 4px 0 12px; color: var(--text-2); }
+.controls { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 8px 0; }
+.controls button { font: inherit; padding: 3px 10px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--grid); background: transparent; color: var(--text); }
+.controls button[aria-pressed="true"] { border-color: var(--text-2); font-weight: 600; }
+.legend label { display: inline-flex; align-items: center; gap: 5px; margin-right: 12px;
+  color: var(--text-2); white-space: nowrap; }
+.swatch { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+#chart { position: relative; }
+svg { width: 100%; height: auto; display: block; touch-action: none; }
+svg text { fill: var(--text-2); font-size: 11px; }
+.tip { position: absolute; pointer-events: none; background: var(--surface); color: var(--text);
+  border: 1px solid var(--grid); border-radius: 6px; padding: 6px 8px; font-size: 12px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 15%); display: none; white-space: nowrap; }
+table { border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+td, th { padding: 2px 12px 2px 0; text-align: left; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+#status { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Temperature log</h1>
+<p>The microcontroller's die temperature, sampled once a second on its own clock,
+next to the Linux side's thermal zones. Dashed lines are gaps (samples lost before
+Linux read them) and restarts of the microcontroller.
+The raw data is <a href="temps.csv">temps.csv</a>.</p>
+<div class="controls" id="windows" role="group" aria-label="Time window"></div>
+<div class="controls legend" id="legend"></div>
+<div id="chart"><svg id="svg" viewBox="0 0 960 360" role="img"
+  aria-label="Temperatures over time"></svg><div class="tip" id="tip"></div></div>
+<div id="status">Loading...</div>
+<table id="latest" aria-label="Latest readings"></table>
+</main>
+<script>
+"use strict";
+const WINDOWS = [["10 min", 600], ["1 h", 3600], ["6 h", 21600], ["24 h", 86400], ["all", 0]];
+const W = 960, H = 360, M = { l: 44, r: 12, t: 12, b: 26 };
+const MAX_POINTS = 1500;
+let windowSec = 3600, data = null;
+const shown = new Map();  // column -> visible
+
+function parse(text) {
+  const lines = text.split("\n").filter((l) => l.length);
+  if (!lines.length) return null;
+  const head = lines[0].split(",");
+  const col = (n) => head.indexOf(n);
+  const iT = col("time"), iC = col("mcu_temp_c"), iN = col("note"), iS = col("seq");
+  const zones = head.map((h, i) => [h, i]).filter(([h]) => h.startsWith("linux_"));
+  const series = [{ name: "mcu_temp_c", label: "MCU die", pts: [] }]
+    .concat(zones.map(([h]) => ({ name: h, label: h.slice(6), pts: [] })));
+  const idx = [iC].concat(zones.map(([, i]) => i));
+  const notes = [];
+  let rows = 0, lastSeq = "";
+  for (let r = 1; r < lines.length; r++) {
+    const f = lines[r].split(",");
+    const t = parseFloat(f[iT]);
+    if (!isFinite(t)) continue;  // a line cut short by a power cut
+    if (f[iN]) { notes.push({ t, note: f[iN] }); series.forEach((s) => s.pts.push(null)); continue; }
+    rows++;
+    lastSeq = f[iS];
+    idx.forEach((i, k) => {
+      const v = parseFloat(f[i]);
+      if (isFinite(v)) series[k].pts.push({ t, v });
+    });
+  }
+  return { series, notes, rows, lastSeq };
+}
+
+function color(k) { return `var(--s${(k % 8) + 1})`; }
+
+function legend() {
+  const el = document.getElementById("legend");
+  el.textContent = "";
+  data.series.forEach((s, k) => {
+    // The MCU and the CPU clusters by default; every zone is a click away.
+    if (!shown.has(s.name)) shown.set(s.name, k === 0 || /cpu/.test(s.name));
+    const lab = document.createElement("label");
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = shown.get(s.name);
+    box.onchange = () => { shown.set(s.name, box.checked); draw(); };
+    const sw = document.createElement("span");
+    sw.className = "swatch";
+    sw.style.background = color(k);
+    lab.append(box, sw, s.label);
+    el.append(lab);
+  });
+}
+
+function svgEl(name, attrs) {
+  const e = document.createElementNS("http://www.w3.org/2000/svg", name);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  return e;
+}
+
+function fmtTime(t, span) {
+  const d = new Date(t * 1000);
+  const hm = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return span > 86400 ? `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${hm}` : hm;
+}
+
+function draw() {
+  const svg = document.getElementById("svg");
+  svg.textContent = "";
+  const all = data.series.flatMap((s) => s.pts.filter(Boolean));
+  if (!all.length) { status("No samples yet."); return; }
+  const tMax = Math.max(...all.map((p) => p.t));
+  const tMin = windowSec ? tMax - windowSec : Math.min(...all.map((p) => p.t));
+  const vis = data.series.map((s, k) => ({ s, k })).filter(({ s }) => shown.get(s.name));
+  const inWin = vis.flatMap(({ s }) => s.pts.filter((p) => p && p.t >= tMin));
+  if (!inWin.length) { status("Nothing in this window."); return; }
+  let vMin = Math.min(...inWin.map((p) => p.v)), vMax = Math.max(...inWin.map((p) => p.v));
+  vMin = Math.floor(vMin - 1); vMax = Math.ceil(vMax + 1);
+  const x = (t) => M.l + ((t - tMin) / Math.max(1, tMax - tMin)) * (W - M.l - M.r);
+  const y = (v) => H - M.b - ((v - vMin) / (vMax - vMin)) * (H - M.t - M.b);
+  const step = Math.max(1, Math.ceil((vMax - vMin) / 6));
+  for (let v = Math.ceil(vMin / step) * step; v <= vMax; v += step) {
+    svg.append(svgEl("line", { x1: M.l, x2: W - M.r, y1: y(v), y2: y(v), stroke: "var(--grid)" }));
+    const lab = svgEl("text", { x: M.l - 6, y: y(v) + 4, "text-anchor": "end" });
+    lab.textContent = `${v}°C`;
+    svg.append(lab);
+  }
+  for (let i = 0; i <= 4; i++) {
+    const t = tMin + ((tMax - tMin) * i) / 4;
+    const lab = svgEl("text", { x: x(t), y: H - 8, "text-anchor": i === 0 ? "start" : i === 4 ? "end" : "middle" });
+    lab.textContent = fmtTime(t, tMax - tMin);
+    svg.append(lab);
+  }
+  for (const n of data.notes.filter((n) => n.t >= tMin)) {
+    const ln = svgEl("line", { x1: x(n.t), x2: x(n.t), y1: M.t, y2: H - M.b,
+      stroke: "var(--muted)", "stroke-dasharray": "4 3" });
+    const title = svgEl("title", {});
+    title.textContent = n.note;
+    ln.append(title);
+    svg.append(ln);
+  }
+  for (const { s, k } of vis) {
+    const pts = s.pts.filter((p) => p === null || p.t >= tMin);
+    const stride = Math.max(1, Math.ceil(pts.length / MAX_POINTS));
+    let d = "", pen = false;
+    pts.forEach((p, i) => {
+      // A note is a break in the line: nothing was measured across it.
+      if (p === null) { pen = false; return; }
+      if (i % stride && i !== pts.length - 1) return;
+      d += `${pen ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`;
+      pen = true;
+    });
+    svg.append(svgEl("path", { d, fill: "none", stroke: color(k), "stroke-width": 2,
+      "stroke-linejoin": "round" }));
+  }
+  const cross = svgEl("line", { y1: M.t, y2: H - M.b, stroke: "var(--text-2)", visibility: "hidden" });
+  svg.append(cross);
+  svg.onpointermove = (ev) => hover(ev, svg, cross, vis, x, tMin, tMax);
+  svg.onpointerleave = () => { cross.setAttribute("visibility", "hidden"); tip.style.display = "none"; };
+  status(`${data.rows} samples, ${data.notes.length} notes. Newest seq ${data.lastSeq}, ` +
+    `${fmtTime(tMax, 0)}. Refreshes every 10 s.`);
+}
+
+const tip = document.getElementById("tip");
+function hover(ev, svg, cross, vis, x, tMin, tMax) {
+  const box = svg.getBoundingClientRect();
+  const sx = ((ev.clientX - box.left) / box.width) * W;
+  const t = tMin + ((sx - M.l) / (W - M.l - M.r)) * (tMax - tMin);
+  if (t < tMin || t > tMax) return;
+  const rows = [];
+  for (const { s } of vis) {
+    let best = null;
+    for (const p of s.pts) if (p && (!best || Math.abs(p.t - t) < Math.abs(best.t - t))) best = p;
+    if (best && Math.abs(best.t - t) < Math.max(30, (tMax - tMin) / 50)) rows.push(`${s.label}: ${best.v.toFixed(1)}°C`);
+  }
+  cross.setAttribute("x1", sx); cross.setAttribute("x2", sx);
+  cross.setAttribute("visibility", "visible");
+  tip.textContent = "";
+  for (const line of [new Date(t * 1000).toLocaleString()].concat(rows)) {
+    const div = document.createElement("div");
+    div.textContent = line;
+    tip.append(div);
+  }
+  tip.style.display = "block";
+  const px = ev.clientX - box.left;
+  tip.style.left = `${Math.min(px + 12, box.width - tip.offsetWidth)}px`;
+  tip.style.top = "8px";
+}
+
+function latest() {
+  const t = document.getElementById("latest");
+  t.textContent = "";
+  for (const s of data.series) {
+    const p = s.pts.filter(Boolean).pop();
+    if (!p) continue;
+    const tr = t.insertRow();
+    tr.insertCell().textContent = s.label;
+    const v = tr.insertCell();
+    v.className = "num";
+    v.textContent = `${p.v.toFixed(1)}°C`;
+    tr.insertCell().textContent = new Date(p.t * 1000).toLocaleString();
+  }
+}
+
+function status(text) { document.getElementById("status").textContent = text; }
+
+function buttons() {
+  const el = document.getElementById("windows");
+  for (const [label, sec] of WINDOWS) {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.setAttribute("aria-pressed", String(sec === windowSec));
+    b.onclick = () => {
+      windowSec = sec;
+      for (const o of el.children) o.setAttribute("aria-pressed", String(o === b));
+      if (data) draw();
+    };
+    el.append(b);
+  }
+}
+
+async function load() {
+  try {
+    const r = await fetch("temps.csv", { cache: "no-store" });
+    if (!r.ok) throw new Error(`temps.csv: HTTP ${r.status}`);
+    data = parse(await r.text());
+    if (!data) { status("temps.csv is empty."); return; }
+    legend(); draw(); latest();
+  } catch (e) {
+    status(`Could not read the log: ${e.message}`);
+  }
+}
+
+buttons();
+load();
+setInterval(load, 10000);
+</script>
+</body>
+</html>
