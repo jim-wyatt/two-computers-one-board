@@ -95,6 +95,7 @@ without touching `/var/lib`.
 | [`cpu-bars.bats`](cpu-bars.bats) | The LED-matrix demo, which usually gets installed right after a flash. Installed before its venv, it fails at every boot; left with the start count that made it give up, it stays dark after the flash that fixed the reason. |
 | [`purge-arduino.bats`](purge-arduino.bats) | The one step whose damage cannot be undone. Without `/opt/openocd` or a copy of the stock MCU firmware it must refuse before removing anything, because neither comes back from apt. |
 | [`python-venv.bats`](python-venv.bats) | The venv everything Python on the board runs from. A skip that looks at too little leaves it broken and reading `ok` for good, which is what a venv missing two of its five libraries did; a run that dies half way must not record that it was built to the lock. |
+| [`learning-web.bats`](learning-web.bats) | The one line this step adds to `/etc/fstab`, which the board boots from: `nofail`, the partition's offset, never twice, and the rest of the file untouched. Also the check that once said `ok HTTP 000` with nothing listening. |
 
 The first two were written first, because both scripts had already failed:
 
