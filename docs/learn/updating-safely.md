@@ -64,7 +64,9 @@ including the reset caused by the thing crashing.
    bootloader**, not your program.
 2. It looks at the slots and their flags: is there an update staged? Is the
    running image confirmed?
-3. If an update is pending, it swaps the slots.
+3. If an update is pending, it swaps the slots. A swap cut short by a reset
+   or a power cut is not lost: the next boot finds where it stopped and
+   finishes it.
 4. It checks the signature of what it is about to run.
 5. It jumps into your application.
 

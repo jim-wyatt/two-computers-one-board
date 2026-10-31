@@ -132,6 +132,150 @@ commands into the middle of an upload. If `unoq-cpu-bars` or another program
 has the port, the call fails at once with `PortBusy` and names that program;
 stop it first.
 
+## Why swap-using-offset, not direct-xip
+
+MCUboot can apply an update in several ways. This project uses
+**swap-using-offset**: `CONFIG_BOOT_SWAP_USING_OFFSET=y` in the bootloader and
+`CONFIG_MCUBOOT_BOOTLOADER_MODE_SWAP_USING_OFFSET=y` in the app, which is what
+Zephyr picks by default. The alternative most often suggested for a part with
+this much flash is **direct-xip**. This section is why the project stays where
+it is. The sources are MCUboot's
+[design notes](https://docs.mcuboot.com/design.html) and the `BOOT_DIRECT_XIP`
+entries in its `boot/zephyr/Kconfig`, both in the workspace under
+`~/zephyrproject/bootloader/mcuboot/`.
+
+### The flash, as the board file lays it out
+
+| Partition | Offset | Size |
+|---|---|---|
+| `mcuboot` | `0x000000` | 64 KiB |
+| `image-0` (slot 0) | `0x010000` | 416 KiB |
+| `image-1` (slot 1) | `0x078000` | 416 KiB |
+| `storage` (NVS) | `0x0e0000` | 128 KiB |
+
+That is Zephyr's `boards/arduino/uno_q/arduino_uno_q.dts`, and this project
+does not change it. The four partitions fill exactly the first megabyte, which
+the file's own comment calls Bank 1, in 8 KiB sectors. The second megabyte is
+not used at all.
+
+So there is room for a much bigger application. The firmware is about 89 KiB,
+and the ceiling is the slot, a little under 416 KiB once MCUboot's trailer is
+taken off, not the chip's 2 MiB.
+
+The part being dual-bank does not come into this choice. Both slots are in the
+same bank, and neither mode uses the STM32's hardware bank swap: MCUboot copies
+or selects slots by itself, and works the same way on a single-bank part.
+
+### What the two modes do
+
+**Swap-using-offset.** The update is written into slot 1, starting one sector
+in. At the reset after `fota.test()`, MCUboot checks the new image's signature
+and then exchanges the two slots a sector at a time: slot 0's sector N goes to
+slot 1's sector N, then slot 1's sector N+1 comes down into slot 0's sector N.
+Only the sectors the images use are moved. The application always runs from
+slot 0, so one build fits every update. A revert is the same swap the other
+way.
+
+The issue that asked for this evaluation guessed the mode was swap-using-move,
+and that move needs a scratch area. Neither is so. Move works without scratch
+too, by keeping one spare sector, and offset is the newer mode MCUboot
+recommends in its place: one erase cycle per slot per swap, where move does
+two on the primary.
+
+**Direct-xip.** Nothing is copied. Each slot holds a complete image linked to
+run from that slot's address, and at boot MCUboot runs the valid image with the
+higher version from wherever it is. An update goes into whichever slot is not
+running now. Plain direct-xip has no probation: the newer image simply wins.
+`BOOT_DIRECT_XIP_REVERT` adds one. An image marked for test that is not
+confirmed by the next reset is erased, and the other slot boots again.
+
+### What direct-xip would buy
+
+- **No copy at the reset.** For this image the swap moves a dozen or so 8 KiB
+  sectors each way. It has not been timed on its own here, but it fits inside
+  the 12 to 14 seconds the [Updating safely](../learn/updating-safely.md)
+  walkthrough waits after `fota.reset()`, which also covers the boot and the
+  link coming back. The upload before it runs for minutes over the UART, and
+  direct-xip does not shorten that. An update would end a few seconds sooner;
+  it would not become near-instant.
+- **Less flash wear.** Each swap erases the used sectors of both slots once
+  more. That matters for a device updated very often for years, not for one
+  updated by hand.
+- **A simpler bootloader path.** MCUboot's own design notes say so: direct-xip
+  is "substantially simpler" than swapping, "especially since the bootloader
+  must work properly even when it is reset during the middle of an image swap".
+
+### What it would cost
+
+- **Two builds per update.** An image runs only from the slot it was linked
+  for, so every release is built twice, once for each slot, and each is signed
+  for its slot (`imgtool --pad` for the revert trailer, and `--rom-fixed` so the
+  device can reject the wrong one). `zbuild.sh` builds one image today. Zephyr's
+  sysbuild can generate the second build, but only as an experimental option,
+  and this project builds MCUboot on its own in `flash-all.sh`, not through
+  sysbuild. CI would build and check both as well.
+- **`fota` choosing the image.** The device already uploads to whichever slot
+  is not running. The host would have to read the slot table first and send
+  the build linked for that slot. Send the other one and it does not run; with
+  `CONFIG_MCUMGR_GRP_IMG_REJECT_DIRECT_XIP_MISMATCHED_SLOT` the upload is at
+  least refused instead.
+- **The probation, rebuilt.** Without `BOOT_DIRECT_XIP_REVERT` there is no test
+  and no confirm: Zephyr's image manager drops the SMP command that sets them,
+  so `fota.test()` and `fota.confirm()` would stop working. With it, a failed
+  image is erased rather than swapped back. It cannot be marked again by hash,
+  as the "Or keep it" step of the chapter does, and has to be uploaded again.
+- **Downgrade prevention, configured again.**
+  `CONFIG_MCUBOOT_DOWNGRADE_PREVENTION` depends on `!BOOT_DIRECT_XIP`, so
+  `mcu/mcuboot.conf` would have to drop it. Direct-xip gets much the same
+  result its own way, by never choosing the lower version, but `fota.test()`'s
+  explanation and the section above would need rewriting to say so.
+- **The chapter rewritten.** "Slot 0 holds what is running" stops being true:
+  the running image moves between the slots with each update. Every printed
+  slot table, the state diagram, and "it swaps the slots" in
+  [Updating safely](../learn/updating-safely.md) would change.
+- **FOTA re-verified on hardware.** The revert has been exercised for real in
+  this mode: reset without confirming, and the board came back on the old
+  image. A new mode starts that proof from nothing: update, revert, confirm,
+  refuse a downgrade, and recover with `flash-all.sh`, all on a board.
+
+### Power lost in the middle of a swap
+
+The issue's case for direct-xip was that this board is powered by the same
+cable it is updated over, so power can fail during the copy, and direct-xip
+has no copy to interrupt.
+
+The board is powered by its USB-C cable, and the update comes over the UART
+from the board's own Linux side. Pull that cable during a swap and the MCU
+stops partway through. That does not brick it. MCUboot records each sector's
+progress in the slot trailers as it goes, and the next boot reads that record
+and finishes the swap before it boots anything ("Reset recovery" in the design
+notes). Being cut off mid-swap is a case the swap mode is written for, not a
+failure it leaves to luck. What direct-xip removes is that code path, not a
+way of losing the board.
+
+A cut during the upload, which takes far longer than the swap, is the same in
+both modes: the half-written slot fails its signature check and is ignored, and
+the running image was never touched.
+
+One thing here is not verified on this board: no swap has been deliberately
+interrupted to watch it resume. If the worry is real enough to act on, that
+test is the cheaper answer. Cut the power during the seconds after
+`fota.reset()`, then read `fota.images()` once the board is back.
+
+### Recommendation
+
+Stay on swap-using-offset. It already works, one image serves every update,
+the revert has been seen working on this board, and the downgrade refusal is
+built for this mode.
+The power-loss case is designed into the swap rather than left open, and the
+time direct-xip saves is seconds next to an upload of minutes. Switching would
+double the builds, put slot choice into `fota`, rebuild the probation and
+rewrite the update chapter, all to remove a risk MCUboot already handles.
+
+Reconsider if one of these changes: the image grows large enough that the
+swap time matters, the project moves to sysbuild and gets the second build
+from it, or an interrupted swap is ever seen not to resume.
+
 ## Interactive shell
 
 The app runs a Zephyr shell on the same UART.
