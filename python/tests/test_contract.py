@@ -334,3 +334,52 @@ def test_every_refusal_in_the_firmware_uses_the_prefix() -> None:
     # APP_TEMP_ERR_FMT is the one exception: a keyed line of its own, which
     # MCU.die_temp() reads for the errno inside it.
     assert set(calls) <= {"APP_ERR", "APP_TEMP_ERR_FMT"}, calls
+
+
+# -- a whole frame -------------------------------------------------------------
+#
+# `app matrix frame` takes the whole panel as eight words of level digits and
+# answers with APP_MATRIX_FRAME_FMT. The reply is pinned like the others; the
+# command line is pinned against the shell limits it has to fit inside.
+
+
+def test_the_frame_reply_regex_is_the_one_the_firmware_format_implies() -> None:
+    fmt = firmware_format("APP_MATRIX_FRAME_FMT")
+    assert mcu._MATRIX_FRAME.pattern == implied_regex(fmt), (
+        f"unoq.mcu._MATRIX_FRAME no longer matches APP_MATRIX_FRAME_FMT ({fmt!r}) - "
+        f"a change to app_proto.h is a protocol change; update python/unoq/mcu.py"
+    )
+
+
+def test_a_frame_reply_the_firmware_would_print_parses_back(mcu_factory: Any) -> None:
+    rows = ["7" * mcu.MATRIX_COLS] * mcu.MATRIX_ROWS
+    line = firmware_format("APP_MATRIX_FRAME_FMT") % (mcu.MATRIX_ROWS * mcu.MATRIX_COLS)
+    board = mcu_factory({"app matrix frame " + " ".join(rows): [line]})
+    board.matrix_frame(rows)
+
+
+def kconfig_int(name: str, default: int) -> int:
+    """An integer CONFIG_ from prj.conf, or Zephyr's default if it is not set there."""
+    m = re.search(rf"^CONFIG_{name}=(\d+)\s*$", PRJ_CONF.read_text(), re.MULTILINE)
+    return int(m.group(1)) if m else default
+
+
+def test_the_longest_frame_command_fits_the_shell() -> None:
+    """The shell drops a line longer than its buffer and refuses one with more
+    words than ARGC_MAX, before any handler of ours sees it. Zephyr's defaults
+    are 256 bytes and 20 words; a prj.conf that lowered either below what a
+    frame needs would break `app matrix frame` on the board and nowhere else."""
+    command = "app matrix frame " + " ".join(["7" * mcu.MATRIX_COLS] * mcu.MATRIX_ROWS)
+    # One byte of the buffer is the terminator.
+    assert len(command) < kconfig_int("SHELL_CMD_BUFF_SIZE", 256)
+    assert len(command.split()) <= kconfig_int("SHELL_ARGC_MAX", 20)
+
+
+def test_the_firmware_registers_frame_with_one_word_per_row() -> None:
+    source = (MCU_APP / "src" / "main.c").read_text()
+    m = re.search(
+        r"SHELL_CMD_ARG\(frame,.*?cmd_app_matrix_frame,\s*([^,]+),\s*(\d+)\)", source, re.DOTALL
+    )
+    assert m, "`app matrix frame` is not registered in main.c"
+    assert m.group(1).strip() == "1 + APP_MATRIX_ROWS"
+    assert m.group(2) == "0"

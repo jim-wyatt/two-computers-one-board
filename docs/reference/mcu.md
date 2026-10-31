@@ -477,6 +477,76 @@ From Python, `MCU.reset_cause()` returns the names as a list
 when it starts, so `journalctl -u unoq-cpu-bars` shows it. The watchdog and
 `hwinfo` cost about 1.7 KB of flash and 24 bytes of RAM.
 
+### Drawing a whole frame
+
+`app matrix px` lights one LED and blanks the rest. `app matrix frame` draws a
+whole picture in one command: eight words, one per row from row 0, each exactly
+13 characters, each character a brightness level from `0` (off) to `7` (full).
+It is one line; it is broken here only to fit the page.
+
+```
+unoq:~$ app matrix frame 0000000000000 0007700077000 0077770777700 0077777777700
+                         0007777777000 0000777770000 0000077700000 0000007000000
+ok frame lit=37
+```
+
+The reply is `APP_MATRIX_FRAME_FMT` in
+[`app_proto.h`](../../mcu/app/include/app_proto.h), with the number of LEDs the
+frame lit. A row that is short, long, or holds anything but `0`..`7` is refused
+with an `Error: row N: ...` line, and every row is checked before any pixel
+changes, so a refused frame leaves the panel as it was. Row 0, column 0 is the
+corner `app matrix px 0 0 7` lights, and the frame is turned by the flip setting
+in force when it arrives, the same way a pixel is. Like `px`, it stops a redraw
+from bringing back the CPU bars. The new frame goes to the refresh buffer in one
+copy with interrupts off, so the panel never shows the rows arriving one by one.
+
+The line is 129 bytes and 11 words. The shell takes up to 255 bytes
+(`CONFIG_SHELL_CMD_BUFF_SIZE`, 256 by default, one for the terminator) and 20
+words (`CONFIG_SHELL_ARGC_MAX`), and neither is set in
+[`prj.conf`](../../mcu/app/prj.conf). `test_contract.py` fails if either is ever
+set below what a frame needs.
+
+From Python, `MCU.matrix_frame()` takes the eight rows as strings, checks them
+with the same rule before sending anything (a bad row raises `ValueError`), and
+raises `MCUError` if the MCU's count of lit LEDs is not the frame's:
+
+```python
+from unoq import MCU
+
+HEART = [
+    "0000000000000",
+    "0007700077000",
+    "0077770777700",
+    "0077777777700",
+    "0007777777000",
+    "0000777770000",
+    "0000077700000",
+    "0000007000000",
+]
+
+with MCU() as mcu:
+    mcu.matrix_frame(HEART)
+```
+
+A glyph is easier to draw as `#` and `.` and convert, with levels for shading:
+
+```python
+GLYPH = """
+.............
+..#.......#..
+...#.....#...
+....#...#....
+.....#.#.....
+......#......
+.............
+.............
+"""
+rows = [line.replace(".", "0").replace("#", "7") for line in GLYPH.split()]
+```
+
+Stop `unoq-cpu-bars` first, or its next update replaces the picture: it owns
+`/dev/ttyHS1` while it runs. The command costs 336 bytes of flash and no RAM: it draws into the frame buffer `px` already uses.
+
 ## Debugging
 
 Open this folder in VS Code and pick **Debug (attach to running MCU)** or

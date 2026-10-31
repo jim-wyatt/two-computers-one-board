@@ -428,6 +428,76 @@ def test_matrix_px_coerces_its_coordinates(mcu_factory: Any) -> None:
     assert mcu._s.written == ["app matrix px 7 0 7"]
 
 
+HEART = [
+    "0000000000000",
+    "0007700077000",
+    "0077770777700",
+    "0077777777700",
+    "0007777777000",
+    "0000777770000",
+    "0000077700000",
+    "0000007000000",
+]
+HEART_CMD = "app matrix frame " + " ".join(HEART)
+HEART_LIT = sum(c != "0" for row in HEART for c in row)
+
+
+def test_matrix_frame_sends_the_rows_in_one_command(mcu_factory: Any) -> None:
+    mcu = mcu_factory({HEART_CMD: [f"ok frame lit={HEART_LIT}"]})
+    mcu.matrix_frame(HEART)
+    assert mcu._s.written == [HEART_CMD]
+
+
+def test_matrix_frame_takes_any_sequence_of_rows(mcu_factory: Any) -> None:
+    dark = ("0" * 13,) * 8
+    mcu = mcu_factory({"app matrix frame " + " ".join(dark): ["ok frame lit=0"]})
+    mcu.matrix_frame(dark)
+
+
+@pytest.mark.parametrize(
+    ("rows", "message"),
+    [
+        (HEART[:7], r"need 8 rows, got 7"),
+        ([*HEART, HEART[0]], r"need 8 rows, got 9"),
+        ([*HEART[:3], "000000000000", *HEART[4:]], r"row 3: '000000000000' is not 13"),
+        ([*HEART[:3], "00000000000000", *HEART[4:]], r"row 3"),
+        (["0000000000008", *HEART[1:]], r"row 0: .* digits 0\.\.7"),
+        ([*HEART[:7], "000000 000000"], r"row 7"),
+        ([*HEART[:7], "000000000000\u0663"], r"row 7"),  # ARABIC-INDIC DIGIT THREE
+        ([*HEART[:7], 1234567012345], r"row 7"),
+        ("".join(HEART), r"one string"),
+    ],
+)
+def test_matrix_frame_refuses_a_bad_frame_without_sending_it(
+    mcu_factory: Any, rows: Any, message: str
+) -> None:
+    mcu = mcu_factory({})
+    with pytest.raises(ValueError, match=message):
+        mcu.matrix_frame(rows)
+    assert mcu._s.written == []
+
+
+def test_matrix_frame_raises_when_the_mcu_refuses_it(mcu_factory: Any) -> None:
+    mcu = mcu_factory({HEART_CMD: ["Error: row 2: '0' is not 13 digits 0..7"]})
+    with pytest.raises(MCUError, match="row 2"):
+        mcu.matrix_frame(HEART)
+
+
+@pytest.mark.parametrize("reply", [[], ["ok"], ["ok px row=0 col=0 level=7"]])
+def test_matrix_frame_raises_on_an_unparsable_reply(mcu_factory: Any, reply: list[str]) -> None:
+    mcu = mcu_factory({HEART_CMD: reply})
+    with pytest.raises(MCUError, match="could not parse matrix frame"):
+        mcu.matrix_frame(HEART)
+
+
+def test_matrix_frame_raises_when_the_mcu_lit_something_else(mcu_factory: Any) -> None:
+    # A digit changed on the wire into another valid digit is still a frame
+    # the firmware accepts. When it turns a lit LED dark, the count says so.
+    mcu = mcu_factory({HEART_CMD: [f"ok frame lit={HEART_LIT - 1}"]})
+    with pytest.raises(MCUError, match=f"lighting {HEART_LIT} LEDs"):
+        mcu.matrix_frame(HEART)
+
+
 def test_matrix_flip_reports_the_new_state(mcu_factory: Any) -> None:
     mcu = mcu_factory({"app matrix flip": ["ok flip=1"]})
     assert mcu.matrix_flip() is True

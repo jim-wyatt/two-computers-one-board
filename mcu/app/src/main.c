@@ -346,6 +346,39 @@ static int cmd_app_matrix_px(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+/* Draw a whole picture: `app matrix frame <r0> ... <r7>`, one word of level
+ * digits per row. See app_proto.h for the format and why it fits the shell.
+ *
+ * The picture is built in `frame` and handed to matrix_draw() in one go,
+ * which copies it into the refresh buffer with interrupts off. The panel goes
+ * from the old picture to the new one at a single point in one 1 ms sweep,
+ * not row by row as the words arrive. Like px, the flip in force when the frame
+ * arrives is the one it is drawn with; flipping afterwards redraws only bars. */
+static int cmd_app_matrix_frame(const struct shell *sh, size_t argc, char **argv)
+{
+	status_leds_link_seen();
+	int lit;
+
+	ARG_UNUSED(argc);
+
+	/* All eight rows before any pixel: a frame with one bad row is not a
+	 * picture anybody sent. */
+	for (int row = 0; row < APP_MATRIX_ROWS; row++) {
+		if (!app_matrix_row_valid(argv[row + 1])) {
+			shell_error(sh, APP_ERR "row %d: '%s' is not %d digits 0..%d", row,
+				    argv[row + 1], APP_MATRIX_COLS, APP_MATRIX_MAX_LEVEL);
+			return -EINVAL;
+		}
+	}
+
+	lit = app_matrix_frame_fill((const char *const *)&argv[1], flip != 0, frame);
+	bar_count = 0; /* as for px: a redraw must not bring the bars back over it */
+	matrix_draw(frame);
+
+	shell_print(sh, APP_MATRIX_FRAME_FMT, lit);
+	return 0;
+}
+
 static int cmd_app_matrix_flip(const struct shell *sh, size_t argc, char **argv)
 {
 	status_leds_link_seen();
@@ -390,6 +423,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
 	matrix_cmds,
 	SHELL_CMD_ARG(px, NULL, "Light one LED: app matrix px <row> <col> <level>",
 		      cmd_app_matrix_px, 4, 0),
+	SHELL_CMD_ARG(frame, NULL, "Draw a whole frame: app matrix frame <row0> ... <row7>",
+		      cmd_app_matrix_frame, 1 + APP_MATRIX_ROWS, 0),
 	SHELL_CMD(flip, NULL, "Rotate the panel 180 degrees (persisted)", cmd_app_matrix_flip),
 	SHELL_CMD(off, NULL, "Blank the panel and stop the refresh", cmd_app_matrix_off),
 	SHELL_SUBCMD_SET_END);
