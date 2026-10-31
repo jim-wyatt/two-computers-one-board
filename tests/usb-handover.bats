@@ -296,7 +296,7 @@ SH
   # Debian's backports build has no profile for this board, and taking it
   # leaves remoteproc_audio_fixup.service failed at every boot.
   F="$PROJECT/provision/10-optimize-board.sh"
-  pin="$(grep -n '^write_file 0644 /etc/apt/preferences.d/arduino-alsa-ucm-conf.pref' "$F" | cut -d: -f1)"
+  pin="$(grep -nF 'write_file 0644 "$SYSROOT/etc/apt/preferences.d/arduino-alsa-ucm-conf.pref"' "$F" | cut -d: -f1)"
   upgrade="$(grep -n 'apt-get upgrade -y' "$F" | cut -d: -f1)"
   [ -n "$pin" ] && [ -n "$upgrade" ]
   [ "$pin" -lt "$upgrade" ]
