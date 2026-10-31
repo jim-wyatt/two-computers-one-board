@@ -92,7 +92,7 @@ And the last row disagrees with itself. Line 70 is empirically what makes
 U-Boot calls it an **SPI ready** line. Both descriptions can be true of one pin,
 and the next section is the other half of that story.
 
-### There is an SPI link between the two chips, and nothing here uses it
+### There is an SPI link between the two chips { #there-is-an-spi-link-between-the-two-chips-and-nothing-here-uses-it }
 
 U-Boot's name for line 70 is not a mislabel. Linux's own devicetree describes
 an SPI device called the MCU:
@@ -137,16 +137,70 @@ tio /dev/ttyHS1 -b 115200               # then, at its prompt:
 #   gpio get gpiog 12        -> 1 at rest, 0 while Linux is transferring
 ```
 
-What is still not known is the protocol: what line 70's "ready" role is in a
-real exchange, and what Arduino's own firmware sends. This project's firmware
-has no SPI code, and everything — frames for the LED matrix, the shell,
-firmware updates — goes down the 115200 serial line, where a frame for the
-panel costs about 9 ms. This is the obvious faster path, and it is open work:
-[issue #28](https://github.com/jim-wyatt/two-computers-one-board/issues/28).
+What Arduino's own firmware sends over it is still not known, and neither is
+line 70's "ready" role in a real exchange: this project uses the line only as
+the serial link enable. The protocol below is this project's own.
 
-One practical consequence today: **do not use `/dev/spidev0.0` as if it were a
-free bus for your own peripherals.** Whatever you clock out of it goes to the
-STM32.
+**Do not use `/dev/spidev0.0` as if it were a free bus for your own
+peripherals.** Whatever you clock out of it goes to the STM32, and with this
+project's firmware the STM32 answers.
+
+### The protocol on the SPI link
+
+The firmware's
+[`spi_link.c`](https://github.com/jim-wyatt/two-computers-one-board/blob/main/mcu/app/src/spi_link.c)
+runs `spi3` as an SPI slave, and
+[`unoq.spilink`](https://github.com/jim-wyatt/two-computers-one-board/blob/main/python/unoq/spilink.py)
+is the master's side. The contract is
+[`spi_proto.h`](https://github.com/jim-wyatt/two-computers-one-board/blob/main/mcu/app/include/spi_proto.h),
+and `python/tests/test_spilink.py` checks that the two agree on every number.
+
+| | |
+|---|---|
+| Wiring | `spi@4a94000` → `/dev/spidev0.0` on Linux, `spi3` on the MCU: SCK PG9, MISO PG10, MOSI PB5, NSS PG12 |
+| Roles | Linux is the master; the MCU is a slave, interrupt-driven |
+| Mode | SPI mode 0, 8 bits, MSB first, chip select active low for the whole transaction |
+| Transaction | exactly 1024 bytes, both ways at once |
+| Frame | magic `U` `Q`, type, seq, length (16-bit), payload, CRC-16/CCITT-FALSE; the rest of the transaction is padding |
+| Services | `NOP`, `ECHO`, `TEMPLOG since` (the temperature log), `STAT` (the link's own counters) |
+
+The slave cannot speak first, so each request is answered **one transaction
+later**: while Linux clocks request *k* down, the MCU's answer to *k − 1* comes
+up. A single request costs two transactions, the request and a `NOP` that
+collects its answer; the seq in each answer says which request it belongs to.
+A benchmark pipelines instead, and every transaction carries data both ways.
+
+Two things follow from the slave side of Zephyr's STM32 driver, and they are
+why the protocol looks the way it does:
+
+- **The transaction length is fixed.** The driver ends a slave transfer when
+  its buffers are full, not when chip select rises, so a master that clocked a
+  different length would leave the MCU counting bytes across transactions.
+  `unoq.spilink` pads every frame to 1024 bytes; anything else talking to
+  `/dev/spidev0.0` must do the same.
+- **The MCU needs a moment between transactions** to decode a request and build
+  the next answer. A transaction that starts sooner is missed: it reads back as
+  no frame, the MCU keeps its pending answer, and `unoq.spilink` polls again.
+  By default it waits 0.5 ms before each transaction (`--gap-us`).
+
+Try it, with this project's firmware flashed:
+
+```bash
+hpy -m unoq.spilink echo hello
+hpy -m unoq.spilink stat
+hpy -m unoq.spilink bench        # bytes per second at 0.5 to 16 MHz
+```
+
+**No numbers yet.** The benchmark prints payload bytes per second, each way,
+at each clock rate, next to the serial line's roughly 11 KB/s; this page will
+carry its table once it has been run on the board. One interrupt per byte is
+what will cap the clock: past some rate the MCU cannot keep the FIFO fed, and
+the `bad` and `MCU err` columns say where. DMA, which would lift that cap, is
+the second half of [#159](https://github.com/jim-wyatt/two-computers-one-board/issues/159).
+
+`TEMPLOG` answers once `main.c` hands the link its log (the
+`spi_link_templog()` hook in `spi_proto.h`); until then it answers
+"service unavailable".
 
 ### `link-up.sh` is run for you
 
@@ -155,7 +209,7 @@ them. You rarely need to run
 [`mcu/link-up.sh`](https://github.com/jim-wyatt/two-computers-one-board/blob/main/mcu/link-up.sh)
 yourself: `mcu/flash.sh` runs it before every flash, `unoq.MCU` runs it on
 construction, and `unoq-link.service` runs it at boot. All it does is drive
-those two lines. None of that configures or uses the SPI link described above.
+those two lines. None of that configures the SPI link described above.
 
 Pin state **persists after the `gpioset` process exits** — the SoC pinctrl keeps
 driving the last value — which is why a one-shot is enough and no daemon is

@@ -55,3 +55,17 @@
 &adc4 {
 	status = "disabled";
 };
+
+/*
+ * The SPI link to Linux. spi3's four pins - SCK PG9, MISO PG10, MOSI PB5, NSS
+ * PG12 - are wired to the MPU's spi@4a94000, which Linux shows as
+ * /dev/spidev0.0; docs/reference/hardware.md has the experiment that found
+ * them. Linux is the master. The board file already enables spi3 with exactly
+ * this pinctrl; it is restated here because spi_link.c depends on it, and on
+ * NSS being the hardware pin rather than a GPIO chip select.
+ */
+&spi3 {
+	status = "okay";
+	pinctrl-0 = <&spi3_sck_pg9 &spi3_miso_pg10 &spi3_mosi_pb5 &spi3_nss_pg12>;
+	pinctrl-names = "default";
+};
