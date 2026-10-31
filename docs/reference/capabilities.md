@@ -70,7 +70,7 @@ MCU can sample its own analog output with no wire at all.
 | `i2c2` | I2C on PB10/PB11, 400 kHz (`arduino_i2c`) | `&i2c2` `okay` | No: `CONFIG_I2C_SHELL=y` lets you poke it, nothing in the firmware uses it | **Yes**: [#163](https://github.com/jim-wyatt/two-computers-one-board/issues/163) |
 | `i2c4` | I2C on PD12/PD13, 400 kHz; a comment names PF14/PF15 as the alternative for the "JMISC" connector | `&i2c4` `okay` | No. Which connector PD12/PD13 reach (Qwiic is the usual guess) is **not traced** | **Yes**: [#163](https://github.com/jim-wyatt/two-computers-one-board/issues/163) |
 | `spi2` | SPI on PB13/PB14/PB15, NSS PB9 (`arduino_spi`, header D13/D12/D11/D10); a comment names the ICSP pins as the alternative | `&spi2` `okay` | No | Maybe |
-| `spi3` | SPI on PG9/PG10/PB5/PG12: the MCU's end of the SPI link to Linux, as slave | `&spi3` `okay`; wiring verified by experiment in [hardware.md](hardware.md#there-is-an-spi-link-between-the-two-chips-and-nothing-here-uses-it) | No: no SPI code in the firmware | **Yes**: [#159](https://github.com/jim-wyatt/two-computers-one-board/issues/159), via [#28](https://github.com/jim-wyatt/two-computers-one-board/issues/28) |
+| `spi3` | SPI on PG9/PG10/PB5/PG12: the MCU's end of the SPI link to Linux, as slave | `&spi3` `okay`; wiring verified by experiment in [hardware.md](hardware.md#there-is-an-spi-link-between-the-two-chips-and-nothing-here-uses-it) | **Yes**: `spi_link.c`, a framed request/response transport with a CRC ([hardware.md](hardware.md#there-is-an-spi-link-between-the-two-chips-and-nothing-here-uses-it)) | **Yes**: [#159](https://github.com/jim-wyatt/two-computers-one-board/issues/159), whose scope half needs it |
 | `usbotg_fs` | USB full-speed device on PA11/PA12 | `&usbotg_fs` **`disabled`**; `board.yml` comments `usbd` out | No | No: disabled by the board, and where PA11/PA12 go is not traced |
 
 ### GPIO, LEDs, and the panel
@@ -156,7 +156,7 @@ uses one.
 | Power key | `pm8941_pwrkey`, the PMIC's power-key input | `/sys/class/input/input1/name` | No | No |
 | `/dev/i2c-0` | Free: nothing registered | `/sys/bus/i2c/devices/` | No. Which connector it reaches is **not traced**; see [hardware.md](hardware.md#the-i2c-buses) | Maybe |
 | `/dev/i2c-1`, `/dev/i2c-2` | The display bridge and its AUX channel | `/sys/bus/i2c/devices/1-0058` and others | No, and should not be | No |
-| `/dev/spidev0.0` | The SPI link **to the MCU** (`arduino,unoq-mcu`), Linux as master | `/sys/bus/spi/devices/spi0.0/of_node/compatible` | No; wiring verified, no protocol | **Yes**: [#159](https://github.com/jim-wyatt/two-computers-one-board/issues/159), via [#28](https://github.com/jim-wyatt/two-computers-one-board/issues/28) |
+| `/dev/spidev0.0` | The SPI link **to the MCU** (`arduino,unoq-mcu`), Linux as master | `/sys/bus/spi/devices/spi0.0/of_node/compatible` | **Yes**: `unoq.spilink` speaks the framed protocol, and `python -m unoq.spilink bench` measures it | **Yes**: [#159](https://github.com/jim-wyatt/two-computers-one-board/issues/159), whose scope half needs it |
 | `/dev/ttyHS1` | The UART link to the MCU | `4a88000.serial` | **Yes**: everything that talks to the MCU | Every MCU demo; see [who owns it](#who-owns-the-serial-port) |
 | `/dev/ttyMSM0` | Linux's own console UART | `/sys/class/tty/console/active` | **Yes**: a login, `serial-getty@ttyMSM0` | No |
 | LED 1, LED 2 | Six `gpio-leds` channels, two RGB packages | `/sys/class/leds/unoq:*` | **Yes**: uplink and health, [`leds.sh`](../../status/leds.sh) | No |
