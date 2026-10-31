@@ -353,14 +353,24 @@ you must sample `/sys/block/mmcblk0/stat` yourself - that counter does move.
 | | LED 1 | LED 2 | LED 3 | LED 4 |
 |---|---|---|---|---|
 | **steady** — fine | green: internet reachable | green: all units healthy | green: image **confirmed** | green: MPU spoke recently |
-| **slow blink**, once every 2 s — degraded, or in progress | blue: cable, but no route beyond | — | yellow: image **unconfirmed**, reverts on reset | — |
+| **slow blink**, once every 2 s — degraded, or in progress | blue: cable, but no route beyond | yellow: kernel **on trial**, not marked good yet<br>blue: a kernel was **set aside** after using its tries | yellow: image **unconfirmed**, reverts on reset | — |
 | **fast blink**, twice a second — needs a human | red: no uplink at all | red: unit failed / bind guard tripped | red: subsystem failed | red: MPU silent >4s |
 | **dark** — nothing is driving it | `unoq-leds` is not running | `unoq-leds` is not running | the firmware is not running | the firmware is not running |
 
-Read it by row. The rhythm identifies the state by itself, and no LED uses the
-same rhythm for two states, so none of this depends on telling red from green.
-The color is a second witness, not the only one. Both blinks are lit half the
-time.
+Read it by row. The rhythm identifies the kind of state by itself, so none of
+this depends on telling red from green. The color is a second witness, not the
+only one. Both blinks are lit half the time.
+
+LED 2 is the one LED with two states in a row, both from boot counting
+([troubleshooting.md](troubleshooting.md#a-new-kernel-that-did-not-come-up)).
+The rhythm says "degraded, or in progress" either way, and the color says
+which, as yellow against blue: the pair red-green color blindness leaves
+apart. Yellow is LED 3's yellow, for the same idea on the other chip. On trial
+comes from `systemd-bless-boot status` saying `indeterminate`, asked every
+pass. Set aside comes from `bootctl list` showing an entry with no tries left
+that is not the one booted, asked every minute. A failed unit outranks both,
+and set aside outranks on trial. A board without boot counting never shows
+either.
 
 LED 1 and LED 2 are blinked by the kernel's `timer` LED trigger, which
 `leds.sh` selects and then leaves alone until the state changes: every write to
