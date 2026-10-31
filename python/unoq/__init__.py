@@ -15,11 +15,12 @@ Wraps the Zephyr shell running on lpuart1 (/dev/ttyHS1). Firmware updates over
 the same UART are in `fota`. The hardware notes are in docs/reference/hardware.md.
 """
 
-# cpubars is an entry point, not part of the API, and is deliberately not
+# cpubars and powerlog are entry points, not part of the API, and is deliberately not
 # imported here: `python -m unoq.cpubars` warns if the package has already
-# pulled the module in. Import it directly - `from unoq import cpubars`.
+# pulled the module in. Import them directly - `from unoq import cpubars`.
 from . import fota
 from .cpu import CpuSampler, read_cpu_times
+from .cpufreq import Policy, read_policies
 from .link import BOOT0_LINE, LINK_ENABLE_LINE, link_state, link_up
 from .mcu import MCU, MCUError, PortBusy, ShellTimeout, open_port, port_holders
 from .thermal import hottest, read_temps
@@ -40,5 +41,7 @@ __all__ = [
     "read_cpu_times",
     "read_temps",
     "hottest",
+    "Policy",
+    "read_policies",
 ]
 __version__ = "1.1.0"
