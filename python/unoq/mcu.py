@@ -68,6 +68,12 @@ _TEMP_ERR = re.compile(r"^temp_err=(-?\d+)$")
 # tests/test_contract.py rebuilds each from the header and fails if they drift.
 _TEMPLOG = re.compile(r"^seq=(\d+) ms=(-?\d+) temp_mc=(-?\d+)$")
 _TEMPLOG_ERR = re.compile(r"^seq=(\d+) ms=(-?\d+) temp_err=(-?\d+)$")
+# The reply to `app matrix frame`: APP_MATRIX_FRAME_FMT, pinned the same way.
+_MATRIX_FRAME = re.compile(r"^ok frame lit=(-?\d+)$")
+# One row of a frame as the firmware's app_matrix_row_valid() takes it: exactly
+# MATRIX_COLS level digits. ASCII only, as the C check is: str.isdigit() would
+# let through digits from other scripts that the MCU has never heard of.
+_MATRIX_ROW = re.compile(rf"[0-{MATRIX_MAX_LEVEL}]{{{MATRIX_COLS}}}")
 _TEMPLOG_GAP = re.compile(r"^gap first=(\d+) last=(\d+)$")
 _TEMPLOG_END = re.compile(r"^end head=(\d+) more=(\d+)$")
 _TEMPLOG_STAT = re.compile(r"^head=(\d+) count=(\d+) size=(\d+) dropped=(\d+) period_ms=(\d+)$")
@@ -574,6 +580,48 @@ class MCU:
         """Light a single LED and blank the rest. Use it to find out which
         corner row 0, column 0 is on a board in front of you."""
         self.cmd(f"app matrix px {int(row)} {int(col)} {int(level)}")
+
+    def matrix_frame(self, rows: Sequence[str]) -> None:
+        """Draw a whole picture on the panel in one command.
+
+        ``rows`` is MATRIX_ROWS strings, row 0 first, each MATRIX_COLS
+        characters long, each character a level from "0" (off) to "7" (full).
+        Row 0 / column 0 is the same corner `matrix_px` lights, and the panel's
+        flip setting applies to the frame as it does to a pixel. A heart::
+
+            mcu.matrix_frame([
+                "0000000000000",
+                "0007700077000",
+                "0077770777700",
+                "0077777777700",
+                "0007777777000",
+                "0000777770000",
+                "0000077700000",
+                "0000007000000",
+            ])
+
+        The rows are checked here before anything is sent, with the rule the
+        firmware applies, so a bad frame raises ValueError without a round
+        trip. The MCU's reply says how many LEDs it lit, and that is checked
+        against the frame: a reply that disagrees raises MCUError.
+        """
+        if isinstance(rows, str):
+            # A str is a Sequence[str] too, of one-character rows.
+            raise ValueError("rows is one string; pass a list of rows")
+        if len(rows) != MATRIX_ROWS:
+            raise ValueError(f"need {MATRIX_ROWS} rows, got {len(rows)}")
+        for i, row in enumerate(rows):
+            if not isinstance(row, str) or not _MATRIX_ROW.fullmatch(row):
+                raise ValueError(
+                    f"row {i}: {row!r} is not {MATRIX_COLS} digits 0..{MATRIX_MAX_LEVEL}"
+                )
+        out = self.cmd("app matrix frame " + " ".join(rows))
+        m = _MATRIX_FRAME.match(out[0]) if out else None
+        if not m:
+            raise MCUError(f"could not parse matrix frame: {out!r}")
+        lit = sum(c != "0" for row in rows for c in row)
+        if int(m.group(1)) != lit:
+            raise MCUError(f"sent a frame lighting {lit} LEDs and the MCU lit {m.group(1)}")
 
     def matrix_flip(self) -> bool:
         """Rotate the panel 180 degrees and persist that. Returns the new state.

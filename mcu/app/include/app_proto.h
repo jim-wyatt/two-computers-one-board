@@ -26,6 +26,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 /* The `app status` line, parsed by unoq.MCU.status() into a dict.
@@ -211,6 +212,67 @@ static inline bool app_matrix_level_valid(int level)
 static inline bool app_matrix_pixel_valid(int row, int col)
 {
 	return row >= 0 && row < APP_MATRIX_ROWS && col >= 0 && col < APP_MATRIX_COLS;
+}
+
+/* --- a whole frame -------------------------------------------------------
+ *
+ * `app matrix frame <r0> <r1> ... <r7>` draws a whole picture in one command:
+ * eight words, one per row from row 0, each exactly APP_MATRIX_COLS characters
+ * and each character a level '0'..'7'. A heart, row by row:
+ *
+ *   app matrix frame 0000000000000 0007700077000 0077770777700 0077777777700
+ *                    0007777777000 0000777770000 0000077700000 0000007000000
+ *
+ * Digits rather than hex or a packed encoding so that the command stays one a
+ * person can type and read, the same reason `app bars` takes whole percent.
+ *
+ * It fits the shell's limits with room to spare: the line is 17 + 8 * 14 = 129
+ * bytes against CONFIG_SHELL_CMD_BUFF_SIZE (256 by default), it is 11 words
+ * against CONFIG_SHELL_ARGC_MAX (20), and it arrives into a 256-byte serial
+ * receive ring. python/tests/test_contract.py fails if prj.conf ever sets
+ * either of the first two below what this needs.
+ *
+ * Every row is checked before any pixel changes, so a bad row leaves the panel
+ * as it was and the reply is an APP_ERR line. On success the reply is
+ * APP_MATRIX_FRAME_FMT with the number of LEDs lit (level above 0), which
+ * unoq.MCU.matrix_frame() compares with what it sent.
+ */
+#define APP_MATRIX_FRAME_FMT "ok frame lit=%d"
+
+/* One row of `app matrix frame`: exactly APP_MATRIX_COLS level digits. A short
+ * row stops at its terminator, which is not a digit, so this never reads past
+ * the end of the string it was given. */
+static inline bool app_matrix_row_valid(const char *s)
+{
+	if (s == NULL) {
+		return false;
+	}
+	for (int i = 0; i < APP_MATRIX_COLS; i++) {
+		if (s[i] < '0' || s[i] > '0' + APP_MATRIX_MAX_LEVEL) {
+			return false;
+		}
+	}
+	return s[APP_MATRIX_COLS] == '\0';
+}
+
+/* Turn APP_MATRIX_ROWS rows, every one already passed by app_matrix_row_valid(),
+ * into the APP_MATRIX_LEDS levels matrix_draw() takes. With flip set the frame
+ * is turned 180 degrees, LED i to LED APP_MATRIX_LEDS - 1 - i, which is what
+ * `app matrix px` does with one pixel. Returns the number of LEDs lit. */
+static inline int app_matrix_frame_fill(const char *const *rows, bool flip, uint8_t *out)
+{
+	int lit = 0;
+
+	for (int row = 0; row < APP_MATRIX_ROWS; row++) {
+		for (int col = 0; col < APP_MATRIX_COLS; col++) {
+			int idx = row * APP_MATRIX_COLS + col;
+			uint8_t level = (uint8_t)(rows[row][col] - '0');
+
+			out[flip ? APP_MATRIX_LEDS - 1 - idx : idx] = level;
+			lit += level > 0;
+		}
+	}
+	return lit;
 }
 
 /* --- CPU bars -------------------------------------------------------------

@@ -249,3 +249,93 @@ ZTEST(link_protocol, test_anything_else_is_refused_and_changes_nothing)
 }
 
 ZTEST_SUITE(link_protocol, NULL, NULL, NULL, NULL, NULL);
+
+/* --- a whole frame ---------------------------------------------------------- */
+
+ZTEST(link_protocol, test_a_frame_row_is_thirteen_level_digits)
+{
+	static const char *const ok[] = {"0000000000000", "7777777777777", "0123456701234"};
+
+	for (size_t i = 0; i < ARRAY_SIZE(ok); i++) {
+		zassert_true(app_matrix_row_valid(ok[i]), "'%s' was refused", ok[i]);
+	}
+}
+
+ZTEST(link_protocol, test_anything_else_is_not_a_frame_row)
+{
+	/* One short, one long, a level past full, and characters that are digits
+	 * to a person or to strtol but not levels: '8', '9', a sign, hex, a space
+	 * where a level should be. The last is empty, which a short row is too. */
+	static const char *const bad[] = {
+		"000000000000",  "00000000000000", "0000000000008", "9000000000000",
+		"-000000000000", "000000000000a",  "000000 000000", "",
+	};
+
+	for (size_t i = 0; i < ARRAY_SIZE(bad); i++) {
+		zassert_false(app_matrix_row_valid(bad[i]), "'%s' was taken as a row", bad[i]);
+	}
+	zassert_false(app_matrix_row_valid(NULL), "a missing row is not a row");
+}
+
+/* A frame where every LED's level says where it is, so a misplaced one shows. */
+static const char *const numbered[APP_MATRIX_ROWS] = {
+	"0123456701234", "5670123456701", "2345670123456", "7012345670123",
+	"4567012345670", "1234567012345", "6701234567012", "3456701234567",
+};
+
+ZTEST(link_protocol, test_a_frame_fills_row_major_from_row_zero)
+{
+	uint8_t out[APP_MATRIX_LEDS];
+
+	memset(out, 0xff, sizeof(out));
+	(void)app_matrix_frame_fill(numbered, false, out);
+
+	for (int i = 0; i < APP_MATRIX_LEDS; i++) {
+		zassert_equal(out[i], i % (APP_MATRIX_MAX_LEVEL + 1), "LED %d is %d", i, out[i]);
+	}
+}
+
+ZTEST(link_protocol, test_a_flipped_frame_is_turned_the_way_px_turns_a_pixel)
+{
+	uint8_t plain[APP_MATRIX_LEDS];
+	uint8_t flipped[APP_MATRIX_LEDS];
+
+	(void)app_matrix_frame_fill(numbered, false, plain);
+	(void)app_matrix_frame_fill(numbered, true, flipped);
+
+	/* cmd_app_matrix_px() sends row/col to APP_MATRIX_LEDS - 1 - idx. */
+	for (int i = 0; i < APP_MATRIX_LEDS; i++) {
+		zassert_equal(flipped[APP_MATRIX_LEDS - 1 - i], plain[i], "LED %d moved wrongly",
+			      i);
+	}
+}
+
+ZTEST(link_protocol, test_a_frame_counts_the_leds_it_lights)
+{
+	static const char *const one[APP_MATRIX_ROWS] = {
+		"0000000000000", "0000000000000", "0000000000000", "0000000000000",
+		"0000000000000", "0000000000000", "0000000000000", "0000000000001",
+	};
+	static const char *const dark[APP_MATRIX_ROWS] = {
+		"0000000000000", "0000000000000", "0000000000000", "0000000000000",
+		"0000000000000", "0000000000000", "0000000000000", "0000000000000",
+	};
+	uint8_t out[APP_MATRIX_LEDS];
+
+	/* numbered has a 0 every eighth LED: 104 - 13 of them are lit. */
+	zassert_equal(app_matrix_frame_fill(numbered, false, out), APP_MATRIX_LEDS - 13);
+	zassert_equal(app_matrix_frame_fill(one, true, out), 1);
+	zassert_equal(out[0], 1, "flipped, the last LED is the first");
+	zassert_equal(app_matrix_frame_fill(dark, false, out), 0);
+}
+
+ZTEST(link_protocol, test_the_frame_reply_carries_the_count)
+{
+	char buf[32];
+	int lit = -1;
+
+	snprintf(buf, sizeof(buf), APP_MATRIX_FRAME_FMT, APP_MATRIX_LEDS);
+	zassert_equal(sscanf(buf, "ok frame lit=%d", &lit), 1, "'%s' did not parse", buf);
+	zassert_equal(lit, APP_MATRIX_LEDS);
+	zassert_is_null(strchr(buf + strlen("ok frame "), ' '), "the count is the last word");
+}
