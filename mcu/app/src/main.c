@@ -192,8 +192,19 @@ static int cmd_app_temp_log(const struct shell *sh, size_t argc, char **argv)
 	for (uint32_t i = 0; i < b.n; i++) {
 		const struct templog_sample *s = &temp_log_batch[i];
 
-		shell_print(sh, s->ok ? APP_TEMPLOG_FMT : APP_TEMPLOG_ERR_FMT, (unsigned int)s->seq,
-			    (long long)s->ms, (int)s->value);
+		/*
+		 * Two calls, not one with `ok ? FMT : ERR_FMT`. shell_print adds
+		 * the newline by pasting "\n" onto its format, and pasted onto a
+		 * ternary it lands on the second branch only: every good sample
+		 * was printed with no line end, and the log read back as one line.
+		 */
+		if (s->ok) {
+			shell_print(sh, APP_TEMPLOG_FMT, (unsigned int)s->seq, (long long)s->ms,
+				    (int)s->value);
+		} else {
+			shell_print(sh, APP_TEMPLOG_ERR_FMT, (unsigned int)s->seq, (long long)s->ms,
+				    (int)s->value);
+		}
 	}
 	shell_print(sh, APP_TEMPLOG_END_FMT, (unsigned int)b.head, (unsigned int)b.more);
 	return 0;
