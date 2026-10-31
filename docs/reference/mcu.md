@@ -547,6 +547,127 @@ rows = [line.replace(".", "0").replace("#", "7") for line in GLYPH.split()]
 Stop `unoq-cpu-bars` first, or its next update replaces the picture: it owns
 `/dev/ttyHS1` while it runs. The command costs 336 bytes of flash and no RAM: it draws into the frame buffer `px` already uses.
 
+### Jitter
+
+The course says the MCU is there because Linux cannot keep time. `app jitter`
+measures it. Linux sends `app jitter tick` on a fixed schedule, and the MCU
+writes down how far from the schedule each one arrived. Beside it, the MCU
+keeps the same record for a square wave its own timers make and measure, with
+no software in the path. The two histograms side by side are the difference
+between scheduled timing and hardware timing, measured on this board. The
+record is [`jitter.c`](../../mcu/app/src/jitter.c); the timers are set up in
+[`main.c`](../../mcu/app/src/main.c) and the
+[overlay](../../mcu/app/boards/arduino_uno_q.overlay).
+
+**What is measured.**
+
+- **tick**: each `app jitter tick` is timestamped as soon as its handler runs,
+  on TIM5, a free-running 32-bit counter at 1 MHz. The interval since the
+  previous tick, minus the period `app jitter arm` was given, is one
+  deviation. What it includes is everything between Linux deciding to send
+  and the MCU's shell parsing the line: Linux's scheduling, the 115200-baud
+  wire (a 17-byte line takes about 1.5 ms to send, but only a change in that
+  time shows up as jitter), and the shell. The kernel's own cycle counter
+  could not do this: on this board it is LPTIM1 on the 32768 Hz crystal,
+  about 30 µs a count.
+- **pwm**: TIM3 drives a square wave out of D3, and TIM2 captures its period
+  on D2 at the full 160 MHz timer clock (6.25 ns a count). Both timers run
+  from that one clock, so whatever spread this histogram shows belongs to the
+  hardware, not to two crystals disagreeing.
+
+**The pins.** One jumper wire, from D3 to D2.
+
+| Header | Pin | Timer | Use |
+|---|---|---|---|
+| D3 | PB0 | TIM3_CH3, 1 MHz count, 16-bit | PWM out, 50% duty |
+| D2 | PB3 | TIM2_CH2, 160 MHz count, 32-bit | PWM capture in, pulled down |
+| none | none | TIM5, 1 MHz count, 32-bit | the tick timestamps; wraps every 71.6 minutes |
+
+The header mapping is Zephyr's
+[`arduino_r3_connector.dtsi`](https://github.com/zephyrproject-rtos/zephyr/blob/main/boards/arduino/uno_q/arduino_r3_connector.dtsi).
+Neither pin is used by the panel (PF0..PF10), `spi3` (PG9, PG10, PB5, PG12),
+`lpuart1` (PG5..PG8), the status LEDs (PH10..PH15), or anything the board
+file enables on the header. PB3 comes out of reset as JTDO/TRACESWO, which the
+SWD debugging here does not use. TIM2, TIM3 and TIM5 were all unused; the
+panel has TIM17. Without the jumper, D2's pull-down keeps the capture quiet
+and the pwm histogram stays at `n=0`. The tick half needs no wire.
+
+**The commands.** Every line is a format in
+[`app_proto.h`](../../mcu/app/include/app_proto.h), pinned by
+`python/tests/test_contract.py`.
+
+```
+unoq:~$ app jitter arm 10000
+ok jitter arm period_us=10000
+unoq:~$ app jitter pwm 100
+ok jitter pwm hz=100 period_us=10000
+unoq:~$ app jitter tick
+unoq:~$ app jitter stat
+jitter src=tick period_us=10000 n=997 min_ns=-400000 max_ns=6100000 mean_ns=2100 bins=0,0,0,0,1,2,3,900,50,20,10,5,3,2,1
+jitter src=pwm period_us=10000 n=499 min_ns=0 max_ns=0 mean_ns=0 bins=0,0,0,0,0,0,0,499,0,0,0,0,0,0,0
+unoq:~$ app jitter off
+ok jitter off
+```
+
+(The `stat` numbers above are an illustration of the format, not a
+measurement.)
+
+| Command | What it does |
+|---|---|
+| `app jitter arm <period_us>` | Sets the expected period (100..10000000 µs) and clears both histograms. The next tick starts a run; each one after it adds a deviation |
+| `app jitter tick` | Timestamps its own arrival. Prints nothing on success, and an `Error:` line if not armed |
+| `app jitter pwm <hz>` | Square wave of 16..10000 Hz on D3, captured on D2. Replies with the period TIM3 really runs at (1000000 / hz, whole µs), and clears the pwm histogram |
+| `app jitter stat` | One line per histogram, `tick` then `pwm` |
+| `app jitter off` | Stops the ticks, the PWM and the capture. The histograms and periods stay, to be read |
+
+In a `stat` line, `n` counts intervals and `min_ns`, `max_ns` and `mean_ns`
+are deviations from `period_us` in nanoseconds: negative is early, positive
+late, and all three are 0 when `n` is 0. `bins` is 15 counts, earliest first.
+The edges are ±50, 100, 200, 500, 1000, 2000 and 5000 µs. The middle bin holds
+|d| ≤ 50 µs, each bin out holds up to the next edge, and the two outermost
+hold everything beyond 5000 µs:
+
+```
+<-5000  -5000..-2000  -2000..-1000  -1000..-500  -500..-200  -200..-100  -100..-50
+-50..50
+50..100  100..200  200..500  500..1000  1000..2000  2000..5000  >5000
+```
+
+A tick that Linux misses entirely shows up as one interval a whole period
+late, not as a lost sample. A deviation is clamped to ±2.1 s (an `int32` of
+nanoseconds), far past the last bin. The record is two 80-byte histograms. With
+the timers, the PWM and counter drivers and the commands, `app jitter` costs
+about 6.8 KB of flash and 0.5 KB of RAM.
+
+From Python, `MCU.jitter_arm()`, `jitter_pwm()` and `jitter_off()` check
+their replies; `MCU.jitter_stat()` returns a `JitterStat(tick, pwm)` of two
+`JitterHist`s, and raises if a line's bins do not add up to its `n`.
+`unoq.mcu.JITTER_BIN_LABELS` names the bins. `MCU.jitter_tick()` is
+fire-and-forget: it goes through `MCU.send()`, which writes the line without
+waiting for the prompt, because waiting would put the MCU's reply time into
+the schedule being measured. `send()` throws away whatever is waiting to be
+read before it writes. Otherwise unread replies would fill the input until
+the kernel held the MCU off with RTS, the shell would block, and ticks would
+arrive late for reasons that have nothing to do with Linux. The next `cmd()`
+reads past the replies still arriving to its own command's echo.
+
+```python
+import time
+from unoq import MCU
+
+with MCU() as mcu:
+    mcu.jitter_arm(10_000)
+    mcu.jitter_pwm(100)            # needs the D3-D2 jumper
+    next_t = time.monotonic()
+    for _ in range(1000):
+        next_t += 0.010
+        time.sleep(max(0.0, next_t - time.monotonic()))
+        mcu.jitter_tick()
+    stat = mcu.jitter_stat()
+    mcu.jitter_off()
+print(stat.tick.max_ns, stat.pwm.max_ns)
+```
+
 ## Debugging
 
 Open this folder in VS Code and pick **Debug (attach to running MCU)** or
@@ -593,7 +714,7 @@ The serial tasks (FOTA, confirm, console, status) need the port: stop
 Use `native_sim/native/64`; plain `native_sim` is 32-bit and fails on aarch64
 with a `CONFIG_64BIT` error.
 
-Five suites run. `ztest.sh` ends by saying how many cases passed; the number
+Seven suites run. `ztest.sh` ends by saying how many cases passed; the number
 is not repeated here, where it would be wrong the next time one was added.
 
 - **`bars`** compiles [`mcu/app/src/bars.c`](../../mcu/app/src/bars.c) — the
@@ -608,6 +729,11 @@ is not repeated here, where it would be wrong the next time one was added.
   purpose does, a panel meant to be on whose count has stopped does not), and
   the names `app reset` gives the reset causes, which must be single words,
   with the cause before `pin`, none dropped and none cut short.
+- **`jitter`** compiles [`mcu/app/src/jitter.c`](../../mcu/app/src/jitter.c)
+  — the firmware's own jitter record — and feeds it made-up timestamps in place
+  of the timers: every bin edge from both sides, the clamp, min, max and mean,
+  the `bins=` string at its widest, the first tick after arming, an interval
+  across the 32-bit counter's wrap, a missed tick, stop and re-arm.
 - **`link_protocol`** tests
   [`mcu/app/include/app_proto.h`](../../mcu/app/include/app_proto.h), the contract
   that `main.c`, these tests and `unoq/mcu.py` all depend on agreeing.

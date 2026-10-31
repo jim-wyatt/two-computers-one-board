@@ -102,8 +102,28 @@ RESET_CAUSES = (
 )
 RESET_NONE = "none"
 RESET_UNKNOWN = "unknown"
+# `app jitter`: APP_JITTER_* in app_proto.h. The bin edges and the limits are
+# numbers test_contract.py reads out of the header; the reply regexes are
+# rebuilt there from the formats, as the others are.
+JITTER_EDGES_US = (50, 100, 200, 500, 1000, 2000, 5000)
+JITTER_BINS = 2 * len(JITTER_EDGES_US) + 1
+JITTER_PERIOD_US_MIN = 100
+JITTER_PERIOD_US_MAX = 10_000_000
+JITTER_PWM_HZ_MIN = 16
+JITTER_PWM_HZ_MAX = 10_000
+JITTER_SOURCES = ("tick", "pwm")
+_JITTER = re.compile(
+    r"^jitter src=([a-z]+) period_us=(\d+) n=(\d+) min_ns=(-?\d+) max_ns=(-?\d+)"
+    r" mean_ns=(-?\d+) bins=(\d+(?:,\d+)*)$"
+)
+_JITTER_ARM = re.compile(r"^ok jitter arm period_us=(\d+)$")
+_JITTER_PWM = re.compile(r"^ok jitter pwm hz=(\d+) period_us=(\d+)$")
+_JITTER_OFF = re.compile(r"^ok jitter off$")
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 _PROMPT = re.compile(r"^\s*\S*:~\$\s*$")
+# A prompt with something typed after it on the same line: how a command's
+# echo arrives when the prompt before it was not swallowed by the input flush.
+_PROMPT_PREFIX = re.compile(r"^\S*:~\$\s*")
 
 
 class MCUError(RuntimeError):
@@ -284,6 +304,55 @@ class TempLogStat:
     period_ms: int
 
 
+def _jitter_labels() -> tuple[str, ...]:
+    """A name for each bin, earliest first: "<-5000", "-5000..-2000", ...,
+    "-50..50", ..., "2000..5000", ">5000", in microseconds."""
+    e = JITTER_EDGES_US
+    early = [f"<-{e[-1]}"] + [f"-{e[i]}..-{e[i - 1]}" for i in range(len(e) - 1, 0, -1)]
+    late = [f"{e[i - 1]}..{e[i]}" for i in range(1, len(e))] + [f">{e[-1]}"]
+    return (*early, f"-{e[0]}..{e[0]}", *late)
+
+
+JITTER_BIN_LABELS = _jitter_labels()
+
+
+@dataclass(frozen=True)
+class JitterHist:
+    """One of the two histograms `app jitter stat` prints.
+
+    `src` is "tick" (Linux's `app jitter tick` arrivals, timestamped on the
+    MCU's 1 MHz TIM5) or "pwm" (the period of the square wave on D3, captured
+    on D2 by TIM2 through a jumper). Each interval is compared with
+    `period_us`, which is 0 if there has never been one to compare with.
+
+    `n` counts intervals. `min_ns`, `max_ns` and `mean_ns` are deviations
+    from the period in nanoseconds, negative early and positive late, all 0
+    when `n` is 0. `bins` is JITTER_BINS counts, earliest first; their edges
+    are JITTER_EDGES_US, and JITTER_BIN_LABELS names them.
+    """
+
+    src: str
+    period_us: int
+    n: int
+    min_ns: int
+    max_ns: int
+    mean_ns: int
+    bins: tuple[int, ...]
+
+
+class JitterStat(NamedTuple):
+    """`app jitter stat`: Linux's schedule, and the MCU's hardware, side by side."""
+
+    tick: JitterHist
+    pwm: JitterHist
+
+
+_NO_JITTER = (
+    "this firmware has no `app jitter` command - it predates it. "
+    "Rebuild and update it (mcu/zbuild.sh, then unoq.fota)"
+)
+
+
 _NO_TEMP_LOG = (
     "this firmware has no temperature log (`app temp log`) - it predates it. "
     "Rebuild and update it (mcu/zbuild.sh, then unoq.fota)"
@@ -298,6 +367,14 @@ def _predates_temp_log(line: str) -> bool:
     and takes the words after it as arguments it ignores.
     """
     return line == "Subcommands:" or bool(_TEMP.match(line))
+
+
+def _after_echo(lines: list[str], command: str) -> list[str] | None:
+    """The lines after the last echo of `command`, or None if it is not there."""
+    for i in range(len(lines) - 1, -1, -1):
+        if _PROMPT_PREFIX.sub("", lines[i]) == command:
+            return lines[i + 1 :]
+    return None
 
 
 def _clean(text: str) -> list[str]:
@@ -347,6 +424,8 @@ class MCU:
         # merely advisable.
         self._s = open_port(port, baud, timeout)
         self._port = port
+        # Set by send(): replies to lines nobody read may still be arriving.
+        self._unread = False
         time.sleep(0.15)
         self._s.reset_input_buffer()
 
@@ -369,7 +448,14 @@ class MCU:
 
         Reads until the prompt reappears rather than sleeping a fixed time, so
         slow commands (`device list`) and fast ones cost what they should.
+
+        After send(), the echo and prompt of a line sent blind can still be on
+        their way when this starts, and that prompt would end the wait before
+        this command's reply had begun. So until one cmd() has completed after
+        a send(), the prompt only counts once this command's own echo has been
+        seen, and only what follows the echo is the reply.
         """
+        unread = self._unread
         self._s.reset_input_buffer()
         self._s.write((command + "\r\n").encode())
         self._s.flush()
@@ -382,19 +468,45 @@ class MCU:
             if chunk:
                 buf += chunk.decode("utf-8", "replace")
                 # The prompt is the reliable end-of-response marker.
-                if re.search(r":~\$\s*$", _ANSI.sub("", buf).replace("\r", "\n")):
+                if re.search(r":~\$\s*$", _ANSI.sub("", buf).replace("\r", "\n")) and (
+                    not unread or _after_echo(_clean(buf), command) is not None
+                ):
                     break
         else:
             raise ShellTimeout(f"no prompt after {timeout}s for {command!r}")
 
         lines = _clean(buf)
+        if unread:
+            lines = _after_echo(lines, command) or []
+            self._unread = False
         # Drop the echoed command itself.
-        if lines and lines[0] == command:
+        elif lines and lines[0] == command:
             lines = lines[1:]
         for line in lines:
             if line.startswith(ERROR_PREFIX) or any(said in line for said in _SHELL_REFUSALS):
                 raise MCUError(f"{command!r}: {line}")
         return lines
+
+    def send(self, command: str) -> None:
+        """Send a shell command and do not wait for, or read, its reply.
+
+        For a command whose only point is when it arrives: `app jitter tick`.
+        Waiting for the prompt would put the MCU's reply time into the
+        schedule being measured. Whatever is waiting to be read - the replies
+        to earlier sends - is thrown away first, so the input never fills: if
+        it did, the kernel would hold the MCU off with RTS, the shell would
+        block on its output, and the ticks behind it would arrive late for a
+        reason that has nothing to do with Linux's scheduling.
+
+        The write is not drained (no flush): it returns once the line is in
+        the kernel's buffer, which starts sending it at once.
+
+        The next cmd() knows replies may still be on their way, and reads
+        past them to its own.
+        """
+        self._s.reset_input_buffer()
+        self._s.write((command + "\r\n").encode())
+        self._unread = True
 
     # -- the `app` command group -------------------------------------------
 
@@ -559,6 +671,82 @@ class MCU:
         if not m:
             raise MCUError(f"could not parse app temp log stat: {out!r}")
         return TempLogStat(*(int(g) for g in m.groups()))
+
+    # -- jitter ------------------------------------------------------------
+
+    def _jitter_cmd(self, command: str) -> list[str]:
+        out = self.cmd(command)
+        if "Subcommands:" in out:
+            # What a firmware without `app jitter` says: the help for `app`.
+            raise MCUError(_NO_JITTER)
+        return out
+
+    def jitter_arm(self, period_us: int) -> int:
+        """Tell the MCU to expect a tick every `period_us`, and clear both
+        histograms. Returns the period the MCU took."""
+        period_us = int(period_us)
+        if not JITTER_PERIOD_US_MIN <= period_us <= JITTER_PERIOD_US_MAX:
+            raise ValueError(
+                f"period_us {period_us} outside {JITTER_PERIOD_US_MIN}..{JITTER_PERIOD_US_MAX}"
+            )
+        out = self._jitter_cmd(f"app jitter arm {period_us}")
+        m = _JITTER_ARM.match(out[0]) if out else None
+        if not m:
+            raise MCUError(f"could not parse app jitter arm: {out!r}")
+        return int(m[1])
+
+    def jitter_tick(self) -> None:
+        """One tick: the MCU timestamps its arrival on TIM5.
+
+        Fire-and-forget (see send()): nothing is read back, so nothing is
+        known here about whether it was armed. jitter_stat() says what
+        arrived. Call it on the schedule jitter_arm() was given.
+        """
+        self.send("app jitter tick")
+
+    def jitter_pwm(self, hz: int) -> int:
+        """Start a square wave of `hz` on D3 and capture its period on D2, and
+        clear the pwm histogram. Needs a jumper from D3 to D2; without one the
+        pwm histogram stays empty. Returns the period the timer really runs
+        at, in whole microseconds: 1_000_000 // hz."""
+        hz = int(hz)
+        if not JITTER_PWM_HZ_MIN <= hz <= JITTER_PWM_HZ_MAX:
+            raise ValueError(f"hz {hz} outside {JITTER_PWM_HZ_MIN}..{JITTER_PWM_HZ_MAX}")
+        out = self._jitter_cmd(f"app jitter pwm {hz}")
+        m = _JITTER_PWM.match(out[0]) if out else None
+        if not m or int(m[1]) != hz:
+            raise MCUError(f"could not parse app jitter pwm: {out!r}")
+        return int(m[2])
+
+    def jitter_stat(self) -> JitterStat:
+        """Both histograms, as the MCU holds them now.
+
+        Raises MCUError if either is missing, if a line does not parse, or if
+        its bins do not add up to its count: a histogram that disagrees with
+        itself is not one to put in a course.
+        """
+        out = self._jitter_cmd("app jitter stat")
+        found: dict[str, JitterHist] = {}
+        for line in out:
+            m = _JITTER.match(line)
+            if not m:
+                raise MCUError(f"could not parse app jitter stat: {line!r}")
+            bins = tuple(int(b) for b in m[7].split(","))
+            period_us, n, min_ns, max_ns, mean_ns = (int(g) for g in m.groups()[1:6])
+            hist = JitterHist(m[1], period_us, n, min_ns, max_ns, mean_ns, bins)
+            if len(bins) != JITTER_BINS or sum(bins) != hist.n:
+                raise MCUError(f"app jitter stat: bins do not add up to n: {line!r}")
+            found[hist.src] = hist
+        if set(found) != set(JITTER_SOURCES):
+            raise MCUError(f"app jitter stat: expected {JITTER_SOURCES}, got {out!r}")
+        return JitterStat(found["tick"], found["pwm"])
+
+    def jitter_off(self) -> None:
+        """Stop the ticks, the PWM on D3 and the capture on D2. The
+        histograms stay, for jitter_stat()."""
+        out = self._jitter_cmd("app jitter off")
+        if not out or not _JITTER_OFF.match(out[0]):
+            raise MCUError(f"could not parse app jitter off: {out!r}")
 
     # -- LED matrix --------------------------------------------------------
 

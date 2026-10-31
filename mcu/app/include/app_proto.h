@@ -10,6 +10,8 @@
  *   - mcu/app/src/templog.c     keeps the temperature log main.c prints
  *   - mcu/app/include/guard.h   names the reset causes APP_RESET_FMT carries
  *   - mcu/tests/templog/        tests the log's sequence, gap and batch rules
+ *   - mcu/app/src/jitter.c      keeps the jitter histograms `app jitter` prints
+ *   - mcu/tests/jitter/         tests their bins, clamp and tick bookkeeping
  *   - mcu/tests/link_protocol/  tests these definitions directly
  *   - python/unoq/mcu.py        parses those lines, calls `app bars`
  *
@@ -179,6 +181,78 @@ static inline bool app_parse_int(const char *s, int *out)
  * runs again. The word "yes" is required, because the command takes the
  * shell and the panel down with it. This is the one line it prints first. */
 #define APP_HANG_FMT "hanging: the watchdog resets the MCU in %d ms"
+
+/* --- jitter: the MCU times what Linux schedules ----------------------------
+ *
+ * Two histograms of the same shape, kept side by side (see jitter.h):
+ *
+ *   tick  Linux sends `app jitter tick` on a fixed schedule. Each arrival is
+ *         timestamped on TIM5, a free-running 32-bit counter at 1 MHz, and
+ *         the interval since the previous one is compared with the period
+ *         `app jitter arm` was given.
+ *   pwm   TIM3 drives a square wave out of D3 (PB0, TIM3_CH3), and with a
+ *         jumper from D3 to D2, TIM2 captures its period on D2 (PB3,
+ *         TIM2_CH2) in hardware. The same comparison, for timing that never
+ *         goes through software.
+ *
+ * The commands, and the line each answers with:
+ *
+ *   app jitter arm <period_us>   APP_JITTER_ARM_FMT. Clears both histograms.
+ *   app jitter tick              nothing on success: Linux does not wait for
+ *                                a reply (MCU.jitter_tick())
+ *   app jitter pwm <hz>          APP_JITTER_PWM_FMT, with the period the timer
+ *                                really runs at. Clears the pwm histogram.
+ *   app jitter stat              APP_JITTER_FMT twice: src=tick, then src=pwm
+ *   app jitter off               APP_JITTER_OFF_FMT. Stops the PWM, the
+ *                                capture and the ticks; the histograms stay,
+ *                                to be read
+ *
+ * A deviation is the measured interval minus the expected period, in
+ * nanoseconds: negative is early, positive late. A tick's is whole
+ * microseconds, the counter's resolution; a captured period's is 6.25 ns, one
+ * cycle of the 160 MHz timer clock. Each is clamped to the range of an int32
+ * (about +-2.1 s), far past the last bin anyway.
+ *
+ * The bins are by size and sign. APP_JITTER_EDGES_US are the edges in
+ * microseconds, and a deviation d goes in the bin of the first edge E with
+ * |d| <= E, on its own side of zero; the middle bin, |d| <= 50, has both
+ * signs. Past the last edge is one more bin each side. The APP_JITTER_BINS
+ * counts run from the earliest to the latest, in microseconds:
+ *
+ *   0: d < -5000           5: -200 <= d < -100     10: 200 < d <= 500
+ *   1: -5000 <= d < -2000  6: -100 <= d < -50      11: 500 < d <= 1000
+ *   2: -2000 <= d < -1000  7: -50 <= d <= 50       12: 1000 < d <= 2000
+ *   3: -1000 <= d < -500   8: 50 < d <= 100        13: 2000 < d <= 5000
+ *   4: -500 <= d < -200    9: 100 < d <= 200       14: 5000 < d
+ */
+#define APP_JITTER_EDGES_US {50, 100, 200, 500, 1000, 2000, 5000}
+#define APP_JITTER_EDGES    7
+#define APP_JITTER_BINS     (2 * APP_JITTER_EDGES + 1)
+
+/* What `app jitter arm` and `app jitter pwm` accept. The period floor is a
+ * shell command's own cost: below it, what is measured is the shell. The PWM
+ * range is TIM3's: a 16-bit timer counting at 1 MHz holds a period of at most
+ * 65535 us, just over 15 Hz; and every captured period is an interrupt, so the
+ * top is kept well under the panel's 100 kHz refresh.
+ */
+#define APP_JITTER_PERIOD_US_MIN 100
+#define APP_JITTER_PERIOD_US_MAX 10000000
+#define APP_JITTER_PWM_HZ_MIN    16
+#define APP_JITTER_PWM_HZ_MAX    10000
+
+/* One histogram. `period_us` is what each interval is compared with, 0 when
+ * there has been none (never armed, or the PWM never started); it stays
+ * through `app jitter off`. `n` counts intervals, one fewer than the ticks
+ * that made them. With n = 0, min, max and mean are 0. The mean is the sum
+ * over n, rounded toward zero. `bins` is the APP_JITTER_BINS counts,
+ * comma-separated, in the order above. */
+#define APP_JITTER_FMT      "jitter src=%s period_us=%u n=%u min_ns=%d max_ns=%d mean_ns=%d bins=%s"
+#define APP_JITTER_SRC_TICK "tick"
+#define APP_JITTER_SRC_PWM  "pwm"
+
+#define APP_JITTER_ARM_FMT "ok jitter arm period_us=%u"
+#define APP_JITTER_PWM_FMT "ok jitter pwm hz=%u period_us=%u"
+#define APP_JITTER_OFF_FMT "ok jitter off"
 
 /* --- LED matrix ----------------------------------------------------------
  *

@@ -17,6 +17,10 @@
  * The MCU also watches itself: guard.c arms the chip's watchdog at boot, and
  * `app reset` says why the last reset happened. See guard.h.
  *
+ * `app jitter` measures how well Linux keeps a schedule, against how well the
+ * MCU's own timers do. The record is jitter.c; the clocks are here. See
+ * jitter.h.
+ *
  * There is no main loop. Everything that runs after init runs on its own:
  * the shell has a thread, and the panel is refreshed from a timer ISR inside
  * matrix.c. A loop here would have nothing to do but sleep, and printing from
@@ -24,6 +28,8 @@
  */
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
+#include <zephyr/drivers/counter.h>
+#include <zephyr/drivers/pwm.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/shell/shell.h>
 #include <zephyr/settings/settings.h>
@@ -34,7 +40,9 @@
 #include "app_proto.h"
 #include "bars.h"
 #include "guard.h"
+#include "jitter.h"
 #include "matrix.h"
+#include "spi_proto.h"
 #include "status_leds.h"
 #include "templog.h"
 
@@ -145,6 +153,14 @@ static int cmd_app_temp(const struct shell *sh, size_t argc, char **argv)
 static struct templog temp_log;
 static struct templog_sample temp_log_batch[APP_TEMPLOG_BATCH];
 
+/* The SPI link's TEMPLOG service answers from this same log. spi_link.c has a
+ * weak default returning NULL, and until this definition existed the service
+ * answered "unavailable"; see spi_proto.h. */
+struct templog *spi_link_templog(void)
+{
+	return &temp_log;
+}
+
 /* `app temp log [since]` - see app_proto.h for the lines and their order. */
 static int cmd_app_temp_log(const struct shell *sh, size_t argc, char **argv)
 {
@@ -248,6 +264,230 @@ static int cmd_app_hang(const struct shell *sh, size_t argc, char **argv)
 		arch_nop();
 	}
 	return 0; /* not reached */
+}
+
+/* --- jitter: the MCU times what Linux schedules ---------------------------
+ *
+ * Three of the STM32's general-purpose timers, all on the 160 MHz APB1 timer
+ * clock and set up in boards/arduino_uno_q.overlay:
+ *
+ *   TIM5  a free-running 32-bit counter at 1 MHz. The tick timestamps. The
+ *         kernel's own cycle counter is LPTIM1 on the 32 kHz crystal here,
+ *         about 30 us a count, too coarse to time a 10 ms schedule by.
+ *   TIM3  PWM out on D3 (PB0, TIM3_CH3), counting at 1 MHz.
+ *   TIM2  PWM capture in on D2 (PB3, TIM2_CH2), at the full 160 MHz.
+ *
+ * A jumper from D3 to D2 makes TIM2 measure what TIM3 makes. Both run from
+ * the same clock, so any spread in that histogram is the hardware's own, not
+ * a disagreement between two crystals. Without the jumper the input is
+ * pulled down and nothing is captured: the pwm histogram stays at n=0.
+ */
+static const struct device *const jitter_clock = DEVICE_DT_GET(DT_NODELABEL(counter_jitter));
+static const struct device *const jitter_out = DEVICE_DT_GET(DT_NODELABEL(pwm_jitter_out));
+static const struct device *const jitter_in = DEVICE_DT_GET(DT_NODELABEL(pwm_jitter_in));
+#define JITTER_OUT_CH   3       /* TIM3_CH3: PB0, D3 */
+#define JITTER_IN_CH    2       /* TIM2_CH2: PB3, D2 */
+#define JITTER_CLOCK_HZ 1000000 /* TIM5, so a count is a microsecond */
+
+static struct jitter_ticker jitter_ticks;
+static struct jitter_hist jitter_pwm;
+static uint32_t jitter_pwm_period_us; /* what TIM3 runs at; 0 = never started */
+/* Read by the capture interrupt. Written only while the capture is off. */
+static uint32_t jitter_expect_cycles; /* one TIM3 period, in TIM2 cycles */
+static uint64_t jitter_in_hz;         /* TIM2's counting rate */
+static bool jitter_clock_running;
+
+static int jitter_clock_start(void)
+{
+	int rc;
+
+	if (jitter_clock_running) {
+		return 0;
+	}
+	if (!device_is_ready(jitter_clock)) {
+		return -ENODEV;
+	}
+	/* Everything in jitter.c takes a count to be a microsecond. */
+	if (counter_get_frequency(jitter_clock) != JITTER_CLOCK_HZ) {
+		return -ENOTSUP;
+	}
+	rc = counter_start(jitter_clock);
+	jitter_clock_running = rc == 0;
+	return rc;
+}
+
+/* In the timer's interrupt, once per period of the square wave on D2. The
+ * driver resets TIM2 on each rising edge and hands over what it had counted
+ * to: one period, in cycles. status is -ERANGE if it overflowed first. */
+static void jitter_on_capture(const struct device *dev, uint32_t channel, uint32_t period_cycles,
+			      uint32_t pulse_cycles, int status, void *user_data)
+{
+	ARG_UNUSED(dev);
+	ARG_UNUSED(channel);
+	ARG_UNUSED(pulse_cycles);
+	ARG_UNUSED(user_data);
+
+	if (status != 0) {
+		return;
+	}
+	jitter_hist_add(&jitter_pwm, ((int64_t)period_cycles - jitter_expect_cycles) *
+					     1000000000LL / (int64_t)jitter_in_hz);
+}
+
+static int cmd_app_jitter_arm(const struct shell *sh, size_t argc, char **argv)
+{
+	status_leds_link_seen();
+	int period;
+	int rc;
+
+	ARG_UNUSED(argc);
+
+	if (!app_parse_int(argv[1], &period) || period < APP_JITTER_PERIOD_US_MIN ||
+	    period > APP_JITTER_PERIOD_US_MAX) {
+		shell_error(sh, APP_ERR "period_us: '%s' is not %d..%d", argv[1],
+			    APP_JITTER_PERIOD_US_MIN, APP_JITTER_PERIOD_US_MAX);
+		return -EINVAL;
+	}
+	rc = jitter_clock_start();
+	if (rc != 0) {
+		shell_error(sh, APP_ERR "the TIM5 counter is unavailable (%d)", rc);
+		return rc;
+	}
+
+	jitter_ticker_arm(&jitter_ticks, (uint32_t)period);
+	jitter_hist_clear(&jitter_pwm);
+	shell_print(sh, APP_JITTER_ARM_FMT, (unsigned int)period);
+	return 0;
+}
+
+/* The one command that is the measurement. The timestamp is the first thing
+ * it takes, so what it times is Linux, the wire and the shell's parse, and
+ * none of this handler. It prints nothing when it works: Linux does not read
+ * the reply (see MCU.jitter_tick()). */
+static int cmd_app_jitter_tick(const struct shell *sh, size_t argc, char **argv)
+{
+	uint32_t now = 0;
+	int rc = jitter_ticks.armed ? counter_get_value(jitter_clock, &now) : -EAGAIN;
+
+	status_leds_link_seen();
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	if (rc == 0) {
+		rc = jitter_ticker_tick(&jitter_ticks, now);
+	}
+	if (rc != 0) {
+		shell_error(sh, APP_ERR "not armed: app jitter arm <period_us> first (%d)", rc);
+		return rc;
+	}
+	return 0;
+}
+
+static void jitter_capture_stop(void)
+{
+	/* 0 whether or not a capture was running. */
+	(void)pwm_disable_capture(jitter_in, JITTER_IN_CH);
+}
+
+static int cmd_app_jitter_pwm(const struct shell *sh, size_t argc, char **argv)
+{
+	status_leds_link_seen();
+	uint64_t out_hz;
+	uint32_t cycles;
+	int hz;
+	int rc;
+
+	ARG_UNUSED(argc);
+
+	if (!app_parse_int(argv[1], &hz) || hz < APP_JITTER_PWM_HZ_MIN ||
+	    hz > APP_JITTER_PWM_HZ_MAX) {
+		shell_error(sh, APP_ERR "hz: '%s' is not %d..%d", argv[1], APP_JITTER_PWM_HZ_MIN,
+			    APP_JITTER_PWM_HZ_MAX);
+		return -EINVAL;
+	}
+	if (!device_is_ready(jitter_out) || !device_is_ready(jitter_in)) {
+		shell_error(sh, APP_ERR "the TIM3 PWM or the TIM2 capture is unavailable");
+		return -ENODEV;
+	}
+
+	/* The capture comes off first: a period that straddles the change
+	 * belongs to neither frequency. */
+	jitter_capture_stop();
+
+	rc = pwm_get_cycles_per_sec(jitter_out, JITTER_OUT_CH, &out_hz);
+	if (rc == 0) {
+		rc = pwm_get_cycles_per_sec(jitter_in, JITTER_IN_CH, &jitter_in_hz);
+	}
+	if (rc != 0 || out_hz == 0U || jitter_in_hz == 0U) {
+		shell_error(sh, APP_ERR "no timer clock rate (%d)", rc);
+		return rc != 0 ? rc : -EIO;
+	}
+	cycles = (uint32_t)(out_hz / (uint64_t)hz);
+	rc = pwm_set_cycles(jitter_out, JITTER_OUT_CH, cycles, cycles / 2U, PWM_POLARITY_NORMAL);
+	if (rc != 0) {
+		shell_error(sh, APP_ERR "PWM on D3 refused %u cycles (%d)", (unsigned int)cycles,
+			    rc);
+		return rc;
+	}
+	jitter_pwm_period_us = (uint32_t)((uint64_t)cycles * 1000000U / out_hz);
+	jitter_expect_cycles = (uint32_t)((uint64_t)cycles * jitter_in_hz / out_hz);
+	jitter_hist_clear(&jitter_pwm);
+
+	rc = pwm_configure_capture(jitter_in, JITTER_IN_CH,
+				   PWM_CAPTURE_TYPE_PERIOD | PWM_CAPTURE_MODE_CONTINUOUS |
+					   PWM_POLARITY_NORMAL,
+				   jitter_on_capture, NULL);
+	if (rc == 0) {
+		rc = pwm_enable_capture(jitter_in, JITTER_IN_CH);
+	}
+	if (rc != 0) {
+		shell_error(sh, APP_ERR "PWM runs on D3 but capture on D2 failed (%d)", rc);
+		return rc;
+	}
+
+	shell_print(sh, APP_JITTER_PWM_FMT, (unsigned int)hz, (unsigned int)jitter_pwm_period_us);
+	return 0;
+}
+
+static void jitter_print(const struct shell *sh, const char *src, uint32_t period_us,
+			 struct jitter_hist *h)
+{
+	/* Static rather than on the shell's stack; only the shell's thread
+	 * prints. */
+	static char bins[JITTER_BINS_STR_MAX];
+	struct jitter_summary s = jitter_hist_read(h);
+
+	(void)jitter_format_bins(s.bins, bins, sizeof(bins));
+	shell_print(sh, APP_JITTER_FMT, src, (unsigned int)period_us, (unsigned int)s.n,
+		    (int)s.min_ns, (int)s.max_ns, (int)s.mean_ns, bins);
+}
+
+static int cmd_app_jitter_stat(const struct shell *sh, size_t argc, char **argv)
+{
+	status_leds_link_seen();
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	jitter_print(sh, APP_JITTER_SRC_TICK, jitter_ticks.period_us, &jitter_ticks.hist);
+	jitter_print(sh, APP_JITTER_SRC_PWM, jitter_pwm_period_us, &jitter_pwm);
+	return 0;
+}
+
+static int cmd_app_jitter_off(const struct shell *sh, size_t argc, char **argv)
+{
+	status_leds_link_seen();
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	jitter_ticker_stop(&jitter_ticks);
+	if (device_is_ready(jitter_in)) {
+		jitter_capture_stop();
+	}
+	if (device_is_ready(jitter_out)) {
+		(void)pwm_set_cycles(jitter_out, JITTER_OUT_CH, 0, 0, PWM_POLARITY_NORMAL);
+	}
+	shell_print(sh, APP_JITTER_OFF_FMT);
+	return 0;
 }
 
 /* --- the LED panel -------------------------------------------------------- */
@@ -444,6 +684,17 @@ SHELL_STATIC_SUBCMD_SET_CREATE(temp_cmds,
 			       SHELL_SUBCMD_SET_END);
 
 SHELL_STATIC_SUBCMD_SET_CREATE(
+	jitter_cmds,
+	SHELL_CMD_ARG(arm, NULL, "Expect a tick every period: app jitter arm <period_us>",
+		      cmd_app_jitter_arm, 2, 0),
+	SHELL_CMD(tick, NULL, "Timestamp this arrival on TIM5", cmd_app_jitter_tick),
+	SHELL_CMD_ARG(pwm, NULL, "PWM out on D3, captured on D2: app jitter pwm <hz>",
+		      cmd_app_jitter_pwm, 2, 0),
+	SHELL_CMD(stat, NULL, "Both histograms: tick, then pwm", cmd_app_jitter_stat),
+	SHELL_CMD(off, NULL, "Stop the ticks, the PWM and the capture", cmd_app_jitter_off),
+	SHELL_SUBCMD_SET_END);
+
+SHELL_STATIC_SUBCMD_SET_CREATE(
 	app_cmds,
 	SHELL_CMD(status, NULL, "uptime, panel orientation, refresh sweeps", cmd_app_status),
 	SHELL_CMD(temp, &temp_cmds, "die temp in millidegrees C", cmd_app_temp),
@@ -453,6 +704,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
 	SHELL_CMD(reset, NULL, "why the MCU last reset", cmd_app_reset),
 	SHELL_CMD_ARG(hang, NULL, "Stall until the watchdog resets the MCU: app hang yes",
 		      cmd_app_hang, 2, 0),
+	SHELL_CMD(jitter, &jitter_cmds, "how well Linux keeps a schedule", NULL),
 	SHELL_SUBCMD_SET_END);
 SHELL_CMD_REGISTER(app, &app_cmds, "UNO Q application commands", NULL);
 

@@ -24,6 +24,8 @@ from .cpufreq import Policy, read_policies
 from .link import BOOT0_LINE, LINK_ENABLE_LINE, link_state, link_up
 from .mcu import (
     MCU,
+    JitterHist,
+    JitterStat,
     MCUError,
     PortBusy,
     ShellTimeout,
@@ -37,6 +39,8 @@ from .thermal import hottest, read_temps
 __all__ = [
     "fota",
     "MCU",
+    "JitterHist",
+    "JitterStat",
     "MCUError",
     "PortBusy",
     "ShellTimeout",
