@@ -164,6 +164,7 @@ Set on the command line, for one run of `bootstrap.sh` or of the script named.
 | `UNOQ_USER` | whoever ran `sudo` | `provision/lib.sh` | The account that owns the checkout and is written into the units. |
 | `UNOQ_VENV` | `<checkout>/.venv` | `provision/user/35-python-venv.sh`, `tools/` | The Python environment. |
 | `UNOQ_BOOT_TRIES` | `3` | `provision/82-boot-counting.sh` | How many boots a new kernel gets to come up with SSH before the previous one takes over, from `1` to `9`. Written to `/etc/kernel/tries`. Only read with `--with-boot-counting`. |
+| `UNOQ_RESCUE_ADDR` | `169.254.77.1/16` | `provision/84-rescue-entry.sh` | The address and prefix length the rescue system answers SSH at, on the USB cable. Link-local by default, so neither end needs DHCP. Built into the rescue initrd: run the step again after changing it. Only read with `--with-rescue-entry`. |
 | `UNOQ_WATCHDOG_SEC` | `30` | `provision/80-watchdog.sh` | Whole seconds without a ping from `systemd` before the hardware watchdog resets the board. Refused below `10`: a timeout that short resets a board that is merely busy, and does it again after every reboot. Only read with `--with-watchdog`. |
 
 ## The MCU control lines
@@ -230,10 +231,13 @@ and setting one will mostly make a script look in the wrong place.
 | `UNOQ_NSLOOKUP` | `nslookup` | The resolver probe. |
 | `UNOQ_UNIT_DIR` | `/etc/systemd/system` | Where `install_unit` (`provision/lib.sh`) installs a unit. |
 | `UNOQ_KERNEL_CONF_DIR` | `/etc/kernel` | Where `82-boot-counting.sh` writes `tries`. |
+| `UNOQ_ESP_DIR` | what `bootctl --print-esp-path` says (`/boot/efi`) | The EFI partition `84-rescue-entry.sh` adds its entry, kernel and initrd to. |
+| `UNOQ_INITRAMFS_CONF_DIR` | `/etc/unoq-rescue/initramfs` | The rescue initrd's own initramfs-tools configuration, which `84-rescue-entry.sh` writes and passes to `mkinitramfs -d`. |
+| `UNOQ_DROPBEAR_DIR` | `/etc/unoq-rescue/dropbear` | Where `84-rescue-entry.sh` keeps the rescue host key and its copy of your `authorized_keys`. |
 | `UNOQ_WATCHDOG_CONF_DIR` | `/etc/systemd/system.conf.d` | Where `80-watchdog.sh` writes its `systemd` drop-in. |
 | `UNOQ_WATCHDOG_SYSFS` | `/sys/class/watchdog` | Where `80-watchdog.sh` looks for a watchdog device. |
 | `UNOQ_FSTAB` | `/etc/fstab` | The mount table `85-esp-permissions.sh` edits, and `75-learning-web.sh` adds the share's line to. The first writes its backup beside it. |
-| `UNOQ_ROOT` | empty | Put in front of the system paths a provisioning step reads or writes that have no variable of their own (`/etc`, `/usr/bin`, `/dev`), as `$SYSROOT` in the scripts. One prefix, not a variable per path, so the serial port stays [fixed](#what-is-not-a-variable). |
+| `UNOQ_ROOT` | empty | Put in front of the system paths a provisioning step reads or writes that have no variable of their own (`/etc`, `/usr/bin`, `/dev`), as `$SYSROOT` in the scripts. One prefix, not a variable per path, so the serial port stays [fixed](#what-is-not-a-variable). The rescue system's boot-time script reads `/proc`, `/sys` and `/etc` under it too. |
 | `UNOQ_CODESPELL` | `.venv/bin/codespell` | The spelling checker `tools/check-spelling.sh` runs. |
 | `UNOQ_PY_LOCK`, `UNOQ_ZEPHYR_LOCK`, `UNOQ_ZEPHYR_IN`, `UNOQ_PYPROJECT`, `UNOQ_WORKSPACE_STEP` | the files in the repository | The five files `tools/check-constraints.sh` compares, so its tests can hand it copies with one thing wrong. |
 | `UNOQ_RUN_DIR` | `/run` | Where `usb-net-up.sh` keeps the DHCP client's pid file (and `wifi.sh` and `gadget-down.sh` look for it), and where provisioning notes that packages changed in this boot. |
