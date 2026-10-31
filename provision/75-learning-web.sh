@@ -26,6 +26,8 @@ need_root
 
 MOUNT="${UNOQ_SHARE_MOUNT:-/srv/unoq-share}"
 PORT="${UNOQ_LEARN_PORT:-8080}"
+# UNOQ_FSTAB is the one 85-esp-permissions.sh reads, and is for the tests.
+FSTAB="${UNOQ_FSTAB:-/etc/fstab}"
 
 step "prerequisites"
 if [ -x "$PROJECT/.venv/bin/unoq-learn" ]; then
@@ -57,20 +59,20 @@ IMG="${UNOQ_SHARE_IMG:-$TARGET_HOME/unoq-share.img}"
 # 1 MiB in and a plain `loop` mount finds a partition table where it expects a
 # boot sector.
 FSTAB_LINE="$IMG $MOUNT vfat loop,ro,nofail,offset=1048576,umask=0022,utf8 0 0"
-if grep -q "^$IMG .*offset=1048576" /etc/fstab 2>/dev/null; then
-  skip "$MOUNT already in /etc/fstab"
-elif grep -qF "$MOUNT" /etc/fstab 2>/dev/null; then
+if grep -q "^$IMG .*offset=1048576" "$FSTAB" 2>/dev/null; then
+  skip "$MOUNT already in $FSTAB"
+elif grep -qF "$MOUNT" "$FSTAB" 2>/dev/null; then
   # An entry from before the image was partitioned would fail to mount at boot.
   # Braces so the [[:space:]] that follows is not read as an array subscript.
-  sed -i "\#[[:space:]]${MOUNT}[[:space:]]#c\\$FSTAB_LINE" /etc/fstab
+  sed -i "\#[[:space:]]${MOUNT}[[:space:]]#c\\$FSTAB_LINE" "$FSTAB"
   systemctl daemon-reload
   did "updated the $MOUNT fstab entry with the partition offset"
 else
   # nofail: a board whose image is missing must still boot to a login prompt.
   printf '\n# Arduino UNO Q learning content + installers (share/build-image.sh)\n%s\n' \
-    "$FSTAB_LINE" >>/etc/fstab
+    "$FSTAB_LINE" >>"$FSTAB"
   systemctl daemon-reload
-  did "added $MOUNT to /etc/fstab (ro, nofail)"
+  did "added $MOUNT to $FSTAB (ro, nofail)"
 fi
 
 step "unoq-learn.service"
