@@ -23,7 +23,7 @@ setup() {
   PROJECT="$BATS_TEST_TMPDIR/checkout"
   mkdir -p "$PROJECT/python" "$PROJECT/tools"
   cp -r "$REAL/provision" "$PROJECT/"
-  cp "$REAL/python/requirements-lock.txt" "$PROJECT/python/"
+  cp "$REAL/python/requirements-lock.txt" "$REAL/python/pyproject.toml" "$PROJECT/python/"
   STEP="$PROJECT/provision/user/35-python-venv.sh"
   LOCK="$PROJECT/python/requirements-lock.txt"
 
@@ -91,7 +91,9 @@ PY
     done
     if [ -n "$editable" ]; then
       [ -e "$FLAGS/unoq-broken" ] || : >"$FLAGS/mod-unoq"
-      for e in unoq-cpu-bars zensical; do
+      # Every command pyproject.toml declares, as the real install does.
+      for e in $(sed -n '/^\[project\.scripts\]/,/^\[/{s/^\([A-Za-z0-9_-]*\)[[:space:]]*=.*/\1/p}' \
+        "$PROJECT/python/pyproject.toml") zensical; do
         printf '#!/bin/bash\n' >"$venv/bin/$e"
         chmod +x "$venv/bin/$e"
       done
@@ -254,4 +256,27 @@ SH
   [ "$status" -eq 0 ]
   ran_like "^uv pip install .* -e $PROJECT/python\[docs\]$"
   [[ "$output" == *"unoq installed editable"* ]]
+}
+
+@test "a command added to pyproject.toml after the venv was built is installed, and named" {
+  # The step once checked unoq-cpu-bars alone. A board set up before a new
+  # command existed skipped the install for ever and reported "0 changed".
+  run "$STEP"
+  sed -i 's/^\[project\.scripts\]$/[project.scripts]\nunoq-new = "unoq.new:main"/' "$PROJECT/python/pyproject.toml"
+  : >"$STUB_LOG"
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  ran_like "^uv pip install .* -e $PROJECT/python\\[docs\\]$"
+  [ -x "$VENV/bin/unoq-new" ]
+  [[ "$output" == *"unoq reinstalled for the commands it was missing: unoq-new"* ]]
+}
+
+@test "every command pyproject.toml declares counts, not a sample of them" {
+  run "$STEP"
+  rm "$VENV/bin/unoq-learn"
+  : >"$STUB_LOG"
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  [ -x "$VENV/bin/unoq-learn" ]
+  [[ "$output" == *"missing: unoq-learn"* ]]
 }

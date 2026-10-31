@@ -101,13 +101,34 @@ step "unoq package (editable)"
 # The [docs] extra comes along at provisioning time, not just for developers:
 # share/build-image.sh renders the learning site during the same bootstrap, and
 # a board without zensical produces a USB drive and a web server with no content.
+#
+# Every entry point pyproject.toml declares, not a sample of them. The check
+# used to name unoq-cpu-bars alone, so a board set up before unoq-temp-log,
+# unoq-buildlight or unoq-jitter existed skipped this step for ever and never
+# got them, while re-running it, as the docs say to, reported "0 changed".
+# The same lesson as the hardware libraries above: one list, for the install
+# and the check. Read from the file, because a list kept here would go stale.
+# Lines `name = "module:function"` up to the next [section].
+SCRIPTS="$(sed -n '/^\[project\.scripts\]/,/^\[/{s/^\([A-Za-z0-9_-]*\)[[:space:]]*=.*/\1/p}' "$PROJECT/python/pyproject.toml")"
+scripts_missing() {
+  local s out=""
+  for s in $SCRIPTS zensical; do
+    [ -x "$VENV/bin/$s" ] || out="$out $s"
+  done
+  echo "${out# }"
+}
+NOT_ON_PATH="$(scripts_missing)"
 if [ "$LOCKED" = 1 ] && "$VENV/bin/python" -c 'import unoq' 2>/dev/null &&
-  [ -x "$VENV/bin/unoq-cpu-bars" ] && [ -x "$VENV/bin/zensical" ]; then
-  skip "unoq importable, unoq-cpu-bars and zensical on PATH"
+  [ -z "$NOT_ON_PATH" ]; then
+  skip "unoq importable, its $(wc -w <<<"$SCRIPTS") commands and zensical on PATH"
 else
   uv pip install --python "$VENV/bin/python" -q -c "$LOCK" -b "$LOCK" -e "$PROJECT/python[docs]" ||
     fail "could not install the unoq package"
-  did "unoq installed editable from $PROJECT/python (with the docs extra)"
+  if [ -n "$NOT_ON_PATH" ] && [ "$LOCKED" = 1 ]; then
+    did "unoq reinstalled for the commands it was missing: $NOT_ON_PATH"
+  else
+    did "unoq installed editable from $PROJECT/python (with the docs extra)"
+  fi
 fi
 
 step "dev tooling"
