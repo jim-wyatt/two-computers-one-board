@@ -15,6 +15,7 @@ dependencies = ["pyserial", "gpiod", "smpclient"]
 unoq-cpu-bars = "unoq.cpubars:main"
 unoq-learn = "unoq.learn:main"
 unoq-powerlog = "unoq.powerlog:main"
+unoq-temp-log = "unoq.templog:main"
 
 # Install with:  tools/install-dev-tools.sh   (it passes the lock file; a bare
 # `uv pip install -e` would take whatever versions are newest)

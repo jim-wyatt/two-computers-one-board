@@ -161,6 +161,7 @@ bootstrap() {
   bootstrap --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"--with-watchdog"* ]]
+  [[ "$output" == *"--with-temp-log"* ]]
   [[ "$output" == *"TIME AND SPACE"* ]]
   [[ "$output" != *"set -uo pipefail"* ]]
   [[ "$output" != *"PROJECT="* ]]
@@ -374,6 +375,7 @@ line_of() { grep -nE "$1" "$STUB_LOG" | head -1 | cut -d: -f1; }
   refute ran_step provision/80-watchdog.sh
   refute ran_step provision/85-esp-permissions.sh
   refute ran_step provision/82-boot-counting.sh
+  refute ran_step provision/66-temp-log.sh
 }
 
 @test "boot counting runs with --everything or by name, and not by default" {
@@ -522,4 +524,89 @@ demo_running() { demo_in active; }
   demo_running
   bootstrap --skip-mcu
   refute ran_like '^sudo systemctl stop unoq-cpu-bars'
+}
+
+# --- the temperature logger ---------------------------------------------------
+
+# The logger and the demo both hold /dev/ttyHS1, so a run sets up one of them.
+
+# units_are <cpu-bars ActiveState> <temp-log ActiveState> <temp-log UnitFileState>
+units_are() {
+  stub_body systemctl <<SH
+[ "\$1" = show ] || exit 0
+case "\$2:\$4" in
+  unoq-cpu-bars.service:ActiveState) echo $1 ;;
+  unoq-temp-log.service:ActiveState) echo $2 ;;
+  unoq-temp-log.service:UnitFileState) echo $3 ;;
+esac
+exit 0
+SH
+}
+
+@test "--with-temp-log sets up the logger instead of the demo, and says so first" {
+  bootstrap --with-temp-log
+  [ "$status" -eq 0 ]
+  ran_step provision/66-temp-log.sh
+  refute ran_step provision/65-cpu-bars.sh
+  [[ "$output" == *"INSTEAD OF the CPU-bars demo"* ]]
+  [[ "$output" != *"run the CPU-bars demo from boot"* ]]
+  # ...and ends by saying how to go back.
+  [[ "$output" == *"sudo systemctl disable --now unoq-temp-log && sudo bash provision/65-cpu-bars.sh"* ]]
+}
+
+@test "--with-temp-log wins over --with-cpu-bars, in either order" {
+  bootstrap --with-temp-log --with-cpu-bars
+  refute ran_step provision/65-cpu-bars.sh
+  ran_step provision/66-temp-log.sh
+}
+
+@test "the logger is set up after the web server, whose page it checks for" {
+  bootstrap --with-temp-log
+  web="$(line_of "^sudo -E bash $PROJECT/provision/75-learning-web\.sh\$")"
+  log="$(line_of "^sudo -E bash $PROJECT/provision/66-temp-log\.sh\$")"
+  [ -n "$web" ] && [ -n "$log" ]
+  [ "$web" -lt "$log" ]
+}
+
+@test "without it, the end of the run says how to get the logger" {
+  bootstrap
+  [[ "$output" == *"sudo bash provision/66-temp-log.sh"* ]]
+}
+
+@test "a board that already logs keeps logging on a plain re-run" {
+  # Re-running is the recovery path. Handing the port back to the demo is a
+  # choice, and 66 says how to make it.
+  units_are inactive active enabled
+  bootstrap
+  [ "$status" -eq 0 ]
+  ran_step provision/66-temp-log.sh
+  refute ran_step provision/65-cpu-bars.sh
+  [[ "$output" == *"keep the temperature logger this board already runs"* ]]
+}
+
+@test "a logger that is running is stopped before the flash, and left for step 66" {
+  units_are inactive active enabled
+  bootstrap
+  stop="$(line_of '^sudo systemctl stop unoq-temp-log.service$')"
+  flash="$(line_of 'mcu/flash-all\.sh')"
+  [ -n "$stop" ] && [ "$stop" -lt "$flash" ]
+  refute ran "sudo systemctl start unoq-temp-log.service"
+}
+
+@test "the demo stopped for the flash is not started again on a run that installs the logger" {
+  units_are active inactive disabled
+  bootstrap --with-temp-log
+  ran "sudo systemctl stop unoq-cpu-bars.service"
+  refute ran "sudo systemctl start unoq-cpu-bars.service"
+  ran_step provision/66-temp-log.sh
+}
+
+@test "a logger started by hand, on a run without it, is started again after the flash" {
+  units_are inactive active disabled
+  bootstrap --no-cpu-bars
+  ran "sudo systemctl stop unoq-temp-log.service"
+  reset="$(line_of '^sudo systemctl reset-failed unoq-temp-log.service$')"
+  start="$(line_of '^sudo systemctl start unoq-temp-log.service$')"
+  [ -n "$reset" ] && [ -n "$start" ] && [ "$reset" -lt "$start" ]
+  refute ran_step provision/66-temp-log.sh
 }

@@ -446,7 +446,7 @@ with the output from the last banner down.
 ## Options
 
 A plain run sets up everything the course uses. The options are for leaving
-something out, or for adding one of three things that are not for everybody.
+something out, or for adding one of the things that are not for everybody.
 
 ### Leaving something out
 
@@ -469,6 +469,7 @@ has the detail.
 | Option | Gives you | Costs you |
 |---|---|---|
 | `--with-purge` | A few hundred MB of disk back, by removing the remaining Arduino packages. (The ~2 GB of container images go in the default run.) | It is the one step that is hard to undo. The stock firmware is backed up first. |
+| `--with-temp-log` | The microcontroller's temperature, sampled once a second on its own clock, kept on Linux with the board's own temperatures beside it, and graphed at `http://<board name>.local:8080/data/`. The chapter [Two clocks, one record](learn/two-clocks-one-record.md) is about it. | The CPU-bars demo: both need the one serial line, so this replaces it. About 4 MB of disk a day. A later plain run keeps the logger; `sudo systemctl disable --now unoq-temp-log && sudo bash provision/65-cpu-bars.sh` brings the demo back. |
 | `--with-watchdog` | The board resets itself if its kernel hangs, instead of waiting for someone to pull the cable. | It also resets if `systemd` merely stalls for 30 seconds. It has survived a clean firmware build with swap 80% full on one board, which is one measurement and not a promise. |
 | `--with-boot-counting` | A new kernel boots on trial. If it doesn't come up with SSH three boots running, the board goes back to the previous kernel by itself. | Nothing until the next kernel is installed. |
 | `--with-esp-lockdown` | The EFI partition, and the random seed on it, readable by root only. Run on one board, through a reboot. | It edits the line of `/etc/fstab` the board boots from. The edit is checked before it is installed and the old file is kept as `/etc/fstab.unoq-esp.bak`. |

@@ -30,7 +30,11 @@ After=unoq-usb-gadget.service
 Type=simple
 User=arduino
 Group=arduino
-ExecStart=/home/arduino/two-computers-one-board/.venv/bin/unoq-learn --root /srv/unoq-share --port 8080
+# --data is the temperature log (provision/66-temp-log.sh), at /data/. Named
+# whether or not the logger is installed: a directory that is not there is a
+# 404 at /data/, not a server that fails to start. ProtectSystem=strict leaves
+# it readable, and that is all this needs of it.
+ExecStart=/home/arduino/two-computers-one-board/.venv/bin/unoq-learn --root /srv/unoq-share --port 8080 --data /var/lib/unoq/templog
 
 # It serves a read-only mount and needs nothing else on the box. These cost
 # nothing and mean a bug in a stdlib HTTP handler reachable over a USB cable
