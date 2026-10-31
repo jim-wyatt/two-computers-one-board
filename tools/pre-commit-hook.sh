@@ -3,10 +3,12 @@
 # SPDX-License-Identifier: MIT
 # Pre-commit gate. Installed by tools/install-hooks.sh.
 #
-# Runs the fast gates (lint, format, types, Python tests) but not the MCU
-# suite, which builds Zephyr and takes ~70s - too slow to sit in front of
-# every commit. CI runs the same script, and check.sh with no --fast covers
-# the rest before you push.
+# Runs check.sh --staged: every gate a --fast run has, except that shellcheck
+# and the bats suites look only at what this commit touches. Those two are most
+# of a full run on the board (about eight and eleven minutes), and CI runs both
+# in full on every pull request, which merging needs green. The MCU suite,
+# which builds Zephyr, and the diagram render are left to CI as before.
+# `tools/check.sh` with no flags still runs everything, for when you want it.
 #
 # Skip once with:  git commit --no-verify
 set -uo pipefail
@@ -62,8 +64,14 @@ fi
 # and GIT_INDEX_FILE still set was running it on THIS repository: its
 # `git commit` started this hook again, inside itself, for as long as anyone
 # waited. The hook's own git commands above need them; nothing it starts does.
+#
+# What this commit adds or changes is worked out here, while GIT_INDEX_FILE
+# still names the index being committed, and passed on: a `git commit -a`
+# stages into an index of its own, which check.sh could not find without it.
+UNOQ_STAGED="$(git diff --cached --name-only --diff-filter=ACMR)"
+export UNOQ_STAGED
 # shellcheck disable=SC2046 # one name per word is the point
-env $(printf -- '-u %s ' $(git rev-parse --local-env-vars)) "$PROJECT/tools/check.sh" --fast
+env $(printf -- '-u %s ' $(git rev-parse --local-env-vars)) "$PROJECT/tools/check.sh" --staged
 STATUS=$?
 
 # A failed restore blocks the commit too. Committing on top of a tree we could

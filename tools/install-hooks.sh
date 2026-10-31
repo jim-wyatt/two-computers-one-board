@@ -32,4 +32,4 @@ fi
 
 ln -sfn "$PROJECT/tools/pre-commit-hook.sh" "$HOOK"
 echo "installed $HOOK -> tools/pre-commit-hook.sh"
-echo "runs: tools/check.sh --fast   (skip once with git commit --no-verify)"
+echo "runs: tools/check.sh --staged   (skip once with git commit --no-verify)"

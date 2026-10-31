@@ -244,6 +244,12 @@ image, and `usb/status.sh` reads the second. The file is rewritten by every
 step that installs a root unit, so an edit to it does not last. To move the
 drive image, set `UNOQ_SHARE_IMG`.
 
+`UNOQ_STAGED` is set by the pre-commit hook for the `tools/check.sh --staged`
+it runs: the files the commit adds or changes, one per line. The hook works it
+out because it runs `check.sh` without git's own variables, and a
+`git commit -a` stages into an index `check.sh` could not otherwise find. Run
+`--staged` by hand and it asks git for the staged files itself.
+
 ## What is not a variable
 
 Some numbers that look tunable are fixed, and on purpose:
