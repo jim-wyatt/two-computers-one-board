@@ -14,6 +14,19 @@ The prefixed names on this page are checked against the code: `tools/check.sh
 docs` fails if one exists in a script and not here, or here and not in a
 script. The unprefixed ones are not covered by that check.
 
+To see what a board is actually set to, ask it:
+
+```bash
+tools/settings.sh
+```
+
+It prints every setting on this page above [Not for changing](#not-for-changing),
+the value it has, and where that value came from: `/etc/default/unoq-usb`
+(what the units read), the shell you ran it from, or the default. A line in
+that file that no script reads, a typo or a retired setting, is listed too,
+since it does nothing and nothing else would say so. The list is read from this
+page, so the check above is also what keeps the command complete.
+
 ## How a setting reaches the thing that reads it
 
 There are three routes, and which one applies depends on what runs the script.
