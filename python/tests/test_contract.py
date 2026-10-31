@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 from conftest import PROMPT
@@ -148,8 +149,16 @@ def firmware_format(name: str) -> str:
 
 
 def implied_regex(fmt: str) -> str:
-    """The anchored regex a printf format made only of literals and %d implies."""
-    return "^" + re.escape(fmt).replace("%d", r"(-?\d+)") + "$"
+    """The anchored regex a printf format made of literals, %d, %lld and %u implies.
+
+    Signed conversions take an optional minus and unsigned ones do not, so a
+    Python regex that accepted a negative sequence number would not match.
+    re.escape() escapes spaces, which the regexes in mcu.py write plainly.
+    """
+    body = re.escape(fmt).replace("\\ ", " ")
+    for spec, group in (("%lld", r"(-?\d+)"), ("%d", r"(-?\d+)"), ("%u", r"(\d+)")):
+        body = body.replace(spec, group)
+    return "^" + body + "$"
 
 
 @pytest.mark.parametrize(
@@ -180,6 +189,68 @@ def test_the_failure_line_is_not_a_reading() -> None:
     line = firmware_format("APP_TEMP_ERR_FMT") % -19
     assert mcu._TEMP_ERR.match(line)
     assert not mcu._TEMP.match(line)
+
+
+# -- the temperature log -----------------------------------------------------
+#
+# `app temp log` and `app temp log stat` print five formats between them, each
+# matched in mcu.py by a regex of its own. Pinned the same way as the temp line.
+
+
+@pytest.mark.parametrize(
+    ("python_name", "c_name"),
+    [
+        ("_TEMPLOG", "APP_TEMPLOG_FMT"),
+        ("_TEMPLOG_ERR", "APP_TEMPLOG_ERR_FMT"),
+        ("_TEMPLOG_GAP", "APP_TEMPLOG_GAP_FMT"),
+        ("_TEMPLOG_END", "APP_TEMPLOG_END_FMT"),
+        ("_TEMPLOG_STAT", "APP_TEMPLOG_STAT_FMT"),
+    ],
+)
+def test_temp_log_regexes_are_the_ones_the_firmware_formats_imply(
+    python_name: str, c_name: str
+) -> None:
+    fmt = firmware_format(c_name)
+    assert getattr(mcu, python_name).pattern == implied_regex(fmt), (
+        f"unoq.mcu.{python_name} no longer matches {c_name} ({fmt!r}) - "
+        f"a change to app_proto.h is a protocol change; update python/unoq/mcu.py"
+    )
+
+
+def render(fmt: str, *values: int) -> str:
+    """printf a format from the header. Python's % takes one length modifier
+    and ignores it, but not two, so %lld becomes the %d it means here."""
+    return fmt.replace("%lld", "%d") % values
+
+
+def test_a_temp_log_reply_the_firmware_would_print_parses_back(mcu_factory: Any) -> None:
+    """Every line of a reply rendered through the header's own formats, with
+    the values mcu/tests/templog renders in C, read back by MCU.temp_log()."""
+    reply = [
+        render(firmware_format("APP_TEMPLOG_GAP_FMT"), 5, 10),
+        render(firmware_format("APP_TEMPLOG_FMT"), 11, 123456789012, -40000),
+        render(firmware_format("APP_TEMPLOG_ERR_FMT"), 12, 123456790012, -19),
+        render(firmware_format("APP_TEMPLOG_END_FMT"), 12, 0),
+    ]
+    board = mcu_factory({"app temp log 4": reply})
+    assert board.temp_log(4) == [
+        mcu.TempSample(11, 123456789012, -40.0),
+        mcu.TempSample(12, 123456790012, None, -19),
+    ]
+
+
+def test_a_temp_log_stat_line_the_firmware_would_print_parses_back(mcu_factory: Any) -> None:
+    line = render(firmware_format("APP_TEMPLOG_STAT_FMT"), 610, 600, 600, 10, 1000)
+    board = mcu_factory({"app temp log stat": [line]})
+    assert board.temp_log_stat() == mcu.TempLogStat(610, 600, 600, 10, 1000)
+
+
+def test_a_logged_sample_is_never_read_as_a_temp_reply() -> None:
+    """die_temp() and temp_log() share the temp_mc= key. Anchoring keeps a log
+    line from passing for an `app temp` reply, and the other way round."""
+    line = render(firmware_format("APP_TEMPLOG_FMT"), 1, 1000, 25000)
+    assert not mcu._TEMP.match(line)
+    assert not mcu._TEMPLOG.match(firmware_format("APP_TEMP_FMT") % 25000)
 
 
 def test_the_firmware_marks_a_refusal_the_way_python_looks_for_it() -> None:

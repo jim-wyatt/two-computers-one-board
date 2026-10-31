@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 from conftest import PROMPT
 
-from unoq.mcu import MCU, MCUError, ShellTimeout, _clean
+from unoq.mcu import MCU, MCUError, ShellTimeout, TempLogStat, TempSample, _clean
 
 # -- _clean -----------------------------------------------------------------
 
@@ -192,6 +192,154 @@ def test_die_temp_raises_on_no_reply(mcu_factory: Any) -> None:
     mcu = mcu_factory({"app temp": []})
     with pytest.raises(MCUError, match="could not parse app temp"):
         mcu.die_temp()
+
+
+# -- the temperature log ----------------------------------------------------
+
+
+def _samples(first: int, last: int) -> list[str]:
+    """The lines the firmware prints for samples first..last, one a second."""
+    return [f"seq={n} ms={n * 1000} temp_mc={30000 + n}" for n in range(first, last + 1)]
+
+
+def test_temp_log_reads_samples_oldest_first(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app temp log": [*_samples(1, 3), "end head=3 more=0"]})
+    assert mcu.temp_log() == [
+        TempSample(1, 1000, 30.001),
+        TempSample(2, 2000, 30.002),
+        TempSample(3, 3000, 30.003),
+    ]
+    assert mcu._s.written == ["app temp log"]
+
+
+def test_temp_log_asks_after_since(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app temp log 41": [*_samples(42, 43), "end head=43 more=0"]})
+    assert [s.seq for s in mcu.temp_log(41)] == [42, 43]
+    assert mcu._s.written == ["app temp log 41"]
+
+
+def test_temp_log_with_nothing_new_is_empty(mcu_factory: Any) -> None:
+    # A reader that is keeping up: since is the newest sample.
+    mcu = mcu_factory({"app temp log 43": ["end head=43 more=0"]})
+    assert mcu.temp_log(43) == []
+
+
+def test_temp_log_pages_until_nothing_is_left(mcu_factory: Any) -> None:
+    """The firmware caps a reply at 32 lines; temp_log() keeps asking from the
+    last number it got, so the caller sees one unbroken list."""
+    mcu = mcu_factory(
+        {
+            "app temp log": [*_samples(1, 32), "end head=70 more=38"],
+            "app temp log 32": [*_samples(33, 64), "end head=70 more=6"],
+            "app temp log 64": [*_samples(65, 70), "end head=70 more=0"],
+        },
+        ansi=True,
+    )
+    assert [s.seq for s in mcu.temp_log()] == list(range(1, 71))
+    assert mcu._s.written == ["app temp log", "app temp log 32", "app temp log 64"]
+
+
+def test_temp_log_stops_if_a_reply_promises_more_and_sends_none(mcu_factory: Any) -> None:
+    # Asking again from the same number would get the same reply forever.
+    mcu = mcu_factory({"app temp log 5": ["end head=9 more=4"]})
+    assert mcu.temp_log(5) == []
+    assert mcu._s.written == ["app temp log 5"]
+
+
+def test_temp_log_keeps_a_failed_read_as_a_sample(mcu_factory: Any) -> None:
+    mcu = mcu_factory(
+        {
+            "app temp log": [
+                "seq=1 ms=1000 temp_mc=30001",
+                "seq=2 ms=2000 temp_err=-5",
+                "end head=2 more=0",
+            ]
+        }
+    )
+    failed = mcu.temp_log()[1]
+    assert failed == TempSample(2, 2000, None, -5)
+    assert failed.temp_c is None
+
+
+def test_temp_log_keeps_the_sign_below_freezing(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app temp log": ["seq=1 ms=0 temp_mc=-1500", "end head=1 more=0"]})
+    assert mcu.temp_log()[0].temp_c == -1.5
+
+
+def test_a_gap_shows_as_a_jump_in_seq(mcu_factory: Any) -> None:
+    """Samples 5 to 10 were overwritten before anyone asked. The firmware says
+    so, and the record says so too: 4 is followed by 11."""
+    mcu = mcu_factory(
+        {"app temp log 4": ["gap first=5 last=10", *_samples(11, 12), "end head=12 more=0"]}
+    )
+    assert [s.seq for s in mcu.temp_log(4)] == [11, 12]
+
+
+def test_a_reply_that_skips_samples_without_saying_so_raises(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app temp log 4": [*_samples(6, 7), "end head=7 more=0"]})
+    with pytest.raises(MCUError, match="does not follow on"):
+        mcu.temp_log(4)
+
+
+def test_a_gap_that_does_not_meet_the_first_sample_raises(mcu_factory: Any) -> None:
+    mcu = mcu_factory(
+        {"app temp log 4": ["gap first=5 last=10", *_samples(12, 12), "end head=12 more=0"]}
+    )
+    with pytest.raises(MCUError, match="does not follow on"):
+        mcu.temp_log(4)
+
+
+def test_temp_log_since_a_restart_raises(mcu_factory: Any) -> None:
+    # What the firmware says to a since beyond its newest sample.
+    refusal = "Error: since 900 is past the newest sample, 12: the MCU has restarted"
+    mcu = mcu_factory({"app temp log 900": [refusal]})
+    with pytest.raises(MCUError, match="restarted"):
+        mcu.temp_log(900)
+
+
+def test_temp_log_raises_on_a_reply_cut_short(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app temp log": _samples(1, 3)})
+    with pytest.raises(MCUError, match="without its end line"):
+        mcu.temp_log()
+
+
+def test_temp_log_raises_on_a_line_it_does_not_know(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app temp log": ["seq=1 ms=1000 temp_mc=warm", "end head=1 more=0"]})
+    with pytest.raises(MCUError, match="could not parse"):
+        mcu.temp_log()
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [OLD_FIRMWARE_HELP, ["temp_mc=31250"]],
+    ids=["no app temp", "app temp without log"],
+)
+def test_temp_log_says_so_when_the_firmware_predates_it(mcu_factory: Any, reply: list[str]) -> None:
+    mcu = mcu_factory({"app temp log": reply})
+    with pytest.raises(MCUError, match="no temperature log"):
+        mcu.temp_log()
+
+
+def test_temp_log_stat_parses_the_counters(mcu_factory: Any) -> None:
+    mcu = mcu_factory(
+        {"app temp log stat": ["head=610 count=600 size=600 dropped=10 period_ms=1000"]}
+    )
+    stat = mcu.temp_log_stat()
+    assert stat == TempLogStat(head=610, count=600, size=600, dropped=10, period_ms=1000)
+    assert mcu._s.written == ["app temp log stat"]
+
+
+@pytest.mark.parametrize("reply", [[], ["head=1 count=1"]], ids=["nothing", "short"])
+def test_temp_log_stat_raises_on_an_unparsable_reply(mcu_factory: Any, reply: list[str]) -> None:
+    mcu = mcu_factory({"app temp log stat": reply})
+    with pytest.raises(MCUError, match="could not parse app temp log stat"):
+        mcu.temp_log_stat()
+
+
+def test_temp_log_stat_says_so_when_the_firmware_predates_it(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app temp log stat": ["temp_mc=31250"]})
+    with pytest.raises(MCUError, match="no temperature log"):
+        mcu.temp_log_stat()
 
 
 # -- LED matrix -------------------------------------------------------------

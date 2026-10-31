@@ -4,9 +4,11 @@
  *
  * The MPU <-> MCU contract, in one place.
  *
- * Everything here is consumed by three parties that must agree:
+ * Everything here is consumed by parties that must agree:
  *
  *   - mcu/app/src/main.c        produces the status and temp lines, validates bars
+ *   - mcu/app/src/templog.c     keeps the temperature log main.c prints
+ *   - mcu/tests/templog/        tests the log's sequence, gap and batch rules
  *   - mcu/tests/link_protocol/  tests these definitions directly
  *   - python/unoq/mcu.py        parses those lines, calls `app bars`
  *
@@ -92,6 +94,66 @@ static inline bool app_parse_int(const char *s, int *out)
  */
 #define APP_TEMP_FMT     "temp_mc=%d"
 #define APP_TEMP_ERR_FMT "temp_err=%d"
+
+/* --- the temperature log -------------------------------------------------
+ *
+ * `app temp` is a reading taken when Linux asks. The log is the other way
+ * round: the MCU samples on its own timer, whether or not anyone is listening,
+ * and keeps the last APP_TEMPLOG_SIZE samples for Linux to collect later. See
+ * mcu/app/src/templog.c, and MCU.temp_log() in python/unoq/mcu.py.
+ *
+ * Every sample gets the next sequence number, starting at 1, and the MCU's
+ * own uptime when it was taken. The sequence is what makes a loss visible: a
+ * reader that asks for everything after the last number it saw either gets the
+ * next number, or is told which numbers it will never get.
+ *
+ * 600 samples is ten minutes at 1 Hz, so a reader stopped for a restart or an
+ * upgrade comes back to an unbroken record. Each sample is 16 bytes of RAM, so
+ * the ring is 9600 bytes of the chip's 786 KB.
+ */
+#define APP_TEMPLOG_SIZE      600
+#define APP_TEMPLOG_PERIOD_MS 1000
+
+/* The most samples one `app temp log` prints. The whole ring at once would be
+ * 600 lines, about 20 KB and two seconds of the 115200 link in one reply, and
+ * a reader's timeout has to allow for the longest reply it can get. 32 lines
+ * is about a tenth of a second. APP_TEMPLOG_END_FMT says how many are left.
+ */
+#define APP_TEMPLOG_BATCH 32
+
+/* `app temp log [since]` prints, in this order:
+ *
+ *   APP_TEMPLOG_GAP_FMT  once, only if samples after `since` were overwritten
+ *                        before anyone asked for them: the first and the last
+ *                        sequence number lost, inclusive
+ *   APP_TEMPLOG_FMT      one per sample, oldest first, at most
+ *                        APP_TEMPLOG_BATCH of them
+ *   APP_TEMPLOG_ERR_FMT  in place of a sample whose sensor read failed. It
+ *                        keeps its sequence number, so a failed read is never
+ *                        mistaken for a lost one, nor a lost one for a failure
+ *   APP_TEMPLOG_END_FMT  always, last: the newest sequence number held, and
+ *                        how many samples newer than this batch are waiting
+ *
+ * With no `since` it starts at the oldest sample held and reports no gap. With
+ * one, it starts after it - so `since` 0 means "from boot", and does report
+ * whatever was lost since boot. A `since` beyond the newest sample is refused
+ * with APP_ERR: the MCU has restarted since that number was read, and its
+ * sequence has started again.
+ *
+ * Sequence numbers are unsigned 32-bit; at 1 Hz they wrap after 136 years.
+ * The uptime is k_uptime_get(), signed 64-bit milliseconds.
+ */
+#define APP_TEMPLOG_FMT     "seq=%u ms=%lld temp_mc=%d"
+#define APP_TEMPLOG_ERR_FMT "seq=%u ms=%lld temp_err=%d"
+#define APP_TEMPLOG_GAP_FMT "gap first=%u last=%u"
+#define APP_TEMPLOG_END_FMT "end head=%u more=%u"
+
+/* `app temp log stat`: the newest sequence number (0 before the first
+ * sample), how many samples are held, the ring's size, how many were
+ * overwritten (whether anyone had read them or not), and the sampling period.
+ * head - count is always dropped; it is printed so nobody has to know that.
+ */
+#define APP_TEMPLOG_STAT_FMT "head=%u count=%u size=%u dropped=%u period_ms=%u"
 
 /* --- LED matrix ----------------------------------------------------------
  *
