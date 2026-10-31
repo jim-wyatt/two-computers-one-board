@@ -12,6 +12,7 @@ dependencies = ["pyserial", "gpiod", "smpclient"]
 # Re-run the editable install after adding a script here, or the command will
 # not appear on PATH: `python -m unoq.cpubars` works either way.
 [project.scripts]
+unoq-buildlight = "unoq.buildlight:main"
 unoq-cpu-bars = "unoq.cpubars:main"
 unoq-learn = "unoq.learn:main"
 unoq-powerlog = "unoq.powerlog:main"

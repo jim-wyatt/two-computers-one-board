@@ -186,6 +186,35 @@ SH
   [[ "$output" == *"the CPU-bars demo is not enabled"* ]]
 }
 
+@test "a build light is disabled too, before the logger is started" {
+  # 67 holds the same port. Both enabled would leave boot to chance.
+  with_venv
+  : >"$FLAGS/enabled-unoq-buildlight.service"
+  : >"$FLAGS/active-unoq-buildlight.service"
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  [ ! -e "$FLAGS/enabled-unoq-buildlight.service" ]
+  [[ "$output" == *"stopped and disabled the build light"* ]]
+  off="$(grep -n "^systemctl disable --now unoq-buildlight.service\$" "$STUB_LOG" | cut -d: -f1)"
+  on="$(grep -n "^systemctl enable --now $U\$" "$STUB_LOG" | cut -d: -f1)"
+  [ -n "$off" ] && [ "$off" -lt "$on" ]
+}
+
+@test "a build light that will not stop stops the step" {
+  with_venv
+  stub_body systemctl <<'SH'
+case "$1" in
+  is-enabled) [ "${*: -1}" = unoq-buildlight.service ] ;;
+  disable) exit 1 ;;
+  *) exit 0 ;;
+esac
+SH
+  run "$STEP"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not stop unoq-buildlight"* ]]
+  [ ! -e "$UNIT" ]
+}
+
 @test "a demo that will not stop stops the step, before the logger is installed" {
   with_venv
   demo_installed
