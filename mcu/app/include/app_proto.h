@@ -8,6 +8,7 @@
  *
  *   - mcu/app/src/main.c        produces the status and temp lines, validates bars
  *   - mcu/app/src/templog.c     keeps the temperature log main.c prints
+ *   - mcu/app/include/guard.h   names the reset causes APP_RESET_FMT carries
  *   - mcu/tests/templog/        tests the log's sequence, gap and batch rules
  *   - mcu/tests/link_protocol/  tests these definitions directly
  *   - python/unoq/mcu.py        parses those lines, calls `app bars`
@@ -154,6 +155,29 @@ static inline bool app_parse_int(const char *s, int *out)
  * head - count is always dropped; it is printed so nobody has to know that.
  */
 #define APP_TEMPLOG_STAT_FMT "head=%u count=%u size=%u dropped=%u period_ms=%u"
+
+/* --- why the MCU last reset ----------------------------------------------
+ *
+ * `app reset` prints this one line, parsed by unoq.MCU.reset_cause() into a
+ * list of names. The value is the causes RCC recorded for the reset that
+ * started this boot, comma-separated, most telling first: "watchdog,pin",
+ * "software,pin", "brownout,pin". The names, their order and why "pin" is
+ * nearly always there are in mcu/app/include/guard.h. "none" means no flag
+ * was set; "unknown" means a flag guard.h has no name for, or that the flags
+ * could not be read at all.
+ *
+ * One token with no spaces and no '=', so it reads the same way the status
+ * line's values do. The cause is read once at boot and cleared in the
+ * hardware then, so it describes this boot until the next reset, however
+ * many times it is asked.
+ */
+#define APP_RESET_FMT "reset=%s"
+
+/* `app hang yes` stalls the MCU on purpose, to show the watchdog firing: it
+ * locks the scheduler and spins, so the beat that feeds the watchdog never
+ * runs again. The word "yes" is required, because the command takes the
+ * shell and the panel down with it. This is the one line it prints first. */
+#define APP_HANG_FMT "hanging: the watchdog resets the MCU in %d ms"
 
 /* --- LED matrix ----------------------------------------------------------
  *

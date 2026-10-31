@@ -27,6 +27,10 @@ setup() {
   cp -r "$REAL/provision" "$REAL/mcu" "$REAL/usb" "$REAL/net" "$REAL/status" "$PROJECT/"
   cp "$REAL/docs/reference/usb.md" "$PROJECT/docs/reference/"
   STEP="$PROJECT/provision/95-usb-gadget.sh"
+  # The venv the relay's unit runs from, which install_unit checks is there.
+  mkdir -p "$PROJECT/.venv/bin"
+  printf '#!/bin/sh\n' >"$PROJECT/.venv/bin/python"
+  chmod +x "$PROJECT/.venv/bin/python"
 
   FLAGS="$BATS_TEST_TMPDIR/flags"
   mkdir -p "$FLAGS"
@@ -34,6 +38,7 @@ setup() {
 
   export UNOQ_ROOT="$BATS_TEST_TMPDIR/root"
   export UNOQ_UNIT_DIR="$BATS_TEST_TMPDIR/etc/systemd/system"
+  RELAY="$UNOQ_UNIT_DIR/unoq-mcu-serial.service"
   export UNOQ_RUNTIME_DIR="$BATS_TEST_TMPDIR/usr/local/lib/unoq"
   export UNOQ_RUN_DIR="$BATS_TEST_TMPDIR/run"
   export UNOQ_GADGET_DIR="$BATS_TEST_TMPDIR/configfs/unoq"
@@ -115,6 +120,10 @@ case "$1" in
   disable)
     rm -f "$FLAGS/enabled-$u"
     [ "$2" = --now ] && rm -f "$FLAGS/active-$u"
+    ;;
+  add-wants)
+    mkdir -p "$UNOQ_UNIT_DIR/$2.wants"
+    ln -sf /usr/lib/systemd/system/serial-getty@.service "$UNOQ_UNIT_DIR/$2.wants/$3"
     ;;
 esac
 exit 0
@@ -346,4 +355,167 @@ revert() {
       false
     }
   done
+}
+
+# --- the serial login (UNOQ_GADGET_ACM) ---------------------------------------
+#
+# The getty is wanted by the device, so it starts whenever /dev/ttyGS0 appears
+# and, being BindsTo= it already, stops when it goes. What is asserted is the
+# argv, and the link the stub manager makes for it where systemd would.
+
+GETTY_LINK_REL="dev-ttyGS0.device.wants/serial-getty@ttyGS0.service"
+
+acm_in_file() {
+  mkdir -p "$(dirname "$DEFAULTS")"
+  echo "UNOQ_GADGET_ACM=1" >"$DEFAULTS"
+}
+
+router_path() { # enabled|disabled - Arduino's watcher of /dev/ttyGS0 is there
+  : >"$FLAGS/unit-arduino-router-serial.path"
+  [ "$1" = enabled ] && : >"$FLAGS/enabled-arduino-router-serial.path"
+  return 0
+}
+
+@test "without UNOQ_GADGET_ACM nothing about a serial login is touched" {
+  unset UNOQ_GADGET_ACM
+  router_path enabled
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  refute ran_like '^systemctl add-wants'
+  refute ran "modprobe usb_f_acm"
+  [ ! -e "$UNOQ_UNIT_DIR/dev-ttyGS0.device.wants" ]
+  [[ "$output" == *"UNOQ_GADGET_ACM is not 1 - no serial port, no login on it"* ]]
+  # Not this setting's business when it is off.
+  [[ "$output" != *"arduino-router-serial.path"* ]]
+}
+
+@test "the settings file offers UNOQ_GADGET_ACM, commented out, and says to rebuild" {
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  grep -qx '#UNOQ_GADGET_ACM=1' "$DEFAULTS"
+  grep -q '^# rebuilt for it to take effect' "$DEFAULTS"
+  # Commented out is off.
+  refute ran_like '^systemctl add-wants'
+}
+
+@test "UNOQ_GADGET_ACM=1 in the settings file wants the getty from the device" {
+  acm_in_file
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  ran "systemctl add-wants dev-ttyGS0.device serial-getty@ttyGS0.service"
+  ran "modprobe usb_f_acm"
+  # Not wanted by getty.target: a boot would wait for a device that may not come.
+  refute ran_like '^systemctl enable.*serial-getty'
+  [ -L "$UNOQ_UNIT_DIR/$GETTY_LINK_REL" ]
+  [[ "$output" != *"is set here but not in"* ]]
+}
+
+@test "a second run with UNOQ_GADGET_ACM=1 does not add the getty again" {
+  acm_in_file
+  run "$STEP"
+  : >"$STUB_LOG"
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  refute ran_like '^systemctl add-wants'
+  [[ "$output" == *"serial-getty@ttyGS0.service already wanted by dev-ttyGS0.device"* ]]
+}
+
+@test "UNOQ_GADGET_ACM=1 on the command line only is warned about: the units read the file" {
+  UNOQ_GADGET_ACM=1 run "$STEP"
+  [ "$status" -eq 0 ]
+  ran "systemctl add-wants dev-ttyGS0.device serial-getty@ttyGS0.service"
+  grep -qE "warn +UNOQ_GADGET_ACM=1 is set here but not in $DEFAULTS" <<<"$output"
+}
+
+@test "a 0 in the environment wins over a 1 in the file" {
+  acm_in_file
+  UNOQ_GADGET_ACM=0 run "$STEP"
+  [ "$status" -eq 0 ]
+  refute ran_like '^systemctl add-wants'
+}
+
+@test "an enabled arduino-router-serial.path is warned about when the port is on" {
+  # It has PathExists=/dev/ttyGS0, and would bring Arduino's router back.
+  acm_in_file
+  router_path enabled
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  grep -qE 'warn +arduino-router-serial.path is ENABLED, and it watches /dev/ttyGS0' <<<"$output"
+  [[ "$output" == *"systemctl disable --now arduino-router-serial.path"* ]]
+}
+
+@test "a disabled or absent arduino-router-serial.path is not warned about" {
+  acm_in_file
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"arduino-router-serial.path is ENABLED"* ]]
+
+  rm -rf "$UNOQ_GADGET_DIR"
+  router_path disabled
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"arduino-router-serial.path is ENABLED"* ]]
+}
+
+@test "a gadget already built without the port is said to need rebuilding" {
+  # The hand-over stand-in builds one with no acm.usb0, as an older board has.
+  acm_in_file
+  run "$STEP"
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  grep -qE 'warn +the gadget on this board was built without the serial port' <<<"$output"
+}
+
+# --- the MCU's shell over the cable (unoq-mcu-serial) ------------------------
+#
+# Installed with the port and never started: /dev/ttyHS1 has one owner, and
+# the unit's Conflicts= are what hand it over, so they are checked in the file
+# as installed.
+
+@test "without UNOQ_GADGET_ACM the MCU relay is not installed" {
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  [ ! -e "$RELAY" ]
+}
+
+@test "UNOQ_GADGET_ACM=1 installs the MCU relay, and never enables or starts it" {
+  acm_in_file
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  [ -f "$RELAY" ]
+  refute ran_like '^systemctl .*unoq-mcu-serial'
+  refute grep -q '^\[Install\]' "$RELAY"
+}
+
+@test "the installed relay gives way to the demo and the login, and runs the venv as the user" {
+  acm_in_file
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  grep -qx 'Conflicts=unoq-cpu-bars.service' "$RELAY"
+  grep -qx 'Conflicts=serial-getty@ttyGS0.service' "$RELAY"
+  grep -qx 'After=unoq-cpu-bars.service serial-getty@ttyGS0.service' "$RELAY"
+  grep -qx 'Requires=unoq-link.service' "$RELAY"
+  grep -qx 'BindsTo=dev-ttyGS0.device' "$RELAY"
+  grep -qx "ExecStart=$PROJECT/.venv/bin/python -m unoq.mcuserial" "$RELAY"
+  grep -qx "User=$UNOQ_USER" "$RELAY"
+}
+
+@test "a second run with UNOQ_GADGET_ACM=1 leaves the relay's unit alone" {
+  acm_in_file
+  run "$STEP"
+  : >"$STUB_LOG"
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  refute ran "systemctl daemon-reload"
+}
+
+@test "no venv is a warning, not a failed step, and no relay is installed" {
+  acm_in_file
+  rm -rf "$PROJECT/.venv"
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  [ ! -e "$RELAY" ]
+  grep -qE 'warn +no venv at .*, so no unoq-mcu-serial.service' <<<"$output"
+  # The rest of the step still ran.
+  [ -e "$FLAGS/handover-ran" ]
 }

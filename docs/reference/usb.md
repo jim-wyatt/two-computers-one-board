@@ -419,6 +419,129 @@ read interface 0 as the whole device, reporting this board as
 On the board, the chosen function registers a netdev, which is enslaved to a
 bridge (`br-usb`) that carries the address.
 
+### A serial login over the cable
+
+The gadget can carry a third function: a serial port (CDC-ACM), with a login
+on it. It is **off by default**.
+
+With it on, the computer sees a serial port beside the network adapter and the
+drive. Every host has a class driver for it, so nothing needs installing:
+Windows binds `usbser.sys` and lists a COM port in Device Manager, Linux makes
+`/dev/ttyACM0`, macOS `/dev/cu.usbmodem*`. Open it at any speed (the speed is
+ignored on a USB serial port) and press Enter for a login prompt:
+
+```bash
+tio /dev/ttyACM0              # or: screen /dev/ttyACM0, or PuTTY on COMn
+```
+
+It needs no IP, no DHCP and no mDNS, so it is a way in when the network half
+of the link is the thing that is broken. It is not a console: it starts with
+userspace, needs the gadget built, and is gone in exactly the failures the
+board's own UART (`/dev/ttyMSM0`) is still there for.
+
+To turn it on, the setting goes in the file the units read, the step is run
+again to set up the login, and the gadget is rebuilt:
+
+```bash
+echo 'UNOQ_GADGET_ACM=1' | sudo tee -a /etc/default/unoq-usb
+sudo bash ~/two-computers-one-board/provision/95-usb-gadget.sh  # the login
+sudo ~/two-computers-one-board/usb/gadget-down.sh --purge       # required
+sudo systemctl restart unoq-usb-gadget                          # builds it again, from the file
+sudo systemctl start unoq-usb-bind                              # binds it, if a computer is plugged in
+```
+
+Or set the line, run the step, and reboot: the gadget is rebuilt at every boot.
+The purge drops a session on the cable, as in
+[Switching to RNDIS](#switching-to-rndis), and the same two rules apply: the
+setting belongs in the file (`sudo UNOQ_GADGET_ACM=1 usb/gadget-up.sh` reaches
+one run, and `UNOQ_GADGET_ACM=1 sudo ...` reaches none, since `sudo` clears the
+environment), and an existing gadget is never rebuilt in place. `gadget-up.sh`
+warns when the setting asks for a port the built gadget does not have, and the
+step warns when the line is not in the file.
+
+What the step does is one link: `dev-ttyGS0.device` wants
+`serial-getty@ttyGS0.service`. That getty is already `BindsTo=` the device, so
+it starts whenever `/dev/ttyGS0` appears and stops when it goes. It is not
+enabled into `getty.target`, the usual place, because then every boot would
+wait up to 90 seconds for a device that a gadget built without the port never
+makes. To undo it: remove the line from the file, then
+`sudo systemctl remove-wants dev-ttyGS0.device serial-getty@ttyGS0.service`
+(or `sudo rm /etc/systemd/system/dev-ttyGS0.device.wants/serial-getty@ttyGS0.service`
+and `sudo systemctl daemon-reload`), and rebuild the gadget.
+
+**The step warns if `arduino-router-serial.path` is still enabled.** Arduino's
+factory image ships it with `PathExists=/dev/ttyGS0`: as soon as the port
+exists, it starts a proxy that `Requires=` Arduino's router, which takes
+`/dev/ttyHS1` from this project and `/dev/ttyGS0` from the login.
+`provision/15-dev-tools.sh` disables it; on a board that has not run that step,
+`sudo systemctl disable --now arduino-router-serial.path arduino-router-serial.service`.
+
+**Why it is off by default.** It changes the descriptors of a composite device
+that Windows has already mishandled once ([Why not two
+configurations](#why-not-two-configurations)). The port goes into the same
+single configuration, linked last, so the network and the drive keep their
+interface numbers; that is the arrangement Windows' composite rules ask for. It
+**has not yet been checked on Windows** with three functions in one
+configuration, nor on a board and host at all. It stays off until a Windows host
+has been seen binding NCM, the drive and the COM port together.
+
+The same port can carry the MCU's shell instead of the login: see the next
+section.
+
+### The MCU's shell over the cable
+
+With the serial port on, the same COM port can reach the STM32 instead of
+Linux: the MCU's Zephyr shell, in PuTTY or `tio` on the host, with no SSH and
+no network at all. A relay does it, `python/unoq/mcuserial.py`, which passes
+every byte between `/dev/ttyGS0` and the MCU's UART `/dev/ttyHS1` untouched.
+The step installs it as `unoq-mcu-serial.service` when `UNOQ_GADGET_ACM=1`,
+and never enables or starts it: it runs only when someone asks.
+
+`/dev/ttyHS1` has one owner at a time, and on a provisioned board that is the
+CPU-bars demo. `/dev/ttyGS0` has one reader, and that is the login. So the
+unit has `Conflicts=` on both, and starting it stops them:
+
+```bash
+sudo systemctl start unoq-mcu-serial    # stops unoq-cpu-bars and the login on ttyGS0
+```
+
+On the host, open the same COM port (or `/dev/ttyACM0`) as for the login and
+press Enter. What answers is the Zephyr shell, running at the MCU's 115200
+(the host's speed setting still does not matter), with its prompt:
+
+```text
+unoq:~$ app status
+```
+
+Everything in [the MCU's shell](mcu.md#interactive-shell) works from there,
+`app` commands and all. It is raw: the shell does its own echo and line
+editing, and the relay adds none.
+
+To give the ports back:
+
+```bash
+sudo systemctl stop unoq-mcu-serial
+sudo systemctl start unoq-cpu-bars
+sudo systemctl start serial-getty@ttyGS0   # the login does not come back by itself
+```
+
+`Conflicts=` only stops the demo, so it has to be started again. The login
+does too: the device wants it, which starts it when `/dev/ttyGS0` appears, and
+the port has been there all along. A reboot or a rebuilt gadget brings both
+back as well. Either `start` works without the `stop` first, because
+`Conflicts=` works both ways and stops the relay.
+
+The relay stops cleanly on `systemctl stop`, with both ports closed. Pulling the
+cable hangs up `/dev/ttyGS0`, which ends the relay, and the unit starts it again
+two seconds later to wait for the next host. Purging the gadget removes the
+device, and `BindsTo=dev-ttyGS0.device` stops the relay with it. If the start
+fails, the journal says why (`journalctl -u unoq-mcu-serial`). The usual cause
+is something else holding `/dev/ttyHS1`, such as a `tio` left open on the
+board, and the relay names it the way `unoq.mcu` does.
+
+To remove it: `sudo rm /etc/systemd/system/unoq-mcu-serial.service` and
+`sudo systemctl daemon-reload`.
+
 ---
 
 ## Running on the USB link alone

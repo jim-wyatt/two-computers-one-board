@@ -26,6 +26,7 @@ from unoq import mcu
 MCU_APP = Path(__file__).resolve().parents[2] / "mcu" / "app"
 HEADER = MCU_APP / "include" / "app_proto.h"
 PRJ_CONF = MCU_APP / "prj.conf"
+GUARD = MCU_APP / "include" / "guard.h"
 
 # `#define NAME value` - object-like macros only. The function-like ones in the
 # header (the app_*_valid inline helpers are C functions, not macros) are not
@@ -251,6 +252,63 @@ def test_a_logged_sample_is_never_read_as_a_temp_reply() -> None:
     line = render(firmware_format("APP_TEMPLOG_FMT"), 1, 1000, 25000)
     assert not mcu._TEMP.match(line)
     assert not mcu._TEMPLOG.match(firmware_format("APP_TEMP_FMT") % 25000)
+
+
+# -- the reset cause ---------------------------------------------------------
+#
+# `app reset` prints APP_RESET_FMT with the names from guard_reset_table in
+# guard.h. The format and the table are both read here, so a renamed cause or
+# a reordered table fails before a reset is misreported.
+
+
+def firmware_reset_names() -> list[str]:
+    """The names in guard_reset_table, in table order."""
+    text = GUARD.read_text()
+    table = re.search(r"guard_reset_table\[\] = \{(.*?)\n\};", text, re.DOTALL)
+    assert table, f"guard_reset_table is gone from {GUARD}"
+    return re.findall(r'\{RESET_\w+, "(\w+)"\}', table.group(1))
+
+
+def firmware_string(path: Path, name: str) -> str:
+    m = re.search(rf'^#define\s+{name}\s+"(.*)"\s*$', path.read_text(), re.MULTILINE)
+    assert m, f"{name} is gone from {path.name}"
+    return m.group(1)
+
+
+def test_the_reset_line_is_one_key_and_a_string() -> None:
+    assert firmware_format("APP_RESET_FMT") == "reset=%s"
+
+
+def test_python_knows_the_firmware_reset_names_in_order() -> None:
+    names = firmware_reset_names()
+    assert len(names) >= 17, names
+    assert tuple(names) == mcu.RESET_CAUSES, (
+        "unoq.mcu.RESET_CAUSES no longer matches guard_reset_table in guard.h"
+    )
+    assert firmware_string(GUARD, "GUARD_RESET_NONE") == mcu.RESET_NONE
+    assert firmware_string(GUARD, "GUARD_RESET_UNKNOWN") == mcu.RESET_UNKNOWN
+
+
+@pytest.mark.parametrize(
+    "causes",
+    [["watchdog", "pin"], ["software", "pin"], ["pin"], ["unknown"], ["watchdog", "unknown"]],
+)
+def test_a_reset_line_the_firmware_would_print_parses_back(
+    mcu_factory: Any, causes: list[str]
+) -> None:
+    line = firmware_format("APP_RESET_FMT") % ",".join(causes)
+    assert mcu_factory({"app reset": [line]}).reset_cause() == causes
+
+
+def test_every_name_the_firmware_can_print_parses(mcu_factory: Any) -> None:
+    every = [*firmware_reset_names(), firmware_string(GUARD, "GUARD_RESET_UNKNOWN")]
+    line = firmware_format("APP_RESET_FMT") % ",".join(every)
+    assert mcu_factory({"app reset": [line]}).reset_cause() == every
+
+
+def test_no_cause_is_an_empty_list(mcu_factory: Any) -> None:
+    line = firmware_format("APP_RESET_FMT") % firmware_string(GUARD, "GUARD_RESET_NONE")
+    assert mcu_factory({"app reset": [line]}).reset_cause() == []
 
 
 def test_the_firmware_marks_a_refusal_the_way_python_looks_for_it() -> None:

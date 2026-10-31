@@ -69,6 +69,22 @@ setup() {
   # faked is what hid #109.
   stub ip 1
   stub logger
+  # Boot counting, on a board that has it and has blessed its kernel: one
+  # entry, no counter, the one booted. Stubbed for every test, not only the
+  # boot ones - a suite run on a board during a trial boot would otherwise
+  # read the real answer, and every LED 2 test would see yellow.
+  bless_says good
+  entries '{"id":"m-7.0.0.conf","isDefault":true,"isSelected":true}'
+}
+
+# bless_says <word> - what `systemd-bless-boot status` prints for this boot.
+bless_says() { stub systemd-bless-boot 0 "$1"; }
+
+# entries <json object>... - the boot entries `bootctl list --json=short`
+# reports, on one line as bootctl prints them.
+entries() {
+  local IFS=,
+  stub bootctl 0 "[$*]"
 }
 
 # offers <channel> <trigger>... - the triggers this channel's kernel has, the
@@ -272,6 +288,122 @@ SH
   [ "$(look_of LED2)" = "red fast" ]
 }
 
+# --- LED 2 and boot counting -----------------------------------------------
+#
+# The light provision/82-boot-counting.sh did not have. A kernel on trial, and
+# a kernel that ran out of tries and was set aside, looked exactly like a
+# healthy board. Both are slow blinks: degraded, or in progress.
+
+@test "a counted boot not yet marked good is a slow yellow blink" {
+  bless_says indeterminate
+  leds once
+  [ "$(look_of LED2)" = "yellow slow" ]
+}
+
+@test "an entry with no tries left is a slow blue blink" {
+  entries '{"id":"m-7.0.0.conf","isDefault":true,"isSelected":true}' \
+    '{"id":"m-7.0.1+0-3.conf","triesLeft":0,"triesDone":3,"isSelected":false}'
+  leds once
+  [ "$(look_of LED2)" = "blue slow" ]
+}
+
+@test "the entry being booted on its last try is on trial, not set aside" {
+  # systemd-boot takes the try before it boots, so a last try reads 0 left
+  # while it is still running. Nothing has been set aside yet.
+  bless_says indeterminate
+  entries '{"id":"m-7.0.0.conf","isDefault":false,"isSelected":false}' \
+    '{"id":"m-7.0.1+0-3.conf","triesLeft":0,"triesDone":3,"isSelected":true}'
+  leds once
+  [ "$(look_of LED2)" = "yellow slow" ]
+}
+
+@test "a kernel set aside outranks a boot on trial" {
+  # Trial ends by itself within minutes; a set-aside kernel waits for someone.
+  bless_says indeterminate
+  entries '{"id":"m-7.0.2+2-1.conf","triesLeft":2,"triesDone":1,"isSelected":true}' \
+    '{"id":"m-7.0.1+0-3.conf","triesLeft":0,"triesDone":3,"isSelected":false}'
+  leds once
+  [ "$(look_of LED2)" = "blue slow" ]
+}
+
+@test "a failed unit outranks a kernel on trial and one set aside" {
+  # A health check that fails is a failed unit, and that needs a human now.
+  bless_says indeterminate
+  entries '{"id":"m-7.0.1+0-3.conf","triesLeft":0,"triesDone":3,"isSelected":false}'
+  stub systemctl 0 "unoq-boot-health.service loaded failed failed Health"
+  leds once
+  [ "$(look_of LED2)" = "red fast" ]
+}
+
+@test "a tripped bind guard outranks them too" {
+  bless_says indeterminate
+  entries '{"id":"m-7.0.1+0-3.conf","triesLeft":0,"triesDone":3,"isSelected":false}'
+  guard_says "attempts: 3/3  (/var/lib/unoq/usb-bind-attempts)"
+  leds once
+  [ "$(look_of LED2)" = "red fast" ]
+}
+
+@test "a board without boot counting stays green, whatever bless-boot says" {
+  # clean is an uncounted boot; an exit of 127 with nothing printed is what
+  # the script sees when the tool is not installed at all.
+  for word in clean good bad ""; do
+    bless_says "$word"
+    leds once
+    [ "$(look_of LED2)" = "green steady" ]
+  done
+  stub systemd-bless-boot 127
+  leds once
+  [ "$(look_of LED2)" = "green steady" ]
+}
+
+@test "a board without boot counting stays green, whatever bootctl lists" {
+  # No counters; a new kernel installed but not booted yet, tries in hand;
+  # tries left in double figures; and no systemd-boot at all.
+  entries '{"id":"m-7.0.0.conf","isSelected":true}' '{"id":"m-7.0.1.conf","isSelected":false}'
+  leds once
+  [ "$(look_of LED2)" = "green steady" ]
+  entries '{"id":"m-7.0.0.conf","isSelected":true}' \
+    '{"id":"m-7.0.1+3.conf","triesLeft":3,"triesDone":0,"isSelected":false}' \
+    '{"id":"m-7.0.2+10.conf","triesLeft":10,"isSelected":false}'
+  leds once
+  [ "$(look_of LED2)" = "green steady" ]
+  stub bootctl 1 "No ESP found."
+  leds once
+  [ "$(look_of LED2)" = "green steady" ]
+}
+
+@test "boot counting is only read, never changed" {
+  bless_says indeterminate
+  leds once
+  ran "systemd-bless-boot status"
+  ran "bootctl list --json=short --no-pager"
+  refute ran_like '^systemd-bless-boot (good|bad|indeterminate)'
+  refute ran_like '^bootctl (set-|unlink|install|update|remove|cleanup)'
+}
+
+@test "the boot entries are listed on the slow passes, bless-boot on every one" {
+  # bless-boot changes a minute or two into a boot, so it is asked each pass.
+  # A kernel is set aside only at boot, so the entry list waits for the ping.
+  # Four seconds, not one: a busy board can take most of a second per pass.
+  UNOQ_LED_INTERVAL=0.1 UNOQ_LED_NET_EVERY=1000 run timeout 4 "$LEDSH" run
+  [ "$(grep -c '^bootctl list' "$STUB_LOG")" -eq 1 ]
+  [ "$(grep -c '^systemd-bless-boot status' "$STUB_LOG")" -gt 1 ]
+}
+
+@test "the two slow blinks of LED 2 differ by blue against yellow" {
+  # They share a rhythm, so color has to tell them apart - and not red against
+  # green, the pair that about one man in twelve cannot. Yellow has no blue in
+  # it; blue has nothing else.
+  bless_says indeterminate
+  leds once
+  [ "$(look_of LED2)" = "yellow slow" ]
+  refute grep -q '\[timer\]' "$UNOQ_LED_DIR/unoq:bt-blue2/trigger"
+  entries '{"id":"m-7.0.1+0-3.conf","triesLeft":0,"triesDone":3,"isSelected":false}'
+  leds once
+  [ "$(look_of LED2)" = "blue slow" ]
+  grep -q '\[timer\]' "$UNOQ_LED_DIR/unoq:bt-blue2/trigger"
+}
+
 # --- finding the guard without being told where it is -----------------------
 #
 # Every test above hands leds.sh a guard through UNOQ_BIND_GUARD. The service
@@ -326,9 +458,10 @@ guard_at_its_limit() {
 
 # --- rhythm: the channel that does not need color vision -------------------
 
-@test "no two states of one LED share a rhythm" {
+@test "no two states of one LED share a rhythm, but for LED 2's two slow blinks" {
   # The point of the whole exercise. If two states of an LED blinked alike,
-  # telling them apart would be back to telling red from green.
+  # telling them apart would be back to telling red from green. LED 2 has four
+  # states and there are three rhythms; its two slow ones are tested above.
   leds once
   healthy1="$(look_of LED1)" healthy2="$(look_of LED2)"
   stub ping 1
@@ -504,6 +637,8 @@ guard_at_its_limit() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"LED 1"* ]]
   [[ "$output" == *"LED 2"* ]]
+  [[ "$output" == *"on trial"* ]]
+  [[ "$output" == *"set aside"* ]]
   [ "$(look_of LED1)" = off ]
 }
 

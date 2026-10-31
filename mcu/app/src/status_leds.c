@@ -6,6 +6,7 @@
  */
 
 #include "status_leds.h"
+#include "guard.h"
 
 #include <zephyr/dfu/mcuboot.h>
 #include <zephyr/drivers/gpio.h>
@@ -106,7 +107,7 @@ static bool claim(const struct gpio_dt_spec *led, size_t n)
 	return any;
 }
 
-/* Runs four times a second forever, and does two jobs on one work item.
+/* Runs four times a second forever, and does three jobs on one work item.
  *
  * Every beat it redraws both LEDs, which is all a blink is. No second timer
  * and no thread: the rhythm is a counter, and the counter was already here.
@@ -115,11 +116,18 @@ static bool claim(const struct gpio_dt_spec *led, size_t n)
  * looks at the link. Deliberately a poll rather than a timeout armed on each
  * message: the interesting event here is the ABSENCE of traffic, and you
  * cannot receive an interrupt for something not happening.
+ *
+ * And every beat it offers to feed the MCU's watchdog (guard.h), which only
+ * takes the food if the LED panel has moved on since the last beat. Here
+ * because this is the one piece of code that is meant to run four times a
+ * second forever: if it stops, something is wrong, and the watchdog is what
+ * notices. It runs whether or not the LEDs exist, for the same reason.
  */
 static void on_tick(struct k_work *work)
 {
 	ARG_UNUSED(work);
 
+	guard_tick();
 	tick++;
 	if (ready && (tick % STATUS_TICKS_PER_CHECK) == 0) {
 		int64_t now = k_uptime_get();
@@ -166,6 +174,10 @@ void status_leds_init(void)
 	bool b = claim(led4, ARRAY_SIZE(led4));
 
 	ready = a || b;
+	/* The beat starts whether or not there are LEDs to show it: it also
+	 * feeds the watchdog, and a board without LEDs that never fed it would
+	 * reset every eight seconds. */
+	(void)k_work_reschedule(&tick_work, K_MSEC(STATUS_TICK_MS));
 	if (!ready) {
 		return;
 	}
@@ -175,7 +187,6 @@ void status_leds_init(void)
 	 * would be an optimistic lie for the first four seconds. */
 	look4 = status_led4_look(false);
 	show(led4, look4);
-	(void)k_work_reschedule(&tick_work, K_MSEC(STATUS_TICK_MS));
 }
 
 bool status_leds_present(void)

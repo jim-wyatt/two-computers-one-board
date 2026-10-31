@@ -71,6 +71,31 @@ _TEMPLOG_ERR = re.compile(r"^seq=(\d+) ms=(-?\d+) temp_err=(-?\d+)$")
 _TEMPLOG_GAP = re.compile(r"^gap first=(\d+) last=(\d+)$")
 _TEMPLOG_END = re.compile(r"^end head=(\d+) more=(\d+)$")
 _TEMPLOG_STAT = re.compile(r"^head=(\d+) count=(\d+) size=(\d+) dropped=(\d+) period_ms=(\d+)$")
+# APP_RESET_FMT: one value, the reset causes comma-separated. The names are
+# guard_reset_table in mcu/app/include/guard.h, in the order it prints them;
+# test_contract.py fails if this list and that table part ways.
+_RESET = re.compile(r"^reset=([a-z_]+(?:,[a-z_]+)*)$")
+RESET_CAUSES = (
+    "watchdog",
+    "lockup",
+    "software",
+    "security",
+    "brownout",
+    "power_on",
+    "low_power_wake",
+    "debug",
+    "parity",
+    "pll",
+    "clock",
+    "hardware",
+    "user",
+    "temperature",
+    "bootloader",
+    "flash",
+    "pin",
+)
+RESET_NONE = "none"
+RESET_UNKNOWN = "unknown"
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 _PROMPT = re.compile(r"^\s*\S*:~\$\s*$")
 
@@ -428,6 +453,34 @@ class MCU:
         if not m:
             raise MCUError(f"could not parse app temp: {out!r}")
         return int(m.group(1)) / 1000
+
+    def reset_cause(self) -> list[str]:
+        """Why the MCU last reset, as the names the firmware gives the causes.
+
+        Most telling first: ["watchdog", "pin"] after the MCU's watchdog fired,
+        ["software", "pin"] after an update or `kernel reboot`. "pin" is on
+        nearly every reset, because the STM32 pulls its own reset pin whatever
+        started it; on its own it means the pin really was pulled from
+        outside. An empty list means no cause was recorded. ["unknown"] means
+        the firmware could not read the flags, or found one it has no name
+        for; a name this module has never heard of is passed through rather
+        than dropped (see RESET_CAUSES for the known ones).
+
+        The firmware reads the cause once at boot, so this describes the
+        reset that started the MCU's current run, and says the same thing
+        every time it is asked until the next one.
+        """
+        out = self.cmd("app reset")
+        if "Subcommands:" in out:
+            raise MCUError(
+                "this firmware has no `app reset` command - it predates the watchdog. "
+                "Rebuild and update it (mcu/zbuild.sh, then unoq.fota)"
+            )
+        m = _RESET.match(out[0]) if out else None
+        if not m:
+            raise MCUError(f"could not parse app reset: {out!r}")
+        names = m[1].split(",")
+        return [] if names == [RESET_NONE] else names
 
     # -- the temperature log -------------------------------------------------
 

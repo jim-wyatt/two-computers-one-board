@@ -310,7 +310,8 @@ expected, not a fault.
 [`mcu/app/src/main.c`](../../mcu/app/src/main.c) is the `app` shell command group
 and nothing else. `main()` loads the persisted panel orientation, claims the
 two status LEDs and sets LED 3 from whether the running image is confirmed,
-brings up the matrix, and returns — there is no main loop, because everything
+brings up the matrix, arms the watchdog (see [below](#the-watchdog)), and
+returns — there is no main loop, because everything
 that runs after init runs on its own: the shell has its own thread, the panel
 is refreshed from a timer ISR inside `matrix.c`, and the status LEDs are
 re-checked once a second by a work item in
@@ -382,6 +383,100 @@ with MCU() as mcu:
     later = mcu.temp_log(samples[-1].seq)  # only what is new since
 ```
 
+### The watchdog
+
+The MCU watches itself. [`guard.c`](../../mcu/app/src/guard.c) arms the
+STM32's independent watchdog (IWDG) at the top of `main()`, and the chip resets
+itself if the watchdog is not fed for 8 seconds. It is the other half of LED 4:
+LED 4 is the MCU noticing that Linux has gone quiet, and this is the MCU
+recovering when it is the one that has stopped. Linux's own watchdog is a
+separate thing, armed by `bootstrap.sh --with-watchdog`
+([`provision/80-watchdog.sh`](../../provision/80-watchdog.sh)).
+
+**What it watches.** It is fed from one place: the status-LED beat, a work item
+on the system workqueue four times a second
+([`status_leds.c`](../../mcu/app/src/status_leds.c)). And the beat feeds it only
+if the LED panel's refresh count has moved on since the previous beat, or the
+panel is off on purpose (before the first frame, or after `app matrix off`). So
+the feed stops if:
+
+- the system workqueue is stuck, because a work item never returns or a thread
+  holds the scheduler locked;
+- the panel's timer interrupt has stopped while the panel is meant to be on.
+
+A shell command that spins on its own is not caught: the shell is a
+preemptible thread, and the cooperative workqueue still runs ahead of it. That
+one shows as LED 4 on the far side, because the MCU stops answering.
+
+**Why 8 seconds.** It has to outlast the longest stall the firmware makes on
+purpose, and those are all flash operations of a few milliseconds each. A FOTA
+upload erases slot 1 one 8 KiB sector at a time as the image arrives
+(`CONFIG_IMG_ERASE_PROGRESSIVELY`), on the SMP thread, so the workqueue runs
+between sectors; even the whole 416 KiB slot is 52 sectors, a fraction of a
+second. A settings write may erase one NVS sector. The longest reply on the
+link, a 32-sample log batch, is about a tenth of a second. Eight seconds is
+well over ten times all of that, and still short enough that a hung MCU is back
+before you have finished wondering why the panel froze. The IWDG counts its
+own 32 kHz oscillator, so the range is about 125 µs to 131 s and 8 s is in it:
+Zephyr's driver sets prescaler 64 and reload 3999. That oscillator is good to a
+few percent, so "8 s" is about 8 s.
+
+**MCUboot is not affected.** The app arms the watchdog, and MCUboot runs before
+the app. An update is uploaded with the watchdog armed and fed, then the chip
+resets, and the reset stops the IWDG: once started, only a reset stops it.
+MCUboot then swaps the images with no watchdog running, however long that
+takes, and the new image arms its own in `main()`. Two things could change
+that. MCUboot can arm a watchdog of its own, but only when its build has
+`CONFIG_WATCHDOG`, and the one `mcu/flash-all.sh` builds does not. And the
+option bytes can start the IWDG in hardware at every reset. The chip ships in
+software mode and nothing here writes option bytes; a board in hardware mode
+could never have run the firmware before this one, which fed nothing, because
+it would have reset every half second. A watchdog reset in the middle of an
+upload leaves a partial image in slot 1, which MCUboot's signature check
+refuses, so the running image is unharmed. That an update still completes with
+the watchdog armed is the thing to check on the board, with one FOTA, test and
+confirm, after flashing this firmware.
+
+**The commands.**
+
+```
+unoq:~$ app reset
+reset=watchdog,pin
+unoq:~$ app hang yes
+hanging: the watchdog resets the MCU in 8000 ms
+```
+
+`app reset` says why the MCU last reset: the flags RCC recorded, read through
+Zephyr's `hwinfo` once at boot and cleared then, so that the next reset starts
+from a clean record. The line is `APP_RESET_FMT` in
+[`app_proto.h`](../../mcu/app/include/app_proto.h), and the names come from a
+table in [`guard.h`](../../mcu/app/include/guard.h), most telling first:
+
+| Line | Means |
+|---|---|
+| `reset=watchdog,pin` | The watchdog fired: the firmware stalled |
+| `reset=software,pin` | The firmware reset itself: an update, `kernel reboot`, SMP's reset |
+| `reset=brownout,pin` | Power came up, or dipped. This part records a power-on as a brownout |
+| `reset=pin` | The reset line was pulled from outside: Linux, or the debugger |
+| `reset=none` | No flag was set |
+| `reset=unknown` | The flags could not be read, or one has no name in the table |
+
+`pin` is on nearly every line because the STM32 drives its own reset pin
+whatever started the reset, so the pin flag comes with every cause. Only `pin`
+alone means the pin really was pulled.
+
+`app hang yes` stalls the MCU on purpose, to watch the watchdog fire. It locks
+the scheduler and spins, so the status-LED beat never runs again and the
+watchdog is never fed again. Interrupts still run, so the panel keeps its last
+frame: the refresh count climbing is not enough to feed the dog on its own,
+which is the point. It needs the word `yes`, because it takes the shell down
+with it. See [the exercise](../learn/debugging-without-a-screen.md#try-it-let-the-watchdog-fire).
+
+From Python, `MCU.reset_cause()` returns the names as a list
+(`["watchdog", "pin"]`, or `[]` for `none`), and `unoq-cpu-bars` logs it once
+when it starts, so `journalctl -u unoq-cpu-bars` shows it. The watchdog and
+`hwinfo` cost about 1.7 KB of flash and 24 bytes of RAM.
+
 ## Debugging
 
 Open this folder in VS Code and pick **Debug (attach to running MCU)** or
@@ -428,7 +523,7 @@ The serial tasks (FOTA, confirm, console, status) need the port: stop
 Use `native_sim/native/64`; plain `native_sim` is 32-bit and fails on aarch64
 with a `CONFIG_64BIT` error.
 
-Four suites run. `ztest.sh` ends by saying how many cases passed; the number
+Five suites run. `ztest.sh` ends by saying how many cases passed; the number
 is not repeated here, where it would be wrong the next time one was added.
 
 - **`bars`** compiles [`mcu/app/src/bars.c`](../../mcu/app/src/bars.c) — the
@@ -437,6 +532,12 @@ is not repeated here, where it would be wrong the next time one was added.
   are the only place the drawing rules are checked at all, so they assert
   properties (bars stay in their columns, height never falls as load rises,
   rotation is a true rotation) rather than a few remembered frames.
+- **`guard`** tests the two functions in
+  [`mcu/app/include/guard.h`](../../mcu/app/include/guard.h) the watchdog
+  depends on: whether a beat feeds it (a refreshing panel does, a panel off on
+  purpose does, a panel meant to be on whose count has stopped does not), and
+  the names `app reset` gives the reset causes, which must be single words,
+  with the cause before `pin`, none dropped and none cut short.
 - **`link_protocol`** tests
   [`mcu/app/include/app_proto.h`](../../mcu/app/include/app_proto.h), the contract
   that `main.c`, these tests and `unoq/mcu.py` all depend on agreeing.

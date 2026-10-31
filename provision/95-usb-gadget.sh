@@ -35,7 +35,8 @@
 #         rm /etc/systemd/system/unoq-usb-gadget.service \
 #            /etc/udev/rules.d/99-unoq-usb-gadget.rules &&
 #         systemctl daemon-reload && udevadm control --reload
-#         (and unoq-usb-bind, unoq-usb-confirm and unoq-uplink-fallback the same
+#         (and unoq-usb-bind, unoq-usb-confirm, unoq-uplink-fallback and,
+#         where UNOQ_GADGET_ACM=1 installed it, unoq-mcu-serial the same
 #         way.) Then, once no other unoq-* unit that runs as root is left
 #         installed (unoq-link, unoq-leds):  rm -r /usr/local/lib/unoq
 set -uo pipefail
@@ -47,8 +48,20 @@ IMG="${UNOQ_SHARE_IMG:-$TARGET_HOME/unoq-share.img}"
 # The settings file the units read, which a person is expected to edit.
 DEFAULTS="$SYSROOT/etc/default/unoq-usb"
 
+# The serial port on the gadget (#9). gadget-up.sh gets it from that file,
+# through EnvironmentFile= in its units, and nothing reads the file for this
+# step - so the step reads it itself, as data, one line, never sourced. The
+# environment wins, so `UNOQ_GADGET_ACM=1 ./bootstrap.sh` works too. Read up
+# here because two steps below depend on it: the module, and the login.
+FILE_ACM="$(sed -n 's/^UNOQ_GADGET_ACM=//p' "$DEFAULTS" 2>/dev/null | tail -1 | tr -d '"'"'"' ')"
+ACM="${UNOQ_GADGET_ACM:-$FILE_ACM}"
+
 step "kernel support"
-for mod in libcomposite usb_f_ncm usb_f_rndis usb_f_mass_storage bridge; do
+MODULES="libcomposite usb_f_ncm usb_f_rndis usb_f_mass_storage bridge"
+# Only asked for when it will be used, so a board without the setting is asked
+# exactly what it was asked before.
+[ "$ACM" = 1 ] && MODULES="$MODULES usb_f_acm"
+for mod in $MODULES; do
   if modprobe "$mod" 2>/dev/null; then
     skip "$mod available"
   else
@@ -136,6 +149,15 @@ else
 # uplink instead.
 #UNOQ_UPLINK_FALLBACK=1
 #UNOQ_UPLINK_DEADLINE=240
+
+# Uncomment to add a serial port (CDC-ACM) to the gadget, with a login on it:
+# a COM port on Windows, /dev/ttyACM0 on Linux. Off until a Windows host has
+# been seen binding it beside the network and the drive. The gadget has to be
+# rebuilt for it to take effect - the restart above is not enough. Run
+# provision/95-usb-gadget.sh again for the login, then purge the gadget and
+# rebuild it, or reboot. See "A serial login over the cable" in
+# docs/reference/usb.md.
+#UNOQ_GADGET_ACM=1
 CONF
 fi
 
@@ -219,6 +241,80 @@ else
     fail "could not enable unoq-uplink-fallback.service"
   did "wifi fallback enabled at boot"
 fi
+step "serial login over the cable"
+# Off unless asked for, and then nothing at all is changed: a board that does
+# not want the serial port must come out of this step exactly as before.
+if [ "$ACM" != 1 ]; then
+  skip "UNOQ_GADGET_ACM is not 1 - no serial port, no login on it"
+else
+  # Wanted by the DEVICE, not by getty.target, which is where a plain
+  # `systemctl enable` would put it. serial-getty@.service is already
+  # BindsTo=dev-%i.device and After= it, so it stops when /dev/ttyGS0 goes;
+  # being wanted by the device is the other half, and starts it whenever
+  # /dev/ttyGS0 appears - at boot, or after the gadget is rebuilt. Wanted by
+  # getty.target, every boot would queue a job waiting up to 90 seconds for a
+  # device that a gadget built without the port will never make, and a getty
+  # that timed out once would not start when the device came later.
+  GETTY=serial-getty@ttyGS0.service
+  WANTS="${UNOQ_UNIT_DIR:-/etc/systemd/system}/dev-ttyGS0.device.wants"
+  if [ -L "$WANTS/$GETTY" ]; then
+    skip "$GETTY already wanted by dev-ttyGS0.device"
+  else
+    systemctl add-wants dev-ttyGS0.device "$GETTY" >/dev/null 2>&1 ||
+      fail "could not make dev-ttyGS0.device want $GETTY"
+    did "$GETTY starts whenever /dev/ttyGS0 appears"
+  fi
+  # Arduino's factory image watches the same device. arduino-router-serial.path
+  # has PathExists=/dev/ttyGS0 and starts a socat proxy that Requires= the
+  # router, so the serial port this adds would bring arduino-router back to
+  # hold /dev/ttyHS1 - and fight the getty for /dev/ttyGS0. 15-dev-tools.sh
+  # disables it, but not every board has run that.
+  if unit_exists arduino-router-serial.path &&
+    { systemctl is-enabled --quiet arduino-router-serial.path 2>/dev/null ||
+      systemctl is-active --quiet arduino-router-serial.path 2>/dev/null; }; then
+    warn "arduino-router-serial.path is ENABLED, and it watches /dev/ttyGS0."
+    warn "  The serial port will start Arduino's router, which takes /dev/ttyHS1"
+    warn "  from this project and /dev/ttyGS0 from the login. Turn it off:"
+    warn "    sudo systemctl disable --now arduino-router-serial.path arduino-router-serial.service"
+    warn "  or run provision/15-dev-tools.sh, which does that and more."
+  fi
+  # The units build the gadget from the file, not from this step's
+  # environment, so a 1 that came only from the command line would enable a
+  # login on a port the gadget never gets.
+  if [ "$FILE_ACM" != 1 ]; then
+    warn "UNOQ_GADGET_ACM=1 is set here but not in $DEFAULTS, which is what"
+    warn "  the gadget is built from. Add it there:"
+    warn "    echo UNOQ_GADGET_ACM=1 | sudo tee -a /etc/default/unoq-usb"
+  fi
+  # The MCU's shell on the same port, by hand: a relay that takes /dev/ttyGS0
+  # from the login and /dev/ttyHS1 from the CPU-bars demo, through Conflicts=
+  # in the unit. Installed and NEVER enabled or started here - there is one
+  # owner of /dev/ttyHS1 at a time, and nothing should take it from the demo
+  # without a person asking. Runs as the user, from the venv, so it needs no
+  # copy under $RUNTIME_DIR. See "The MCU's shell over the cable" in
+  # docs/reference/usb.md.
+  # REVERT: rm /etc/systemd/system/unoq-mcu-serial.service &&
+  #         systemctl daemon-reload
+  #
+  # Without the venv install_unit would stop the whole step here, before the
+  # hand-over, over something nobody has asked to run yet - so it is said and
+  # passed over instead.
+  if [ -x "$PROJECT/.venv/bin/python" ]; then
+    install_unit "$PROJECT/usb/unoq-mcu-serial.service"
+  else
+    warn "no venv at $PROJECT/.venv, so no unoq-mcu-serial.service: run"
+    warn "  provision/user/35-python-venv.sh as $TARGET_USER, then this step again."
+  fi
+  # And an existing gadget is never rebuilt in place (gadget-up.sh).
+  GADGET="${UNOQ_GADGET_DIR:-/sys/kernel/config/usb_gadget/unoq}"
+  if [ -d "$GADGET" ] && [ ! -d "$GADGET/functions/acm.usb0" ]; then
+    warn "the gadget on this board was built without the serial port. It gets"
+    warn "  one when it is rebuilt: at the next boot, or by hand, which ends a"
+    warn "  session on the cable - see 'A serial login over the cable' in"
+    warn "  docs/reference/usb.md."
+  fi
+fi
+
 step "hand the USB port over"
 # adbd binds its OWN gadget to the first free UDC. With this installed there
 # would be two gadgets racing for one controller, and which one wins is a coin

@@ -549,7 +549,7 @@ unoq-usb-bind.service" ]
 @test "no unit in the repository leaves root executing the checkout" {
   # The property the whole arrangement exists for, asserted of the real units
   # rather than of fixtures: seven run as root, and every program of ours they
-  # start is root's copy; two run as the user and name only the venv. One of
+  # start is root's copy; three run as the user and name only the venv. One of
   # the seven, unoq-boot-health, starts only the system's own binaries.
   REAL="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   load_lib "$REAL"

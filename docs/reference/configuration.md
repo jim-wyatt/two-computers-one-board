@@ -84,6 +84,7 @@ they control is explained in [usb.md](usb.md).
 | `UNOQ_USB_DNS_PROBE_NAME` | `example.com` | The name looked up to decide whether a nameserver is answering. |
 | `UNOQ_USB_DNS_TIMEOUT` | `5` | Seconds to wait for that lookup. |
 | `UNOQ_GADGET_PRIMARY` | `ncm` | `rndis` for a computer with no NCM driver. Only takes effect when the gadget is built; an existing one must be purged first, and `gadget-up.sh` says so. |
+| `UNOQ_GADGET_ACM` | `0` | `1` adds a serial port (CDC-ACM) to the gadget, in the same configuration as the network and the drive, with a login on it: a COM port on Windows, `/dev/ttyACM0` on Linux. Off until a Windows host has been seen binding all three. Read by `gadget-up.sh` when it builds the gadget, and by `provision/95-usb-gadget.sh`, which sets up the login; an existing gadget must be rebuilt. See [usb.md](usb.md#a-serial-login-over-the-cable). |
 | `UNOQ_USB_BRIDGE` | `br-usb` | The name of the bridge the USB network functions join. |
 
 ### The guards

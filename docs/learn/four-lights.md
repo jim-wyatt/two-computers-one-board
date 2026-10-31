@@ -84,6 +84,8 @@ identical.
 | | | |
 |---|---|---|
 | **steady** | green | every systemd unit is healthy, and the bind guard has not tripped |
+| **slow blink** | yellow | a new kernel **on trial**: a counted boot not marked good yet |
+| **slow blink** | blue | a kernel was **set aside** after it used up its tries |
 | **fast blink** | red | something has failed that will **not** recover on its own |
 
 Note how narrow that is. Almost everything on this board retries: the USB link
@@ -99,6 +101,21 @@ firmware, the demo restarted forty-five times in ten minutes, nothing was
 about two and a half minutes of silence, which makes it a failed unit, which
 makes this light red. Retrying for ever looks like resilience and is really a
 way of never saying that something is wrong.
+
+The two slow blinks are the board's own recovery made visible. With boot
+counting on, a new kernel gets three tries, and it is only marked good once
+the boot has finished and `sshd` is up
+([troubleshooting.md](../reference/troubleshooting.md#a-new-kernel-that-did-not-come-up)
+has how it works). Until then LED 2 blinks
+yellow, slowly: the same color and rhythm LED 3 uses for an unconfirmed
+firmware image, because it is the same idea on the other chip. If the kernel
+uses up its tries, the board boots the previous one by itself, and then it
+blinks blue. The board is fine; the new kernel is not, and that stays true
+until someone finds out why. Without the light, a board that quietly fell back
+looks exactly like one that took its update.
+
+Red outranks both. A health check that fails is a failed unit, and a failed
+unit needs a human now.
 
 ### Green is not decoration
 
@@ -201,9 +218,15 @@ The fix is a second channel that does not pass through color at all: time.
 | **fast blink** | a fault that needs a human | twice a second |
 | **dark** | nothing is driving this LED | the checker is not running |
 
-Color still says what it said. But no LED uses one rhythm for two states, so
-the rhythm identifies the state by itself, and color has become the second
-witness instead of the only one. It cost a timer, not a wire.
+Color still says what it said. But the rhythm now says what kind of state it
+is by itself, and color has become the second witness instead of the only one.
+It cost a timer, not a wire.
+
+One LED has two states in one rhythm: LED 2's slow blinks, on trial and set
+aside. There are three rhythms and four states, so color has to tell those two
+apart, and they were chosen so that it can: yellow against blue, not red
+against green. Red-green color blindness leaves that pair apart, and both
+mean "degraded, or in progress" even to someone who cannot tell them apart.
 
 Three things about it are deliberate.
 

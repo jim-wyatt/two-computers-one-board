@@ -134,6 +134,48 @@ OLD_FIRMWARE_HELP = [
 ]
 
 
+# -- reset_cause ---------------------------------------------------------------
+
+
+def test_reset_cause_after_the_watchdog(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app reset": ["reset=watchdog,pin"]})
+    assert mcu.reset_cause() == ["watchdog", "pin"]
+    assert mcu._s.written == ["app reset"]
+
+
+def test_reset_cause_with_one_cause(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app reset": ["reset=pin"]}, ansi=True, chunk_size=3)
+    assert mcu.reset_cause() == ["pin"]
+
+
+def test_reset_cause_none_is_an_empty_list(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app reset": ["reset=none"]})
+    assert mcu.reset_cause() == []
+
+
+def test_reset_cause_passes_an_unfamiliar_name_through(mcu_factory: Any) -> None:
+    # A newer firmware's name is still a reason; dropping it would make the
+    # reset look less explained than it is.
+    mcu = mcu_factory({"app reset": ["reset=gremlins,pin"]})
+    assert mcu.reset_cause() == ["gremlins", "pin"]
+
+
+def test_reset_cause_says_so_when_the_firmware_predates_it(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app reset": OLD_FIRMWARE_HELP})
+    with pytest.raises(MCUError, match="no `app reset` command"):
+        mcu.reset_cause()
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [[], ["reset="], ["reset=Watchdog"], ["reset=watchdog,"], ["reset=watchdog pin"], ["x"]],
+)
+def test_reset_cause_raises_on_an_unparsable_reply(mcu_factory: Any, reply: list[str]) -> None:
+    mcu = mcu_factory({"app reset": reply})
+    with pytest.raises(MCUError, match="could not parse app reset"):
+        mcu.reset_cause()
+
+
 def test_die_temp_converts_millidegrees_to_degrees(mcu_factory: Any) -> None:
     mcu = mcu_factory({"app temp": ["temp_mc=31250"]})
     assert mcu.die_temp() == 31.25

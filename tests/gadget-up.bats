@@ -311,3 +311,89 @@ SH
   [ "$status" -eq 0 ]
   [ ! -e "$UNOQ_GADGET_DIR/UDC" ]
 }
+
+# --- the serial port (UNOQ_GADGET_ACM) ----------------------------------------
+#
+# configfs numbers a configuration's interfaces in the order its functions are
+# linked into it, so the order is part of what the host sees. A plain
+# directory keeps no order, so ln records it: these are the real links, made by
+# the real ln, written down as they happen.
+
+record_links() {
+  stub_body ln <<'SH'
+exec /bin/ln "$@"
+SH
+}
+
+# links - the functions linked into a configuration, in the order linked.
+links() {
+  sed -n "s|^ln -sf $UNOQ_GADGET_DIR/functions/\([^ ]*\) $UNOQ_GADGET_DIR/configs/\(c\.[0-9]*\)/\$|\2 \1|p" "$STUB_LOG" | tr '\n' ' '
+}
+
+@test "without UNOQ_GADGET_ACM the gadget is what it was: two functions, one configuration" {
+  record_links
+  unset UNOQ_GADGET_ACM
+  run "$PROJECT/usb/gadget-up.sh" --build
+  [ "$status" -eq 0 ]
+  [ "$(ls "$UNOQ_GADGET_DIR/functions" | tr '\n' ' ')" = "mass_storage.0 ncm.usb0 " ]
+  [ "$(ls "$UNOQ_GADGET_DIR/configs")" = c.1 ]
+  [ "$(links)" = "c.1 ncm.usb0 c.1 mass_storage.0 " ]
+  [ "$(cat "$UNOQ_GADGET_DIR/configs/c.1/strings/0x409/configuration")" = "NCM + fileshare" ]
+  [[ "$output" == *"gadget built (c.1 = ncm.usb0 + mass_storage)"* ]]
+  refute ran_like 'acm'
+}
+
+@test "UNOQ_GADGET_ACM=0 is the same as leaving it unset" {
+  record_links
+  UNOQ_GADGET_ACM=0 run "$PROJECT/usb/gadget-up.sh" --build
+  [ "$status" -eq 0 ]
+  [ ! -e "$UNOQ_GADGET_DIR/functions/acm.usb0" ]
+  [ "$(links)" = "c.1 ncm.usb0 c.1 mass_storage.0 " ]
+}
+
+@test "UNOQ_GADGET_ACM=1 adds the serial port to the same configuration, linked last" {
+  # One configuration still: a second is what lost the drive on Windows. Last,
+  # so the network and the drive keep their interface numbers.
+  record_links
+  UNOQ_GADGET_ACM=1 run "$PROJECT/usb/gadget-up.sh" --build
+  [ "$status" -eq 0 ]
+  [ -d "$UNOQ_GADGET_DIR/functions/acm.usb0" ]
+  [ "$(ls "$UNOQ_GADGET_DIR/configs")" = c.1 ]
+  [ "$(links)" = "c.1 ncm.usb0 c.1 mass_storage.0 c.1 acm.usb0 " ]
+  [ -L "$UNOQ_GADGET_DIR/configs/c.1/acm.usb0" ]
+  [ "$(cat "$UNOQ_GADGET_DIR/configs/c.1/strings/0x409/configuration")" = "NCM + fileshare + serial" ]
+  [[ "$output" == *"gadget built (c.1 = ncm.usb0 + mass_storage + acm.usb0)"* ]]
+}
+
+@test "the serial port goes in beside RNDIS the same way" {
+  record_links
+  UNOQ_GADGET_ACM=1 UNOQ_GADGET_PRIMARY=rndis run "$PROJECT/usb/gadget-up.sh" --build
+  [ "$status" -eq 0 ]
+  [ "$(links)" = "c.1 rndis.usb0 c.1 mass_storage.0 c.1 acm.usb0 " ]
+}
+
+@test "a value that is not 0 or 1 is said, and the gadget comes up without the port" {
+  # Not refused: this runs at boot, and the network matters more.
+  UNOQ_GADGET_ACM=yes run "$PROJECT/usb/gadget-up.sh" --build
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARNING: UNOQ_GADGET_ACM is 'yes', not 0 or 1 - leaving the serial port off"* ]]
+  [ ! -e "$UNOQ_GADGET_DIR/functions/acm.usb0" ]
+  [ -d "$UNOQ_GADGET_DIR/functions/ncm.usb0" ]
+}
+
+@test "asking for the port on a gadget built without it says to purge first" {
+  run "$PROJECT/usb/gadget-up.sh" --build
+  [ "$status" -eq 0 ]
+  UNOQ_GADGET_ACM=1 run "$PROJECT/usb/gadget-up.sh" --build
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARNING: UNOQ_GADGET_ACM=1, but this gadget has no serial port"* ]]
+  [[ "$output" == *"gadget-down.sh --purge"* ]]
+  [ ! -e "$UNOQ_GADGET_DIR/functions/acm.usb0" ]
+
+  # And a gadget that has it is not told off.
+  rm -rf "$UNOQ_GADGET_DIR"
+  UNOQ_GADGET_ACM=1 run "$PROJECT/usb/gadget-up.sh" --build
+  UNOQ_GADGET_ACM=1 run "$PROJECT/usb/gadget-up.sh" --build
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"WARNING"* ]]
+}
