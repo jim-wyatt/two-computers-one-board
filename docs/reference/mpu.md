@@ -5,7 +5,8 @@ SPDX-License-Identifier: MIT
 # MPU workflow
 
 The Linux side: direct hardware access, the `unoq` package for talking to the
-MCU, and the CPU-bars demo that uses both halves of the board at once.
+MCU, the CPU-bars demo that uses both halves of the board at once, and
+`unoq-jitter`, which uses the MCU to time how well Linux keeps a schedule.
 
 ```bash
 hpy your_script.py          # alias for ~/two-computers-one-board/.venv/bin/python
@@ -550,7 +551,9 @@ directly instead of calling `gpio_pin_configure_dt()`: pins must change
   is not free — `app matrix off` if you are measuring something timing-sensitive.
 - `unoq-cpu-bars` is not on `PATH`: it is installed into the project's venv, at
   `~/two-computers-one-board/.venv/bin/unoq-cpu-bars`. Use that path, or
-  `hpy -m unoq.cpubars`.
+  `hpy -m unoq.cpubars`. The same goes for `unoq-jitter` (`hpy -m unoq.jitter`),
+  which a venv installed before it existed doesn't have until the editable
+  install is run again (`bash provision/user/35-python-venv.sh`).
 - **Close the shell handle before using SMP.** `MCU` and `fota` both want the
   same UART, and reopening it immediately after a close drops the first SMP
   frame — which looks exactly like a firmware fault but is a host-side race.
@@ -736,3 +739,76 @@ a dead build light is dark rather than a check mark nobody is updating.
 | `UNOQ_BUILDLIGHT_BRANCH` | `main` | The branch. `--branch` overrides it |
 | `UNOQ_BUILDLIGHT_INTERVAL` | `60` | Seconds between polls. `--interval` overrides it |
 | `UNOQ_BUILDLIGHT_TOKEN` | none | Read from the environment only |
+
+---
+
+## Jitter
+
+`unoq-jitter` measures how well Linux keeps a schedule, using the MCU as the
+stopwatch. It arms the firmware's `app jitter` with a period, then writes
+`app jitter tick` down the UART on that schedule for `--seconds`. At the end
+it prints three histograms side by side. The firmware half, its pins and its
+formats are in [mcu.md](mcu.md#jitter).
+
+```bash
+sudo systemctl stop unoq-cpu-bars       # it holds /dev/ttyHS1
+unoq-jitter --seconds 30                # a tick every 20 ms, nothing else running
+unoq-jitter --seconds 30 --load spin    # the same with every core busy
+unoq-jitter --seconds 30 --pwm 1000     # and a 1 kHz square wave, D3 to D2
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `--period` | `0.02` | Seconds between ticks, 0.0001 to 10 |
+| `--seconds` | `30` | How long to tick for |
+| `--load` | `none` | `spin` keeps every core busy, with the same workload `python -m unoq.heat` uses, for the length of the run |
+| `--pwm HZ` | off | Also runs a square wave of 16 to 10000 Hz on D3 and measures its period on D2 |
+
+**The jumper.** `--pwm` needs one jumper wire from **D3 to D2**. Without it,
+the PWM column stays at `n 0`, and the tool says so. The tick columns need no
+wire.
+
+**The three columns.** Each one uses the firmware's bins, ±50 µs out to
+±5000 µs, with negative early and positive late. Below the bins are `n`
+and the minimum, maximum and mean in µs.
+
+- **Linux, late**: Linux's own view. For each tick, how long after its
+  deadline the tool was running again, read on `CLOCK_MONOTONIC` just before
+  the write. It can't be early, so only the late half fills. It doesn't see
+  what happens after the write: the kernel's serial driver, the wire, or the
+  MCU.
+- **MCU tick, interval**: the MCU's view of Linux. Each tick is timestamped
+  on arrival on TIM5, at 1 MHz. The column is each interval between two
+  arrivals minus the period, so it holds everything from Linux deciding to
+  write to the shell parsing the line. A tick that is always 3 ms late doesn't
+  show here, because only a change in lateness moves an interval. One late tick
+  shows twice: once late, then early on the interval after it.
+- **MCU pwm, period**: the MCU's own timing, with no software in the path.
+  TIM3 makes the wave and TIM2 captures it, both from one 160 MHz clock. This
+  is the column that shows what hardware timing looks like next to the
+  other two.
+
+The heading names the period, the load (and how many cores it took), and
+the PWM. It also gives how many ticks were written and how many deadlines
+were missed.
+
+**How the deadlines are kept.** Tick *k* is due at *start + k × period*,
+computed from *k* rather than by adding periods up. Each wait is to that
+deadline, measured on the monotonic clock: Python's `time.sleep()` on Linux
+is `clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME)`. A late wake-up then
+delays one tick, not every tick after it, which a plain `sleep(period)` in a
+loop would do. A deadline missed by a whole period or more is skipped and
+counted rather than sent late in a burst. The MCU sees it as one interval a
+whole period late. The writes go through `MCU.send()`, which doesn't wait for
+the shell's prompt, because waiting would add the MCU's reply time to the
+schedule. The first tick comes one second after the start, so a `spin` load
+is already running and the governor has reacted to it.
+
+**Exit codes.** 0 when the table is printed. 1 if the port is busy (the message
+names who has it), if the firmware predates `app jitter`, or if the MCU stops
+answering. 2 for a bad option. 130 or 143 for Ctrl-C or SIGTERM. However it
+ends, the ticks and the PWM are stopped and the load is gone.
+
+**The numbers** come from the owner's run on this board. This page has none
+yet, and the course chapter on jitter will be written once the board has
+supplied them.
