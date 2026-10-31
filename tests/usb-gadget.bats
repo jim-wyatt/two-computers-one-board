@@ -27,6 +27,10 @@ setup() {
   cp -r "$REAL/provision" "$REAL/mcu" "$REAL/usb" "$REAL/net" "$REAL/status" "$PROJECT/"
   cp "$REAL/docs/reference/usb.md" "$PROJECT/docs/reference/"
   STEP="$PROJECT/provision/95-usb-gadget.sh"
+  # The venv the relay's unit runs from, which install_unit checks is there.
+  mkdir -p "$PROJECT/.venv/bin"
+  printf '#!/bin/sh\n' >"$PROJECT/.venv/bin/python"
+  chmod +x "$PROJECT/.venv/bin/python"
 
   FLAGS="$BATS_TEST_TMPDIR/flags"
   mkdir -p "$FLAGS"
@@ -34,6 +38,7 @@ setup() {
 
   export UNOQ_ROOT="$BATS_TEST_TMPDIR/root"
   export UNOQ_UNIT_DIR="$BATS_TEST_TMPDIR/etc/systemd/system"
+  RELAY="$UNOQ_UNIT_DIR/unoq-mcu-serial.service"
   export UNOQ_RUNTIME_DIR="$BATS_TEST_TMPDIR/usr/local/lib/unoq"
   export UNOQ_RUN_DIR="$BATS_TEST_TMPDIR/run"
   export UNOQ_GADGET_DIR="$BATS_TEST_TMPDIR/configfs/unoq"
@@ -459,4 +464,58 @@ router_path() { # enabled|disabled - Arduino's watcher of /dev/ttyGS0 is there
   run "$STEP"
   [ "$status" -eq 0 ]
   grep -qE 'warn +the gadget on this board was built without the serial port' <<<"$output"
+}
+
+# --- the MCU's shell over the cable (unoq-mcu-serial) ------------------------
+#
+# Installed with the port and never started: /dev/ttyHS1 has one owner, and
+# the unit's Conflicts= are what hand it over, so they are checked in the file
+# as installed.
+
+@test "without UNOQ_GADGET_ACM the MCU relay is not installed" {
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  [ ! -e "$RELAY" ]
+}
+
+@test "UNOQ_GADGET_ACM=1 installs the MCU relay, and never enables or starts it" {
+  acm_in_file
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  [ -f "$RELAY" ]
+  refute ran_like '^systemctl .*unoq-mcu-serial'
+  refute grep -q '^\[Install\]' "$RELAY"
+}
+
+@test "the installed relay gives way to the demo and the login, and runs the venv as the user" {
+  acm_in_file
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  grep -qx 'Conflicts=unoq-cpu-bars.service' "$RELAY"
+  grep -qx 'Conflicts=serial-getty@ttyGS0.service' "$RELAY"
+  grep -qx 'After=unoq-cpu-bars.service serial-getty@ttyGS0.service' "$RELAY"
+  grep -qx 'Requires=unoq-link.service' "$RELAY"
+  grep -qx 'BindsTo=dev-ttyGS0.device' "$RELAY"
+  grep -qx "ExecStart=$PROJECT/.venv/bin/python -m unoq.mcuserial" "$RELAY"
+  grep -qx "User=$UNOQ_USER" "$RELAY"
+}
+
+@test "a second run with UNOQ_GADGET_ACM=1 leaves the relay's unit alone" {
+  acm_in_file
+  run "$STEP"
+  : >"$STUB_LOG"
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  refute ran "systemctl daemon-reload"
+}
+
+@test "no venv is a warning, not a failed step, and no relay is installed" {
+  acm_in_file
+  rm -rf "$PROJECT/.venv"
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  [ ! -e "$RELAY" ]
+  grep -qE 'warn +no venv at .*, so no unoq-mcu-serial.service' <<<"$output"
+  # The rest of the step still ran.
+  [ -e "$FLAGS/handover-ran" ]
 }

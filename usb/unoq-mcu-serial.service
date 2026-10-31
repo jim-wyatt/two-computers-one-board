@@ -1,0 +1,51 @@
+# Copyright (c) 2026 Jim Wyatt
+# SPDX-License-Identifier: MIT
+#
+# The MCU's Zephyr shell on the host's COM port: python/unoq/mcuserial.py
+# relays /dev/ttyGS0 (the gadget's serial port) to /dev/ttyHS1 (the MCU's
+# UART). Installed only when UNOQ_GADGET_ACM=1, and never enabled: it is
+# started by hand, and given back by hand.
+#
+#   sudo systemctl start unoq-mcu-serial
+#   sudo systemctl stop unoq-mcu-serial && sudo systemctl start unoq-cpu-bars
+[Unit]
+Description=Arduino UNO Q MCU shell on the USB serial port
+Documentation=file:/home/arduino/two-computers-one-board/docs/reference/usb.md
+
+# /dev/ttyHS1 has one owner at a time, and the usual one is the CPU-bars demo.
+# Starting this stops it, and starting the demo again stops this. The relay's
+# exclusive open would refuse a second owner anyway; this makes the hand-over
+# systemd's job rather than whichever program got there first.
+Conflicts=unoq-cpu-bars.service
+# And /dev/ttyGS0 has one reader. The login there (wanted by the device, see
+# provision/95-usb-gadget.sh) would take half of what the host types, so it
+# goes too. It does not come back by itself when this stops: being wanted by
+# the device starts it only when /dev/ttyGS0 appears.
+Conflicts=serial-getty@ttyGS0.service
+# Conflicts= orders nothing. Without these the stop of the old owner and the
+# start of this one run at once, and the relay finds the port still held.
+After=unoq-cpu-bars.service serial-getty@ttyGS0.service
+
+# The UART reads nothing until link-up.sh has driven its enable GPIO.
+Requires=unoq-link.service
+After=unoq-link.service
+# Stopped if the gadget's serial port goes away (the gadget purged or rebuilt),
+# and not started without it.
+BindsTo=dev-ttyGS0.device
+After=dev-ttyGS0.device
+
+# Each unplugged cable hangs up /dev/ttyGS0 and ends the relay, which starts
+# again below. Five failures in a minute is something else - the MCU's port
+# held by hand (tio), say - and is left failed, to be read in the journal.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=arduino
+Group=arduino
+ExecStart=/home/arduino/two-computers-one-board/.venv/bin/python -m unoq.mcuserial
+Restart=on-failure
+RestartSec=2
+# SIGTERM is handled: the relay closes both ports and exits 0.
+TimeoutStopSec=5

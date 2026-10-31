@@ -35,7 +35,8 @@
 #         rm /etc/systemd/system/unoq-usb-gadget.service \
 #            /etc/udev/rules.d/99-unoq-usb-gadget.rules &&
 #         systemctl daemon-reload && udevadm control --reload
-#         (and unoq-usb-bind, unoq-usb-confirm and unoq-uplink-fallback the same
+#         (and unoq-usb-bind, unoq-usb-confirm, unoq-uplink-fallback and,
+#         where UNOQ_GADGET_ACM=1 installed it, unoq-mcu-serial the same
 #         way.) Then, once no other unoq-* unit that runs as root is left
 #         installed (unoq-link, unoq-leds):  rm -r /usr/local/lib/unoq
 set -uo pipefail
@@ -284,6 +285,25 @@ else
     warn "UNOQ_GADGET_ACM=1 is set here but not in $DEFAULTS, which is what"
     warn "  the gadget is built from. Add it there:"
     warn "    echo UNOQ_GADGET_ACM=1 | sudo tee -a /etc/default/unoq-usb"
+  fi
+  # The MCU's shell on the same port, by hand: a relay that takes /dev/ttyGS0
+  # from the login and /dev/ttyHS1 from the CPU-bars demo, through Conflicts=
+  # in the unit. Installed and NEVER enabled or started here - there is one
+  # owner of /dev/ttyHS1 at a time, and nothing should take it from the demo
+  # without a person asking. Runs as the user, from the venv, so it needs no
+  # copy under $RUNTIME_DIR. See "The MCU's shell over the cable" in
+  # docs/reference/usb.md.
+  # REVERT: rm /etc/systemd/system/unoq-mcu-serial.service &&
+  #         systemctl daemon-reload
+  #
+  # Without the venv install_unit would stop the whole step here, before the
+  # hand-over, over something nobody has asked to run yet - so it is said and
+  # passed over instead.
+  if [ -x "$PROJECT/.venv/bin/python" ]; then
+    install_unit "$PROJECT/usb/unoq-mcu-serial.service"
+  else
+    warn "no venv at $PROJECT/.venv, so no unoq-mcu-serial.service: run"
+    warn "  provision/user/35-python-venv.sh as $TARGET_USER, then this step again."
   fi
   # And an existing gadget is never rebuilt in place (gadget-up.sh).
   GADGET="${UNOQ_GADGET_DIR:-/sys/kernel/config/usb_gadget/unoq}"
