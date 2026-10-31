@@ -485,9 +485,62 @@ interface numbers; that is the arrangement Windows' composite rules ask for. It
 configuration, nor on a board and host at all. It stays off until a Windows host
 has been seen binding NCM, the drive and the COM port together.
 
-The MCU's serial console on the same port is the next step, and a separate one:
-it needs a relay to `/dev/ttyHS1`, which has one owner at a time. See
-[#9](https://github.com/jim-wyatt/two-computers-one-board/issues/9).
+The same port can carry the MCU's shell instead of the login: see the next
+section.
+
+### The MCU's shell over the cable
+
+With the serial port on, the same COM port can reach the STM32 instead of
+Linux: the MCU's Zephyr shell, in PuTTY or `tio` on the host, with no SSH and
+no network at all. A relay does it, `python/unoq/mcuserial.py`, which passes
+every byte between `/dev/ttyGS0` and the MCU's UART `/dev/ttyHS1` untouched.
+The step installs it as `unoq-mcu-serial.service` when `UNOQ_GADGET_ACM=1`,
+and never enables or starts it: it runs only when someone asks.
+
+`/dev/ttyHS1` has one owner at a time, and on a provisioned board that is the
+CPU-bars demo. `/dev/ttyGS0` has one reader, and that is the login. So the
+unit has `Conflicts=` on both, and starting it stops them:
+
+```bash
+sudo systemctl start unoq-mcu-serial    # stops unoq-cpu-bars and the login on ttyGS0
+```
+
+On the host, open the same COM port (or `/dev/ttyACM0`) as for the login and
+press Enter. What answers is the Zephyr shell, running at the MCU's 115200
+(the host's speed setting still does not matter), with its prompt:
+
+```text
+unoq:~$ app status
+```
+
+Everything in [the MCU's shell](mcu.md#interactive-shell) works from there,
+`app` commands and all. It is raw: the shell does its own echo and line
+editing, and the relay adds none.
+
+To give the ports back:
+
+```bash
+sudo systemctl stop unoq-mcu-serial
+sudo systemctl start unoq-cpu-bars
+sudo systemctl start serial-getty@ttyGS0   # the login does not come back by itself
+```
+
+`Conflicts=` only stops the demo, so it has to be started again. The login
+does too: the device wants it, which starts it when `/dev/ttyGS0` appears, and
+the port has been there all along. A reboot or a rebuilt gadget brings both
+back as well. Either `start` works without the `stop` first, because
+`Conflicts=` works both ways and stops the relay.
+
+The relay stops cleanly on `systemctl stop`, with both ports closed. Pulling the
+cable hangs up `/dev/ttyGS0`, which ends the relay, and the unit starts it again
+two seconds later to wait for the next host. Purging the gadget removes the
+device, and `BindsTo=dev-ttyGS0.device` stops the relay with it. If the start
+fails, the journal says why (`journalctl -u unoq-mcu-serial`). The usual cause
+is something else holding `/dev/ttyHS1`, such as a `tio` left open on the
+board, and the relay names it the way `unoq.mcu` does.
+
+To remove it: `sudo rm /etc/systemd/system/unoq-mcu-serial.service` and
+`sudo systemctl daemon-reload`.
 
 ---
 
