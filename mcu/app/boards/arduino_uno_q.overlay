@@ -69,3 +69,66 @@
 	pinctrl-0 = <&spi3_sck_pg9 &spi3_miso_pg10 &spi3_mosi_pb5 &spi3_nss_pg12>;
 	pinctrl-names = "default";
 };
+
+/*
+ * `app jitter` (main.c, jitter.h): three general-purpose timers, none of
+ * which the board file or anything above enables. All three count the APB1
+ * timer clock, 160 MHz (sysclk 160 MHz, APB1 prescaler 1), divided by
+ * st,prescaler + 1.
+ *
+ * Header pins, from Zephyr's arduino_r3_connector.dtsi: D2 is PB3 and D3 is
+ * PB0. Neither is in the panel's PF0..PF10, spi3's PG9/PG10/PB5/PG12,
+ * lpuart1's PG5..PG8, usart1's PB6/PB7, i2c2's PB10/PB11, spi2's
+ * PB13/PB14/PB15/PB9, or the status LEDs' PH10..PH15. PB3 comes out of reset
+ * as JTDO/TRACESWO; debugging here is SWD on PA13/PA14, which does not use
+ * it.
+ */
+
+/* TIM5: a free-running 32-bit counter at 1 MHz, so one count is one
+ * microsecond and the counter wraps every 71.6 minutes. The tick timestamps.
+ * The kernel's own cycle counter is LPTIM1 on the 32768 Hz crystal (the
+ * board's stm32_lp_tick_source), about 30 us a count. */
+&timers5 {
+	status = "okay";
+	st,prescaler = <159>;
+
+	counter_jitter: counter {
+		status = "okay";
+	};
+};
+
+/* TIM3: PWM out on D3 (PB0, TIM3_CH3). TIM3 is 16-bit, and counting at 1 MHz
+ * its longest period is 65535 us, which is APP_JITTER_PWM_HZ_MIN's reason. */
+&timers3 {
+	status = "okay";
+	st,prescaler = <159>;
+
+	pwm_jitter_out: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim3_ch3_pb0>;
+		pinctrl-names = "default";
+	};
+};
+
+/* TIM2: PWM capture in on D2 (PB3, TIM2_CH2), at the full 160 MHz so a
+ * period is measured to 6.25 ns. TIM2 is 32-bit, so a period up to 26.8 s
+ * fits. Capture on channel 2 uses the slave-mode controller to reset the
+ * counter on each rising edge, and channel 1 as its pair, internally: only
+ * PB3 is taken. */
+&timers2 {
+	status = "okay";
+	st,prescaler = <0>;
+
+	pwm_jitter_in: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim2_ch2_pb3>;
+		pinctrl-names = "default";
+	};
+};
+
+/* Without the jumper, D2 is held low rather than left to float, so the
+ * capture sees no edges and the pwm histogram stays empty instead of filling
+ * with noise. */
+&tim2_ch2_pb3 {
+	bias-pull-down;
+};

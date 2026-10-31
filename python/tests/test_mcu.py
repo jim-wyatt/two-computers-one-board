@@ -14,7 +14,18 @@ from typing import Any
 import pytest
 from conftest import PROMPT
 
-from unoq.mcu import MCU, MCUError, ShellTimeout, TempLogStat, TempSample, _clean
+from unoq.mcu import (
+    JITTER_BIN_LABELS,
+    JITTER_BINS,
+    MCU,
+    JitterHist,
+    JitterStat,
+    MCUError,
+    ShellTimeout,
+    TempLogStat,
+    TempSample,
+    _clean,
+)
 
 # -- _clean -----------------------------------------------------------------
 
@@ -593,3 +604,274 @@ def test_cmd_reassembles_a_reply_that_arrives_in_pieces(mcu_factory: Any) -> Non
 def test_cmd_handles_a_shell_that_does_not_echo(mcu_factory: Any) -> None:
     mcu = mcu_factory({"app status": ["uptime_ms=7"]}, echo=False)
     assert mcu.cmd("app status") == ["uptime_ms=7"]
+
+
+# -- send: a line nobody waits for --------------------------------------------
+
+
+def late_replies(mcu: MCU) -> None:
+    """Make the fake behave like a UART whose replies are still arriving.
+
+    The plain fake replaces its pending bytes on every write and empties them
+    on every flush, so a reply could never outlive the command that asked for
+    it. On the board it can: the echo and prompt of a line sent blind are
+    still on the wire when the next command flushes the input. Here nothing
+    is ever flushed, and each reply queues behind the last.
+    """
+    fake = mcu._s
+    render = fake._render
+
+    def write(data: bytes) -> int:
+        command = data.decode().strip()
+        fake.written.append(command)
+        fake._pending += render(command).encode()
+        return len(data)
+
+    fake.write = write
+    fake.reset_input_buffer = lambda: None
+
+
+def test_send_writes_the_line_and_reads_nothing(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app jitter tick": []})
+    before = mcu._s.reset_count
+    mcu.send("app jitter tick")
+    assert mcu._s.written == ["app jitter tick"]
+    # The input is emptied before the write, so replies nobody reads cannot
+    # pile up until the kernel throttles the MCU.
+    assert mcu._s.reset_count == before + 1
+    assert mcu._s._pending, "the reply is left where it is"
+
+
+@pytest.mark.parametrize("chunk_size", [None, 1, 7])
+def test_after_send_cmd_reads_past_the_stale_prompts_to_its_own_reply(
+    mcu_factory: Any, chunk_size: int | None
+) -> None:
+    """One byte at a time, the buffer ends at a tick's prompt long before the
+    stat reply begins. Without the echo check, cmd() stopped there and
+    returned nothing - or the tick's echo, as though it were the reply."""
+    mcu = mcu_factory({"app status": ["uptime_ms=7"]}, chunk_size=chunk_size)
+    late_replies(mcu)
+    for _ in range(3):
+        mcu.send("app jitter tick")
+    assert mcu.cmd("app status") == ["uptime_ms=7"]
+    # One command later the reply is read the ordinary way again.
+    assert mcu._unread is False
+    assert mcu.cmd("app status") == ["uptime_ms=7"]
+
+
+def test_after_send_an_error_after_the_echo_still_raises(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app jitter tick": ["Error: not armed"], "x": ["Error: boom"]})
+    late_replies(mcu)
+    mcu.send("app jitter tick")
+    # The tick's own error is before x's echo: not x's to raise.
+    with pytest.raises(MCUError, match="boom"):
+        mcu.cmd("x")
+
+
+def test_after_send_an_empty_reply_is_empty(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app jitter tick": ["stale"], "x": []})
+    late_replies(mcu)
+    mcu.send("app jitter tick")
+    assert mcu.cmd("x") == []
+
+
+def test_after_send_cmd_times_out_if_its_echo_never_comes(mcu_factory: Any) -> None:
+    mcu = mcu_factory({}, echo=False)
+    late_replies(mcu)
+    mcu.send("app jitter tick")
+    with pytest.raises(ShellTimeout):
+        mcu.cmd("x", timeout=0.05)
+
+
+# -- jitter -------------------------------------------------------------------
+
+ZEROS = ",".join(["0"] * 15)
+
+
+def stat_line(src: str, period_us: int, bins: list[int], lo: int = 0, hi: int = 0) -> str:
+    n = sum(bins)
+    mean = (lo + hi) // 2 if n else 0
+    return (
+        f"jitter src={src} period_us={period_us} n={n} min_ns={lo} max_ns={hi} "
+        f"mean_ns={mean} bins={','.join(map(str, bins))}"
+    )
+
+
+def test_the_bin_labels_run_from_earliest_to_latest() -> None:
+    assert len(JITTER_BIN_LABELS) == JITTER_BINS == 15
+    assert JITTER_BIN_LABELS[0] == "<-5000"
+    assert JITTER_BIN_LABELS[1] == "-5000..-2000"
+    assert JITTER_BIN_LABELS[6] == "-100..-50"
+    assert JITTER_BIN_LABELS[7] == "-50..50"
+    assert JITTER_BIN_LABELS[8] == "50..100"
+    assert JITTER_BIN_LABELS[13] == "2000..5000"
+    assert JITTER_BIN_LABELS[14] == ">5000"
+
+
+def test_jitter_arm_returns_the_period_the_mcu_took(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app jitter arm 10000": ["ok jitter arm period_us=10000"]})
+    assert mcu.jitter_arm(10000) == 10000
+
+
+@pytest.mark.parametrize("period", [99, 10_000_001, -1])
+def test_jitter_arm_refuses_a_period_out_of_range_without_sending(
+    mcu_factory: Any, period: int
+) -> None:
+    mcu = mcu_factory({})
+    with pytest.raises(ValueError, match="period_us"):
+        mcu.jitter_arm(period)
+    assert mcu._s.written == []
+
+
+def test_jitter_arm_raises_on_an_unparsable_reply(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app jitter arm 100": ["ok"]})
+    with pytest.raises(MCUError, match="could not parse app jitter arm"):
+        mcu.jitter_arm(100)
+
+
+def test_jitter_arm_raises_on_no_reply(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app jitter arm 100": []})
+    with pytest.raises(MCUError, match="could not parse"):
+        mcu.jitter_arm(100)
+
+
+def test_jitter_on_a_firmware_without_it_says_so(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app jitter stat": OLD_FIRMWARE_HELP})
+    with pytest.raises(MCUError, match="predates it"):
+        mcu.jitter_stat()
+
+
+def test_jitter_tick_is_sent_blind(mcu_factory: Any) -> None:
+    mcu = mcu_factory({})
+    mcu.jitter_tick()
+    assert mcu._s.written == ["app jitter tick"]
+    assert mcu._unread is True
+
+
+def test_jitter_pwm_returns_the_real_period(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app jitter pwm 7000": ["ok jitter pwm hz=7000 period_us=142"]})
+    assert mcu.jitter_pwm(7000) == 142
+
+
+@pytest.mark.parametrize("hz", [15, 10_001, 0])
+def test_jitter_pwm_refuses_a_rate_out_of_range_without_sending(mcu_factory: Any, hz: int) -> None:
+    mcu = mcu_factory({})
+    with pytest.raises(ValueError, match="hz"):
+        mcu.jitter_pwm(hz)
+    assert mcu._s.written == []
+
+
+@pytest.mark.parametrize(
+    "reply", [[], ["ok"], ["ok jitter pwm hz=99 period_us=10101"]], ids=["none", "junk", "other-hz"]
+)
+def test_jitter_pwm_raises_on_a_reply_that_is_not_for_it(
+    mcu_factory: Any, reply: list[str]
+) -> None:
+    mcu = mcu_factory({"app jitter pwm 100": reply})
+    with pytest.raises(MCUError, match="could not parse app jitter pwm"):
+        mcu.jitter_pwm(100)
+
+
+def test_jitter_stat_reads_both_histograms(mcu_factory: Any) -> None:
+    tick = [0, 0, 0, 0, 1, 2, 3, 900, 50, 20, 10, 5, 3, 2, 1]
+    pwm = [0] * 7 + [499] + [0] * 7
+    mcu = mcu_factory(
+        {
+            "app jitter stat": [
+                stat_line("tick", 10000, tick, -400000, 6100000),
+                "jitter src=pwm period_us=10000 n=499 min_ns=-6 max_ns=6 mean_ns=0 bins="
+                + ",".join(map(str, pwm)),
+            ]
+        }
+    )
+    stat = mcu.jitter_stat()
+    assert isinstance(stat, JitterStat)
+    assert stat.tick == JitterHist("tick", 10000, 997, -400000, 6100000, 2850000, tuple(tick))
+    assert stat.pwm == JitterHist("pwm", 10000, 499, -6, 6, 0, tuple(pwm))
+
+
+def test_jitter_stat_reads_empty_histograms(mcu_factory: Any) -> None:
+    mcu = mcu_factory(
+        {"app jitter stat": [stat_line("tick", 0, [0] * 15), stat_line("pwm", 0, [0] * 15)]}
+    )
+    stat = mcu.jitter_stat()
+    assert stat.tick.n == stat.pwm.n == 0
+    assert stat.tick.bins == (0,) * 15
+
+
+@pytest.mark.parametrize(
+    "lines",
+    [
+        [f"jitter src=tick period_us=1 n=0 min_ns=0 max_ns=0 mean_ns=0 bins={ZEROS}"],
+        [
+            f"jitter src=tick period_us=1 n=0 min_ns=0 max_ns=0 mean_ns=0 bins={ZEROS}",
+            f"jitter src=tick period_us=1 n=0 min_ns=0 max_ns=0 mean_ns=0 bins={ZEROS}",
+        ],
+        [
+            f"jitter src=tick period_us=1 n=0 min_ns=0 max_ns=0 mean_ns=0 bins={ZEROS}",
+            f"jitter src=gps period_us=1 n=0 min_ns=0 max_ns=0 mean_ns=0 bins={ZEROS}",
+        ],
+        [],
+    ],
+    ids=["pwm-missing", "tick-twice", "unknown-source", "nothing"],
+)
+def test_jitter_stat_wants_exactly_tick_and_pwm(mcu_factory: Any, lines: list[str]) -> None:
+    mcu = mcu_factory({"app jitter stat": lines})
+    with pytest.raises(MCUError, match="expected"):
+        mcu.jitter_stat()
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "jitter src=tick period_us=1 n=1 min_ns=0 max_ns=0 mean_ns=0 bins=" + ZEROS,
+        "jitter src=tick period_us=1 n=0 min_ns=0 max_ns=0 mean_ns=0 bins=0,0,0",
+    ],
+    ids=["count-disagrees", "too-few-bins"],
+)
+def test_jitter_stat_refuses_bins_that_do_not_add_up(mcu_factory: Any, line: str) -> None:
+    mcu = mcu_factory({"app jitter stat": [line]})
+    with pytest.raises(MCUError, match="do not add up"):
+        mcu.jitter_stat()
+
+
+def test_jitter_stat_raises_on_a_line_it_cannot_read(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app jitter stat": ["jitter src=tick n=lots"]})
+    with pytest.raises(MCUError, match="could not parse app jitter stat"):
+        mcu.jitter_stat()
+
+
+def test_jitter_off(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app jitter off": ["ok jitter off"]})
+    mcu.jitter_off()
+    assert mcu._s.written == ["app jitter off"]
+
+
+@pytest.mark.parametrize("reply", [[], ["ok"]], ids=["none", "junk"])
+def test_jitter_off_raises_on_a_reply_that_is_not_for_it(
+    mcu_factory: Any, reply: list[str]
+) -> None:
+    mcu = mcu_factory({"app jitter off": reply})
+    with pytest.raises(MCUError, match="could not parse app jitter off"):
+        mcu.jitter_off()
+
+
+def test_a_whole_run_reads_the_stat_after_the_ticks(mcu_factory: Any) -> None:
+    """arm, pwm, ticks sent blind, stat, off: the shape unoq-jitter will have."""
+    bins = [0] * 7 + [2] + [0] * 7
+    mcu = mcu_factory(
+        {
+            "app jitter arm 10000": ["ok jitter arm period_us=10000"],
+            "app jitter pwm 100": ["ok jitter pwm hz=100 period_us=10000"],
+            "app jitter stat": [stat_line("tick", 10000, bins), stat_line("pwm", 10000, bins)],
+            "app jitter off": ["ok jitter off"],
+        },
+        chunk_size=5,
+    )
+    late_replies(mcu)
+    assert mcu.jitter_arm(10000) == 10000
+    assert mcu.jitter_pwm(100) == 10000
+    for _ in range(3):
+        mcu.jitter_tick()
+    assert mcu.jitter_stat().tick.n == 2
+    mcu.jitter_off()

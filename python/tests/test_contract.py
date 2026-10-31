@@ -76,6 +76,11 @@ def firmware() -> dict[str, int]:
         ("MATRIX_ROWS", "APP_MATRIX_ROWS"),
         ("MATRIX_COLS", "APP_MATRIX_COLS"),
         ("MATRIX_MAX_LEVEL", "APP_MATRIX_MAX_LEVEL"),
+        ("JITTER_BINS", "APP_JITTER_BINS"),
+        ("JITTER_PERIOD_US_MIN", "APP_JITTER_PERIOD_US_MIN"),
+        ("JITTER_PERIOD_US_MAX", "APP_JITTER_PERIOD_US_MAX"),
+        ("JITTER_PWM_HZ_MIN", "APP_JITTER_PWM_HZ_MIN"),
+        ("JITTER_PWM_HZ_MAX", "APP_JITTER_PWM_HZ_MAX"),
     ],
 )
 def test_python_constants_match_the_firmware(
@@ -383,3 +388,125 @@ def test_the_firmware_registers_frame_with_one_word_per_row() -> None:
     assert m, "`app matrix frame` is not registered in main.c"
     assert m.group(1).strip() == "1 + APP_MATRIX_ROWS"
     assert m.group(2) == "0"
+
+
+# -- jitter --------------------------------------------------------------------
+#
+# `app jitter` answers with four formats, and stat's carries the bins as one
+# comma-separated value whose meaning is the edges in the header. The edges
+# are an initializer list rather than a number, so they get a parser of their
+# own; the formats are pinned as the others are, with %s given the group each
+# one stands for.
+
+SPI_PROTO = MCU_APP / "include" / "spi_proto.h"
+
+
+def firmware_jitter_edges() -> tuple[int, ...]:
+    m = re.search(r"^#define\s+APP_JITTER_EDGES_US\s+\{([\d,\s]+)\}", HEADER.read_text(), re.M)
+    assert m, "APP_JITTER_EDGES_US is gone from app_proto.h"
+    return tuple(int(e) for e in m.group(1).split(","))
+
+
+def test_python_has_the_firmware_bin_edges(firmware: dict[str, int]) -> None:
+    edges = firmware_jitter_edges()
+    assert edges == mcu.JITTER_EDGES_US
+    assert len(edges) == firmware["APP_JITTER_EDGES"]
+    assert firmware["APP_JITTER_BINS"] == 2 * len(edges) + 1
+
+
+def test_python_knows_the_two_sources_in_the_order_stat_prints_them() -> None:
+    assert (
+        firmware_format("APP_JITTER_SRC_TICK"),
+        firmware_format("APP_JITTER_SRC_PWM"),
+    ) == mcu.JITTER_SOURCES
+    source = (MCU_APP / "src" / "main.c").read_text()
+    order = re.findall(r"jitter_print\(sh, (APP_JITTER_SRC_\w+)", source)
+    assert order == ["APP_JITTER_SRC_TICK", "APP_JITTER_SRC_PWM"]
+
+
+@pytest.mark.parametrize(
+    ("python_name", "c_name"),
+    [
+        ("_JITTER_ARM", "APP_JITTER_ARM_FMT"),
+        ("_JITTER_PWM", "APP_JITTER_PWM_FMT"),
+        ("_JITTER_OFF", "APP_JITTER_OFF_FMT"),
+    ],
+)
+def test_jitter_reply_regexes_are_the_ones_the_firmware_formats_imply(
+    python_name: str, c_name: str
+) -> None:
+    fmt = firmware_format(c_name)
+    assert getattr(mcu, python_name).pattern == implied_regex(fmt), (
+        f"unoq.mcu.{python_name} no longer matches {c_name} ({fmt!r}) - "
+        f"a change to app_proto.h is a protocol change; update python/unoq/mcu.py"
+    )
+
+
+def test_the_stat_regex_is_the_one_the_firmware_format_implies() -> None:
+    """The first %s is a source name, the second the bins."""
+    fmt = firmware_format("APP_JITTER_FMT")
+    implied = implied_regex(fmt).replace("%s", "([a-z]+)", 1).replace("%s", r"(\d+(?:,\d+)*)", 1)
+    assert mcu._JITTER.pattern == implied
+
+
+def test_a_stat_reply_the_firmware_would_print_parses_back(mcu_factory: Any) -> None:
+    fmt = firmware_format("APP_JITTER_FMT")
+    tick = [0, 0, 0, 0, 0, 1, 2, 90, 4, 2, 1, 0, 0, 0, 0]
+    pwm = [0] * 7 + [100] + [0] * 7
+    reply = [
+        fmt % ("tick", 10000, 100, -150000, 400000, 1234, ",".join(map(str, tick))),
+        fmt % ("pwm", 10000, 100, -6, 6, 0, ",".join(map(str, pwm))),
+    ]
+    stat = mcu_factory({"app jitter stat": reply}).jitter_stat()
+    assert stat.tick == mcu.JitterHist("tick", 10000, 100, -150000, 400000, 1234, tuple(tick))
+    assert stat.pwm.bins == tuple(pwm)
+
+
+def test_the_arm_pwm_and_off_replies_the_firmware_would_print_parse_back(
+    mcu_factory: Any,
+) -> None:
+    board = mcu_factory(
+        {
+            "app jitter arm 10000": [firmware_format("APP_JITTER_ARM_FMT") % 10000],
+            "app jitter pwm 7000": [firmware_format("APP_JITTER_PWM_FMT") % (7000, 142)],
+            "app jitter off": [firmware_format("APP_JITTER_OFF_FMT")],
+        }
+    )
+    assert board.jitter_arm(10000) == 10000
+    assert board.jitter_pwm(7000) == 142
+    board.jitter_off()
+
+
+def test_the_firmware_registers_the_jitter_commands_python_sends() -> None:
+    """arm and pwm take exactly one argument; tick, stat and off none."""
+    source = (MCU_APP / "src" / "main.c").read_text()
+    table = re.search(
+        r"SHELL_STATIC_SUBCMD_SET_CREATE\(\s*jitter_cmds,(.*?)SHELL_SUBCMD_SET_END", source, re.S
+    )
+    assert table, "the `app jitter` subcommands are gone from main.c"
+    body = table.group(1)
+    for name in ("arm", "pwm"):
+        assert re.search(rf"SHELL_CMD_ARG\({name},.*?,\s*2,\s*0\)", body, re.S), name
+    for name in ("tick", "stat", "off"):
+        assert re.search(rf"SHELL_CMD\({name},", body), name
+    assert re.search(r"SHELL_CMD\(jitter, &jitter_cmds,", source)
+
+
+# -- the SPI link's temperature log --------------------------------------------
+#
+# spi_link.c gives the TEMPLOG service a weak spi_link_templog() that returns
+# NULL, so a main.c that forgot to define its own still links - and the SPI
+# link answers "service unavailable" for a log the shell can read. The build
+# cannot catch that; this does.
+
+
+def test_main_c_hands_the_spi_link_its_temperature_log() -> None:
+    decl = re.search(r"^struct templog \*spi_link_templog\(void\);", SPI_PROTO.read_text(), re.M)
+    assert decl, "spi_link_templog() is no longer declared in spi_proto.h"
+    source = (MCU_APP / "src" / "main.c").read_text()
+    assert re.search(
+        r"^struct templog \*spi_link_templog\(void\)\n\{\n\treturn &temp_log;\n\}", source, re.M
+    ), "main.c does not define spi_link_templog(): the SPI TEMPLOG service is unavailable"
+    assert '#include "spi_proto.h"' in source, (
+        "the definition is not checked against the declaration"
+    )
