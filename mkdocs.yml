@@ -297,6 +297,7 @@ nav:
       # rather than an entry in its list.
       - reference/index.md
       - reference/hardware.md
+      - reference/capabilities.md
       - MPU: reference/mpu.md
       - MCU: reference/mcu.md
       - USB: reference/usb.md

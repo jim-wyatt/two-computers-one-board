@@ -26,6 +26,13 @@ are where you come back to check a number.
     **Read this first.** More debugging time is lost to the GPIO table at the
     top of it than to anything else on this board.
 
+-   :material-format-list-checks:{ .lg .middle } **[What the board can do](capabilities.md)**
+
+    ---
+
+    Every peripheral on both chips, whether this project uses it, and seven
+    proposed demonstrations that would use the rest.
+
 -   :material-penguin:{ .lg .middle } **[MPU — the Linux side](mpu.md)**
 
     ---
