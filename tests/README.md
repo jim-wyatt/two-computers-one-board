@@ -94,6 +94,7 @@ without touching `/var/lib`.
 | [`mcu-link.bats`](mcu-link.bats) | The unit that keeps the board from looking dead after a reboot. If it names the checkout, root runs whatever was last saved there; if its check requests the lines, the check breaks the link; if its REVERT line misses a unit, following it leaves that unit pointing at nothing. |
 | [`cpu-bars.bats`](cpu-bars.bats) | The LED-matrix demo, which usually gets installed right after a flash. Installed before its venv, it fails at every boot; left with the start count that made it give up, it stays dark after the flash that fixed the reason. |
 | [`purge-arduino.bats`](purge-arduino.bats) | The one step whose damage cannot be undone. Without `/opt/openocd` or a copy of the stock MCU firmware it must refuse before removing anything, because neither comes back from apt. |
+| [`python-venv.bats`](python-venv.bats) | The venv everything Python on the board runs from. A skip that looks at too little leaves it broken and reading `ok` for good, which is what a venv missing two of its five libraries did; a run that dies half way must not record that it was built to the lock. |
 
 The first two were written first, because both scripts had already failed:
 

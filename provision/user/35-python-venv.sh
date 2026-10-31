@@ -84,12 +84,12 @@ else
   # re-run costs nothing when they are already there.
   # shellcheck disable=SC2086  # deliberate word splitting of the package list
   uv pip install --python "$VENV/bin/python" -q -c "$LOCK" -b "$LOCK" $HW_PKGS ||
-    fail "could not install the hardware libraries (missing:$MISSING)
+    fail "could not install the hardware libraries (missing: $MISSING)
         spidev is a C extension - if it failed to build, the board is missing
         gcc or python3-dev. provision/10-optimize-board.sh installs python3-dev
         and provision/15-dev-tools.sh installs gcc."
   STILL="$(hw_missing)"
-  [ -z "$STILL" ] || fail "still missing after install:$STILL"
+  [ -z "$STILL" ] || fail "still missing after install: $STILL"
   if [ -n "$MISSING" ]; then
     did "hardware libraries installed ($MISSING)"
   else
