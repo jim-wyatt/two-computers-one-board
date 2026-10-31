@@ -20,11 +20,11 @@ setup() {
   stub_setup
 
   # A copy of the checkout, so a test can edit what the step installs. These
-  # four directories are all the step and root's copies reach.
+  # five directories are all the step and root's copies reach.
   REAL="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   PROJECT="$BATS_TEST_TMPDIR/checkout"
   mkdir -p "$PROJECT"
-  cp -r "$REAL/provision" "$REAL/mcu" "$REAL/usb" "$REAL/status" "$PROJECT/"
+  cp -r "$REAL/provision" "$REAL/mcu" "$REAL/usb" "$REAL/net" "$REAL/status" "$PROJECT/"
   STEP="$PROJECT/provision/50-status-leds.sh"
 
   export UNOQ_UNIT_DIR="$BATS_TEST_TMPDIR/etc/systemd/system"

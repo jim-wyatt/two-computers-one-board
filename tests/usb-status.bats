@@ -29,8 +29,9 @@ setup() {
   # real lib.sh - which works out where the checkout is from where IT is, so
   # the copies below are made from this directory and not from the repository.
   SRC="$BATS_TEST_TMPDIR/checkout"
-  mkdir -p "$SRC/usb" "$SRC/status" "$SRC/mcu" "$SRC/provision"
+  mkdir -p "$SRC/usb" "$SRC/net" "$SRC/status" "$SRC/mcu" "$SRC/provision"
   cp "$REAL"/usb/*.sh "$SRC/usb/"
+  cp "$REAL"/net/*.sh "$SRC/net/"
   cp "$REAL/status/leds.sh" "$SRC/status/"
   cp "$REAL/mcu/link-up.sh" "$SRC/mcu/"
   cp "$REAL/provision/lib.sh" "$SRC/provision/"
@@ -136,9 +137,9 @@ section() {
   run "$RT/usb/status.sh"
   [ "$status" -eq 0 ]
   [[ "$(section)" == *"same as $SRC"*"yes"* ]]
-  echo "# an edit" >>"$SRC/usb/wifi.sh"
+  echo "# an edit" >>"$SRC/net/wifi.sh"
   run "$RT/usb/status.sh"
-  [[ "$(section)" == *"DIFFERENT from $SRC"*"usb/wifi.sh"* ]]
+  [[ "$(section)" == *"DIFFERENT from $SRC"*"net/wifi.sh"* ]]
 }
 
 @test "run as root's copy with the checkout gone, it says there is nothing to compare" {

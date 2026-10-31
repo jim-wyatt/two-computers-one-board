@@ -3,9 +3,9 @@
 # SPDX-License-Identifier: MIT
 # Turn the board's wifi radio off, once the USB link can carry the traffic.
 #
-#   ~/two-computers-one-board/usb/wifi.sh status      # what is on, and what would be left
-#   sudo ~/two-computers-one-board/usb/wifi.sh off    # checks the USB link first, then off
-#   sudo ~/two-computers-one-board/usb/wifi.sh on     # back on, whatever state anything is in
+#   ~/two-computers-one-board/net/wifi.sh status      # what is on, and what would be left
+#   sudo ~/two-computers-one-board/net/wifi.sh off    # checks the USB link first, then off
+#   sudo ~/two-computers-one-board/net/wifi.sh on     # back on, whatever state anything is in
 #
 # WHY
 # ---
@@ -45,9 +45,9 @@ METRIC="${UNOQ_USB_ROUTE_METRIC:-700}"
 UDHCPC_PID="${UNOQ_RUN_DIR:-/run}/unoq-usb-udhcpc.pid"
 G="${UNOQ_GADGET_DIR:-/sys/kernel/config/usb_gadget/unoq}"
 
-# pid_is, is_udhcpc and is_ipv4 are shared by the scripts in usb/.
+# pid_is, is_udhcpc and is_ipv4 are shared with the scripts in usb/.
 # shellcheck source=usb/common.sh
-. "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../usb/common.sh"
 
 FORCE=0
 ACTION=""

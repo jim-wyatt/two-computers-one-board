@@ -428,7 +428,7 @@ export RUNTIME_DIR
 #   - a script that nothing starts costs nothing. The USB scripts sitting in
 #     /usr/local/lib/unoq on a board that never enabled the gadget are inert.
 #
-# usb/ is a glob on purpose. A new helper there is called by a sibling as
+# usb/ and net/ are globs on purpose. A new helper there is called by a sibling as
 # "$HERE/new.sh", and a hand-kept list that missed it would produce a copy of
 # the caller with nothing to call - found at the next cable plug, by root, on a
 # board that may be reachable only over that cable.
@@ -436,8 +436,8 @@ runtime_files() {
   local f
   echo mcu/link-up.sh
   echo status/leds.sh
-  for f in "$PROJECT"/usb/*.sh; do
-    [ -f "$f" ] && echo "usb/$(basename "$f")"
+  for f in "$PROJECT"/usb/*.sh "$PROJECT"/net/*.sh; do
+    [ -f "$f" ] && echo "$(basename "$(dirname "$f")")/$(basename "$f")"
   done
   # Not the status of that last test: a glob that matched nothing is an empty
   # set, which install_runtime refuses in words, not a failure to report here.

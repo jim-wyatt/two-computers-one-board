@@ -252,7 +252,7 @@ If the USB gadget will not bind, wifi is off, and no network reaches the board,
 this port still gives a root login. It also carries kernel messages from the
 first boot line onwards, before any network exists.
 
-That is exactly the failure `usb/bind-guard.sh` and `usb/uplink-fallback.sh`
+That is exactly the failure `usb/bind-guard.sh` and `net/uplink-fallback.sh`
 are written for. This port is the escape hatch underneath both.
 
 ### It is a login for anyone who can touch the board

@@ -429,9 +429,9 @@ redundant. As a device the board is a power sink at USB default current with no
 PD contract, so it is worth reclaiming.
 
 ```bash
-~/two-computers-one-board/usb/wifi.sh check      # would it be safe right now?
-sudo ~/two-computers-one-board/usb/wifi.sh off
-sudo ~/two-computers-one-board/usb/wifi.sh on
+~/two-computers-one-board/net/wifi.sh check      # would it be safe right now?
+sudo ~/two-computers-one-board/net/wifi.sh off
+sudo ~/two-computers-one-board/net/wifi.sh on
 ```
 
 `check` and `off` run the same preflight, and `off` refuses if it fails:

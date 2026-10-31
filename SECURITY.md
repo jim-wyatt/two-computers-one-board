@@ -48,7 +48,7 @@ Three things this does not cover, so that you know:
 - The two services that run from the Python environment (`unoq-cpu-bars` and
   `unoq-learn`) still run from the checkout. They run as you, not as root.
 - Commands you run yourself with `sudo` from the checkout
-  (`sudo usb/wifi.sh off`, `sudo bash share/build-image.sh`) run that copy as
+  (`sudo net/wifi.sh off`, `sudo bash share/build-image.sh`) run that copy as
   root. That is your decision each time, with your password.
 - A board set up before this arrangement keeps its old units until each step
   that installed them is run again. Every step ends by naming any that are
