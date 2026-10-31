@@ -97,7 +97,7 @@ disable_unit apt-daily.timer apt-daily-upgrade.timer
 # `apt upgrade` is covered too.
 # REVERT: rm /etc/apt/preferences.d/arduino-alsa-ucm-conf.pref
 step "audio package pin"
-write_file 0644 /etc/apt/preferences.d/arduino-alsa-ucm-conf.pref <<'PIN' || true
+write_file 0644 "$SYSROOT/etc/apt/preferences.d/arduino-alsa-ucm-conf.pref" <<'PIN' || true
 Package: alsa-ucm-conf
 Pin: origin apt-repo.arduino.cc
 Pin-Priority: 1001
@@ -149,7 +149,8 @@ else
   fi
   # The .debs are now dead weight on the partition this script exists to keep
   # free: a 70-package upgrade leaves a few hundred MB in the archive cache.
-  CACHE_KB="$(du -sk /var/cache/apt/archives 2>/dev/null | awk '{print $1}')"
+  # UNOQ_APT_CACHE_DIR is the one 90-cleanup.sh reads, and is for the tests.
+  CACHE_KB="$(du -sk "${UNOQ_APT_CACHE_DIR:-/var/cache/apt}/archives" 2>/dev/null | awk '{print $1}')"
   if [ "${CACHE_KB:-0}" -gt 10240 ]; then
     apt-get clean
     did "apt cache cleared (was $((CACHE_KB / 1024)) MB)"
@@ -178,7 +179,7 @@ add_to_group i2c
 step "SPI access"
 ensure_group spi
 add_to_group spi
-if write_file 0644 /etc/udev/rules.d/91-spidev-local.rules <<'RULE'
+if write_file 0644 "$SYSROOT/etc/udev/rules.d/91-spidev-local.rules" <<'RULE'
 SUBSYSTEM=="spidev", GROUP="spi", MODE="0660"
 RULE
 then
