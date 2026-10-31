@@ -500,9 +500,16 @@ app temp log [since]            the temperature log after seq `since` (all of it
 app temp log stat               head=, count=, size=, dropped=, period_ms=
 app bars <pct> [pct ...]        1..7 values, 0..100 each
 app matrix px <row> <col> <lvl> light one LED; row 0..7, col 0..12, lvl 0..7
+app matrix frame <r0> ... <r7>  a whole picture: eight rows of 13 digits 0..7; ok frame lit=<n>
 app matrix flip                 rotate 180 degrees, persisted
 app matrix off                  blank the panel, stop the refresh
+app reset                       why the MCU last reset: reset=watchdog,pin and similar
+app hang yes                    stall on purpose, so the watchdog resets the MCU in 8 s
 ```
+
+The last two belong to the MCU's watchdog, described in
+[mcu.md](mcu.md#the-watchdog), and `app matrix frame` in
+[mcu.md](mcu.md#drawing-a-whole-frame).
 
 ### Why seven bars
 
