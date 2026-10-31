@@ -174,9 +174,67 @@ stops the first thing you started that way.)
 You have just used the Linux half for the two things it is good at: reading
 system state out of a file, and doing arithmetic on it. It never touched an LED.
 
+## Try it: heat under load, read from both chips
+
+The kernel picks the cores' clock speed for you. The rule it uses is called the
+**governor**, and it is a file:
+`/sys/devices/system/cpu/cpufreq/policy0/scaling_governor`. This board boots
+on `schedutil`, which raises the clock when the cores get busy and drops it when
+they go quiet. `performance` holds it at the top; `ondemand` is an older way of
+doing what `schedutil` does. A faster clock finishes the work sooner, but it
+draws more current and makes more heat. On a board powered from a laptop's USB
+port, current is the budget, so which governor to use is a real choice.
+
+`unoq.heat` measures the choice. For each governor in turn it switches to it,
+lets the board sit idle for a minute, then keeps all four cores busy for two.
+Every 5 seconds it adds a row to a CSV file:
+
+- every thermal zone Linux has, and how long the cores have spent at each clock
+  speed since the phase began
+- the GPU's clock, from `/sys/class/devfreq/5900000.gpu/cur_freq`
+- the microcontroller's own temperature, and its uptime
+
+The last one comes from the **other** chip. The workload does not run on the
+MCU, so its temperature shows the whole board warming up, not just the cores.
+Its uptime is a stopwatch that Linux's clock and clock speed cannot touch. At
+the end the tool prints one line per governor: how long the load ran by the
+MCU's clock, the hottest zone it saw, and the MCU's average temperature.
+
+Changing the governor needs root, so the tool refuses to run without `sudo`. It
+also needs the serial line to the MCU, so stop the demo first:
+
+```bash
+cd ~/two-computers-one-board
+sudo systemctl stop unoq-cpu-bars
+sudo ./.venv/bin/python -m unoq.heat ~/heat.csv   # about nine minutes
+sudo systemctl start unoq-cpu-bars
+sudo chown "$USER" ~/heat.csv                     # it was written as root
+```
+
+To leave the demo running, add `--no-mcu`. You lose the MCU's temperature and
+stopwatch, and keep everything else. `--governors performance`, `--seconds 60`
+and `--rest 0` make a shorter run.
+
+Run it from an SSH session **over wifi**, not over the USB cable. Full load is
+the moment the board is most likely to draw more current than a laptop port
+will give it. If that happens, the USB link drops, and your session goes with
+it. If you have a USB power meter, put it in line between the computer and the
+board, and note its reading against the CSV's `time` column (Unix seconds). That
+turns "hotter" into "this many milliamps more".
+
+When the tool ends, it puts back the governor that was there before it started,
+which on a fresh boot is `schedutil`. That includes Ctrl-C and a `kill`. Check
+for yourself afterwards:
+
+```bash
+cat /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
+```
+
 > [!TIP]
 > **Go deeper.** [mpu.md](../reference/mpu.md) covers the Linux-side hardware access in
 > detail — the `unoq` Python API, the GPIO lines, and the demo end to end.
+> [CPU frequency and the governor](../reference/mpu.md#cpu-frequency-and-the-governor)
+> explains why the choice matters on this board.
 
 ## Check yourself
 
