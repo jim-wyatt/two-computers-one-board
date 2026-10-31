@@ -97,6 +97,7 @@ without touching `/var/lib`.
 | [`python-venv.bats`](python-venv.bats) | The venv everything Python on the board runs from. A skip that looks at too little leaves it broken and reading `ok` for good, which is what a venv missing two of its five libraries did; a run that dies half way must not record that it was built to the lock. |
 | [`learning-web.bats`](learning-web.bats) | The one line this step adds to `/etc/fstab`, which the board boots from: `nofail`, the partition's offset, never twice, and the rest of the file untouched. Also the check that once said `ok HTTP 000` with nothing listening. |
 | [`dev-tools.bats`](dev-tools.bats) | The step that frees the MCU's serial port. A service reported stopped that something started again, or one still enabled for the next boot, leaves the port held and every MCU tool saying "device busy". Also the bootloader burner that would replace this firmware at the next boot. |
+| [`usb-gadget.bats`](usb-gadget.bats) | Everything the USB step installs before it hands the port over: the settings file a person edits is written once and never again, the units run root's copies, and a port that was not handed over, or a gadget that did not bind, is a failure rather than `ok`. |
 
 The first two were written first, because both scripts had already failed:
 

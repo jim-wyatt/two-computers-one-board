@@ -44,6 +44,8 @@ set -uo pipefail
 need_root
 
 IMG="${UNOQ_SHARE_IMG:-$TARGET_HOME/unoq-share.img}"
+# The settings file the units read, which a person is expected to edit.
+DEFAULTS="$SYSROOT/etc/default/unoq-usb"
 
 step "kernel support"
 for mod in libcomposite usb_f_ncm usb_f_rndis usb_f_mass_storage bridge; do
@@ -55,7 +57,7 @@ for mod in libcomposite usb_f_ncm usb_f_rndis usb_f_mass_storage bridge; do
 done
 # Loaded on demand by the gadget, but listing them here means a board that
 # lacks one says so now rather than at 2am with a cable in it.
-if write_file 0644 /etc/modules-load.d/unoq-usb-gadget.conf <<'MODS'
+if write_file 0644 "$SYSROOT/etc/modules-load.d/unoq-usb-gadget.conf" <<'MODS'
 libcomposite
 bridge
 MODS
@@ -98,18 +100,18 @@ step "link configuration"
 # reset it every time would undo the change on the next bootstrap - most likely
 # while the board is running on the very link the settings control.
 # REVERT: rm /etc/default/unoq-usb  (every setting in it has a working default)
-if [ -f /etc/default/unoq-usb ]; then
-  skip "/etc/default/unoq-usb exists"
+if [ -f "$DEFAULTS" ]; then
+  skip "$DEFAULTS exists"
   # UNOQ_USB_MODE is gone: the board is always the DHCP client on this link.
   # Left in place it does nothing, which is worse than saying so - the file
   # would go on describing a server mode that no longer exists.
-  if grep -q '^UNOQ_USB_MODE=' /etc/default/unoq-usb 2>/dev/null; then
-    warn "/etc/default/unoq-usb still sets UNOQ_USB_MODE, which no longer does"
+  if grep -q '^UNOQ_USB_MODE=' "$DEFAULTS" 2>/dev/null; then
+    warn "$DEFAULTS still sets UNOQ_USB_MODE, which no longer does"
     warn "  anything - the board is always the DHCP client now. Safe to delete"
-    warn "  that line: sudo sed -i '/^UNOQ_USB_MODE=/d' /etc/default/unoq-usb"
+    warn "  that line: sudo sed -i '/^UNOQ_USB_MODE=/d' $DEFAULTS"
   fi
 else
-  write_file 0644 /etc/default/unoq-usb <<'CONF'
+  write_file 0644 "$DEFAULTS" <<'CONF'
 # Settings for the USB link. Read by unoq-usb-gadget.service and
 # unoq-usb-bind.service. Every one of them has a working default; this file
 # exists so they can be found and changed in one place.
@@ -154,7 +156,7 @@ step "a way back in"
 ensure_ssh
 
 step "udev rule"
-if write_file 0644 /etc/udev/rules.d/99-unoq-usb-gadget.rules \
+if write_file 0644 "$SYSROOT/etc/udev/rules.d/99-unoq-usb-gadget.rules" \
   <"$PROJECT/usb/99-unoq-usb-gadget.rules"; then
   udevadm control --reload-rules
   did "udev rules reloaded"
