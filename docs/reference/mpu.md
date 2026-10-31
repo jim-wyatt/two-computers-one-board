@@ -98,6 +98,121 @@ returns `None` if nothing matches. Nothing here writes to sysfs.
 These are the Linux side's sensors. None of them says anything about the
 microcontroller.
 
+### CPU frequency and the governor
+
+```python
+from unoq import read_policies
+
+for p in read_policies():
+    print(p.name, p.cpus, p.governor, p.cur_khz)   # policy0 (0, 1, 2, 3) schedutil 2016000
+```
+
+`read_policies()` reads `/sys/devices/system/cpu/cpufreq/policy*/` and returns
+one `Policy` per clock domain: the CPUs it clocks (`related_cpus`), the driver,
+the current governor and the ones available, the floor, ceiling and current
+frequency in kHz, the available frequencies, and `time_in_state` as
+`(kHz, seconds)` pairs. A file the driver does not provide reads as `None` or
+`()` in that field alone; a machine without cpufreq reads as an empty list. Like
+`read_temps()`, it never writes.
+
+What this board reports, read under kernel 7.0.0:
+
+| | |
+|---|---|
+| Policies | one, `policy0`, clocking all four cores (`related_cpus` is `0 1 2 3`) |
+| Driver | `qcom-cpufreq-hw`, the SoC's own frequency hardware |
+| Governor | `schedutil`, the kernel's built-in default (`CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL`) |
+| Available governors | `ondemand userspace performance schedutil` |
+| Frequencies (MHz) | 300, 614.4, 864, 1017.6, 1305.6, 1420.8, 1612.8, 1804.8, 2016 |
+| `stats/time_in_state` | present (`CONFIG_CPU_FREQ_STAT=y`) |
+
+One policy means one decision: there is no fast cluster to park, so a governor
+here moves all four cores together. `powersave` and `conservative` are not built
+into this kernel and cannot be chosen.
+
+**Why it matters here.** The board is normally powered by the same USB-C cable
+that carries the gadget, from a computer's port, and it is a sink at
+`power_operation_mode` `default`: USB default current, no PD contract. The
+gadget asks the host for 500 mA (`MaxPower` in
+`/sys/kernel/config/usb_gadget/*/configs/c.1/`; a board that has not rebooted
+since that changed still asks for 250), and 500 mA is all a USB 2 port owes it,
+for four cores and an MCU. Binding the gadget re-enumerates the port, and doing
+that under load can brown the board out, which at every boot becomes a reboot
+loop. That is the reasoning in the header of
+[`usb/bind-guard.sh`](../../usb/bind-guard.sh), and the guard is what breaks the
+loop ([The bind guard](usb.md#the-bind-guard)). The guard recovers from a
+brownout; the governor is the lever left for making one less likely, because it
+sets how much current the cores can ask for at once. Whether a different one
+helps, and what it costs, is a measurement, not a guess — so nothing in this
+repository changes the governor yet.
+
+**Measuring it.** The procedure below needs a USB power meter inline between the
+computer's port and the board, and it switches the governor by hand. A governor
+set this way does not survive a reboot: the next boot is back on `schedutil`.
+Do it **over wifi**, not over the USB link, because the bind step drops the
+link.
+
+1. Log what the board is doing next to what the meter reads. `unoq-powerlog`
+   appends a row every `--interval` seconds (default 5) to the CSV you name:
+   the time, your `--label`, each policy's governor and current frequency,
+   every thermal zone, and each core's load. It only reads, and the only file it
+   writes is that CSV. Several runs can share one file; the label tells them
+   apart. If the command is not on your `PATH` yet, re-run the editable install,
+   or use `python -m unoq.powerlog`, which works either way.
+
+    ```bash
+    unoq-powerlog ~/governors.csv --label idle-schedutil --count 60   # 5 minutes
+    ```
+
+    Start the meter's own log at the same time, or note its reading against
+    the CSV's `time` column (Unix seconds).
+
+2. For each governor to compare — `schedutil`, `ondemand` and `performance` —
+   switch to it and confirm:
+
+    ```bash
+    G=ondemand
+    echo $G | sudo tee /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
+    cat /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
+    ```
+
+    Then, with that governor:
+
+    - **Idle**, 5 minutes: `unoq-powerlog ~/governors.csv --label idle-$G --count 60`
+      with nothing else running.
+    - **A reproducible load**: the firmware tests build Zephyr for native_sim
+      and keep all four cores busy for a minute or more. In one terminal run
+      `unoq-powerlog ~/governors.csv --label load-$G`, and in another
+      `~/two-computers-one-board/tools/check.sh mcu`; stop the logger with
+      Ctrl-C once the build ends.
+    - **One gadget bind under load**, the event that browns a board out. While
+      that load is running and the logger is still going:
+
+        ```bash
+        sudo ~/two-computers-one-board/usb/gadget-down.sh    # unbind, keep the definition
+        sudo systemctl start unoq-usb-bind                   # bind again, through the guard
+        ```
+
+        Note the meter's peak. If the board resets, that is the answer for that
+        governor; the logger's file ends at its last row, which is flushed to
+        disk as it is written. The guard counted the attempt, and it clears
+        itself two minutes into a boot that stays up (`usb/bind-guard.sh
+        status`).
+
+3. Put the default back:
+
+    ```bash
+    echo schedutil | sudo tee /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
+    ```
+
+`userspace` is in the list too, but it holds whatever frequency it is given in
+`scaling_setspeed` rather than choosing one; it is only useful as a fixed
+reference, such as the 300 MHz floor. Capping `scaling_max_freq` under
+`schedutil` is the other lever worth measuring, once the governors have been
+compared. The comparison worth recording is mean current at idle, mean and peak
+under load, and the peak at the bind, per governor, with the build's wall-clock
+time as the cost.
+
 ### Firmware update
 
 ```python

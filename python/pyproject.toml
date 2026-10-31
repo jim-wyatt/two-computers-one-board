@@ -14,6 +14,7 @@ dependencies = ["pyserial", "gpiod", "smpclient"]
 [project.scripts]
 unoq-cpu-bars = "unoq.cpubars:main"
 unoq-learn = "unoq.learn:main"
+unoq-powerlog = "unoq.powerlog:main"
 
 # Install with:  tools/install-dev-tools.sh   (it passes the lock file; a bare
 # `uv pip install -e` would take whatever versions are newest)
@@ -142,7 +143,7 @@ exclude_lines = [
   "pragma: no cover",
   "if TYPE_CHECKING:",
   "raise NotImplementedError",
-  # `python -m unoq.cpubars`. main() itself is tested; this line only wires it
+  # `python -m unoq.cpubars` and the like. main() itself is tested; this line only wires it
   # to the interpreter, and covering it would mean re-running the module.
   'if __name__ == "__main__":',
   # Protocol bodies are `...` - type declarations that are never executed. The
