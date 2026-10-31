@@ -381,6 +381,199 @@ states so you can learn which physical LED is which, and
 `... show 1 blue slow` puts one LED into one color and rhythm by hand (stop
 `unoq-leds` first, or its next pass puts the truth back).
 
+## The Qualcomm boot chain: look, do not touch
+
+Everything below U-Boot is Qualcomm's: signed, undocumented, and stored as a
+pair of partitions per stage. This section is what one board showed when it was
+looked at, read-only, on 2026-10-31, and it is here for one reason: so that
+nothing this project installs ever writes there. It is layer 4 of
+[issue #93](https://github.com/jim-wyatt/two-computers-one-board/issues/93),
+"a recovery path no matter what", and the layer whose whole plan is to leave it
+alone. [From power to prompt](../learn/from-power-to-prompt.md) explains what
+each stage does; this is the detail behind it.
+
+### The slots
+
+`lsblk -o NAME,SIZE,PARTLABEL` lists 69 partitions on the eMMC, and
+`/dev/disk/by-partlabel/` names every one. Most of the boot chain comes in pairs:
+
+| Pair | Size | What it is | `_a` and `_b` |
+|---|---|---|---|
+| `xbl`, `xbl_config` | 3.5M, 128K | the first stage after the ROM; trains the RAM | identical |
+| `tz`, `hyp`, `rpm` | 4M, 512K, 512K | the secure world, the hypervisor, the power processor | identical |
+| `abl` | 1M | Qualcomm's Android-style loader | identical |
+| `boot` | 4M | **U-Boot**, which presents UEFI and starts systemd-boot | identical |
+| `uefi`, `uefi_dtb` | 8M, 1M | | both slots empty (all zeros) |
+| `ddr` | 1M | | `_a` holds data, `_b` is empty |
+| `devcfg`, `qupfw`, `keymaster`, `imagefv`, `uefisecapp`, `featenabler`, `mdtp`, `mdtpsecapp`, `multiimgoem` | small | configuration and secure applications | pairs |
+
+"Identical" is `sha256sum` of each pair, read as root; nothing was written.
+The two copies of every stage that holds code are byte-for-byte the same, so
+`_b` is a real second copy, not an empty placeholder. `ddr_a` is the one that
+differs, which fits RAM training results being saved there on first boot, but
+that is a guess. The empty `uefi` pair fits UEFI coming from U-Boot in `boot`
+instead.
+
+After those come the partitions this project does use: `efi` (`mmcblk0p67`,
+512 MB vfat, the ESP), `rootfs` (`p68`) and `userdata` (`p69`, mounted as
+`/home/arduino`).
+
+### Which slot is active, and how it is marked good
+
+The stock image ships `qbootctl`, "a utility to control Qualcomm A/B boot
+slots", and a unit that runs it on every boot:
+
+```ini
+# systemctl cat qbootctl.service (comments left out)
+[Unit]
+Description=Mark the Current Boot slot as Good
+DefaultDependencies=no
+Requires=boot-complete.target
+After=local-fs.target boot-complete.target
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/qbootctl -m
+[Install]
+WantedBy=multi-user.target
+```
+
+`-m` marks the current slot's boot successful. The unit's header says it was
+copied from `systemd-bless-boot.service`, and it works the same way: it waits
+for `boot-complete.target`, and on this image nothing else does, so the target
+is reached as soon as `sysinit.target` is and the slot is marked good in the
+first seconds of every boot.
+
+`qbootctl` with no arguments dumps the slots, and `-a`, `-c`, `-b SLOT`,
+`-n SLOT` and `-x` only ask questions. Those are the only modes run here
+(`sudo qbootctl`):
+
+```
+Couldn't find cmdline arg: 'slot_suffix'
+get_current_or_active_slot: Unable to read boot slot property
+Current slot: _a
+SLOT _a:
+	Active      : 1
+	Successful  : 1
+	Bootable    : 1
+SLOT _b:
+	Active      : 0
+	Successful  : 0
+	Bootable    : 1
+```
+
+The first two lines matter. On an Android phone the boot loader tells the
+kernel which slot it chose (`androidboot.slot_suffix` on the command line).
+Here the command line comes from systemd-boot and does not say, so `qbootctl`
+works it out from the partition table instead: the slot flags are bits in each
+partition's GPT attributes. `sfdisk --part-attrs /dev/mmcblk0 N` reads them
+without changing anything:
+
+| Partition | Attribute bits |
+|---|---|
+| `boot_a` (`p11`) | 48, 49, 50, 52, 53, 54, 60 |
+| `boot_b` (`p12`) | 60 |
+| `xbl_a`, `uefi_a` | 50, 60 |
+| `abl_a` | 50, 54, 60 |
+| every `_b` | 60 |
+
+Qualcomm's open boot loader source names these bits: 48–49 priority, 50
+active, 51–53 retry count, 54 successful, 55 unbootable. Read that way,
+`boot_a` is active, top priority and successful, which is exactly what
+`qbootctl` reports. Bit 60 is on everything and is not explained. **Which
+stage reads these bits at power-on, and how many failed boots switch it to
+`_b`, could not be observed from Linux** and is not documented by Arduino.
+The usual Qualcomm design is that the early boot loaders do, and that a slot
+which keeps failing without being marked successful is given up on.
+
+The modes that change things, `-s SLOT` (set active), `-m` (mark successful)
+and `-u` (mark unbootable), were not run, and nothing in this project runs
+them.
+
+### How that relates to boot counting
+
+There are two separate "this boot was good" marks on this board, at two
+layers, and they must not be confused:
+
+| | Firmware slot | Kernel entry |
+|---|---|---|
+| What is on trial | `boot_a` or `boot_b` (U-Boot and everything under it) | a systemd-boot entry on the ESP |
+| Marked by | `qbootctl -m`, from `qbootctl.service` | `systemd-bless-boot`, from boot counting |
+| Waits for | `boot-complete.target` (stock) | `unoq-boot-health.service` (this project) |
+| Written where | GPT attributes on the eMMC | a file name on the ESP |
+| Owned by | Arduino's image | this project, with `--with-boot-counting` |
+
+`unoq-boot-health.service` deliberately orders itself before
+`systemd-bless-boot.service`, not before `boot-complete.target` where
+systemd's documentation would put it. Ordered before the target, a boot
+without SSH would have held up `qbootctl -m` as well, and enough boots left
+unmarked could make the Qualcomm chain give up on `_a`, for a kernel problem
+that slot has nothing to do with. The first version did that; it was caught on
+the board before any reboot. [Provisioning](provisioning.md) and
+`provision/82-boot-counting.sh` explain the rest.
+
+### Linux cannot write EFI variables here
+
+`efivarfs` is mounted read-only (`mount` shows
+`efivarfs on /sys/firmware/efi/efivars type efivarfs (ro,...)`), and
+`bootctl status` says "No boot loaders listed in EFI Variables". U-Boot exposes
+the variables systemd-boot sets at boot for reading, but offers no store Linux
+can write at run time, so `bootctl set-default` and `set-oneshot` fail with
+"Read-only file system". Everything that decides what boots next lives in
+files on the ESP: `loader/loader.conf` and the entries' names and sort order.
+There is a 512K `uefivarstore` partition; whether U-Boot uses it was not
+checked.
+
+### What this project writes, and what it never writes
+
+**Writes:** files on the ESP, through the mounted filesystem at `/boot/efi`.
+That is systemd-boot's entries under `loader/entries/`, renamed by boot
+counting, and nothing else. `loader.conf` and the default entry are left as
+the image has them, and `85-esp-permissions.sh` makes the ESP root-only.
+
+**Never writes:** any `_a`/`_b` firmware partition, the slot attributes in the
+partition table, or the partition table itself. No `qbootctl -s`, `-m` or
+`-u`, no `dd` onto `/dev/mmcblk0*` or `/dev/disk/by-partlabel/*`, and
+`qbootctl.service` is never stopped or disabled
+(`provision/10-optimize-board.sh` lists it as do-not-touch).
+[`tests/no-slot-writes.bats`](../../tests/no-slot-writes.bats) greps every
+tracked file for those writes on every CI run, and plants one of each in a
+scratch repository to prove it would notice.
+
+The reason is that this layer is the floor under every other way back. A bad
+kernel falls back to the previous entry; a bad entry can be fixed from a rescue
+system; a bad write to `xbl` or `boot` is a board that never reaches U-Boot,
+and the only way back is the factory flasher.
+
+### What the factory flasher restores
+
+Arduino's [`arduino-flasher-cli`](https://github.com/arduino/arduino-flasher-cli)
+(`flash unoq`) talks to the board in Qualcomm's emergency download mode (EDL,
+USB ID `05c6:9008`; Arduino's
+[update guide](https://docs.arduino.cc/tutorials/uno-q/update-image/) has the
+jumper that gets it there) and runs an embedded copy of `qdl` with the image's
+`prog_firehose_ddr.elf`, `rawprogram0.xml` and `patch0.xml`, on `--storage
+emmc`. That reflashes the eMMC from the image's own partition table
+(`gpt_main0.bin`), from below anything on the board, so it needs neither
+U-Boot, Linux nor either slot to work.
+
+From the flasher's source (October 2026):
+
+- `--preserve-user` uses the image's `rawprogram0.nouser.xml` instead, which
+  leaves `userdata` (`/home/arduino`) alone when the board's partition table
+  allows it.
+- `--root-size` (for example `--root-size 12GB`; the source sets a floor of
+  9 GiB) rewrites the partition table with a different `rootfs` size and moves
+  `userdata` after it.
+
+**Not confirmed:** exactly which partitions `rawprogram0.xml` writes (whether
+both `_a` and `_b` of every pair, and whether `persist`, `modemst*` and the
+other calibration partitions are included), and whether the rewritten
+partition table resets the slot attributes to `_a`. Both need a copy of the
+image's `flash/` directory, which was not downloaded for this. Arduino does not
+document either.
+
+---
+
 ## How the MPU flashes the MCU
 
 There is no external debug probe. The MPU bit-bangs SWD on its own GPIO lines
