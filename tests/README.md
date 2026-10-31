@@ -92,6 +92,7 @@ without touching `/var/lib`.
 | [`esp-permissions.bats`](esp-permissions.bats) | An edit to the `/etc/fstab` line the board boots from, which has no `nofail`: a line systemd cannot mount is emergency mode on a board with no screen. |
 | [`site-inputs.bats`](site-inputs.bats) | The gate that notices a page embedding a file the site's path filters do not watch, so an edit to it would never republish the site. |
 | [`mcu-link.bats`](mcu-link.bats) | The unit that keeps the board from looking dead after a reboot. If it names the checkout, root runs whatever was last saved there; if its check requests the lines, the check breaks the link; if its REVERT line misses a unit, following it leaves that unit pointing at nothing. |
+| [`cpu-bars.bats`](cpu-bars.bats) | The LED-matrix demo, which usually gets installed right after a flash. Installed before its venv, it fails at every boot; left with the start count that made it give up, it stays dark after the flash that fixed the reason. |
 
 The first two were written first, because both scripts had already failed:
 
