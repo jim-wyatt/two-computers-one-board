@@ -23,12 +23,12 @@ setup() {
 
   # A copy of the checkout, so a test decides whether it has a venv. The step
   # finds its checkout from where lib.sh is, and the real one has a venv on the
-  # board and in CI. These four directories are all the step and root's copies
+  # board and in CI. These five directories are all the step and root's copies
   # reach.
   REAL="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   PROJECT="$BATS_TEST_TMPDIR/checkout"
   mkdir -p "$PROJECT"
-  cp -r "$REAL/provision" "$REAL/mcu" "$REAL/usb" "$REAL/status" "$PROJECT/"
+  cp -r "$REAL/provision" "$REAL/mcu" "$REAL/usb" "$REAL/net" "$REAL/status" "$PROJECT/"
   STEP="$PROJECT/provision/45-mcu-link.sh"
 
   export UNOQ_UNIT_DIR="$BATS_TEST_TMPDIR/etc/systemd/system"

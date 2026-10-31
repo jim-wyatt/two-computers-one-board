@@ -86,7 +86,7 @@ These exist so that a board with wifi off cannot lock you out. Read
 | `UNOQ_UPLINK_DEADLINE` | `240` | That deadline, in seconds from `unoq-uplink-fallback` starting at boot. |
 | `UNOQ_UPLINK_INTERVAL` | `15` | Seconds between probes while waiting for it. |
 | `UNOQ_UPLINK_PROBE_IPS` | `1.1.1.1 8.8.8.8` | The addresses that count as "the internet" for that decision. |
-| `UNOQ_PROBE_IP` | `1.1.1.1` | The address `usb/wifi.sh off` pings through the cable first. No answer is a warning, not a refusal. |
+| `UNOQ_PROBE_IP` | `1.1.1.1` | The address `net/wifi.sh off` pings through the cable first. No answer is a warning, not a refusal. |
 | `UNOQ_HANDOVER_DELAY` | `20` | Seconds between `95-usb-gadget.sh` finishing and the USB port changing hands, when the step was started from `adb shell` and so cannot do it itself. See [usb.md](usb.md#running-the-step-from-adb-shell). |
 
 ## The status LEDs

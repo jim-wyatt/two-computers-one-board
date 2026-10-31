@@ -130,7 +130,7 @@ else
 # promoted ahead of wifi only once the internet has answered through the cable.
 #UNOQ_USB_DEFAULT_ROUTE=0
 
-# If wifi has been turned off (usb/wifi.sh off) and the USB link has produced no
+# If wifi has been turned off (net/wifi.sh off) and the USB link has produced no
 # route to the internet this many seconds after boot, turn the radio back on and
 # leave it on. Set UNOQ_UPLINK_FALLBACK=0 to let the board sit there with no
 # uplink instead.
@@ -185,7 +185,7 @@ install_unit "$PROJECT/usb/unoq-usb-bind.service"
 install_unit "$PROJECT/usb/unoq-usb-confirm.service"
 # The other half of turning wifi off: the guard covers a bind that kills the
 # board, this covers a bind that works and still leaves it with no way out.
-install_unit "$PROJECT/usb/unoq-uplink-fallback.service"
+install_unit "$PROJECT/net/unoq-uplink-fallback.service"
 # The status LEDs are NOT installed here any more. They report on the whole
 # board, not just the USB link, and installing them from an optional feature
 # meant a board provisioned without `--with-usb-gadget` had no way to say

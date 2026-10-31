@@ -494,7 +494,7 @@ after 20 seconds. Nothing has been changed yet. Get the board online, confirm
 with `curl -I https://github.com`, and run `./bootstrap.sh` again.
 
 **`the gadget is not bound to a UDC - nothing would be left`** from
-`usb/wifi.sh off` or `check`. The board is not a USB device to anything right
+`net/wifi.sh off` or `check`. The board is not a USB device to anything right
 now, so turning wifi off would leave no way in. The script has refused, and
 wifi is still on. Plug the USB-C port into a computer, then look at
 `~/two-computers-one-board/usb/status.sh`.

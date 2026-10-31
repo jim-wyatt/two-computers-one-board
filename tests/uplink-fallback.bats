@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Jim Wyatt
 # SPDX-License-Identifier: MIT
 #
-# usb/uplink-fallback.sh is the last automatic way back onto a network. It runs
+# net/uplink-fallback.sh is the last automatic way back onto a network. It runs
 # once per boot, on a board whose wifi somebody turned off, and decides whether
 # the USB link really reaches the internet - and if it does not, turns the
 # radio back on.
@@ -22,7 +22,7 @@ setup() {
   stub_setup
 
   PROJECT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
-  FALLBACK="$PROJECT/usb/uplink-fallback.sh"
+  FALLBACK="$PROJECT/net/uplink-fallback.sh"
 
   stub logger
   stub sleep

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 [Unit]
 Description=Fall back to wifi if the USB link gives this board no internet
-Documentation=file:/home/arduino/two-computers-one-board/usb/uplink-fallback.sh
+Documentation=file:/home/arduino/two-computers-one-board/net/uplink-fallback.sh
 
 # Nothing to test until the gadget has had its chance. This is ordering only,
 # not a dependency: the bind unit is started by udev when a controller appears,
@@ -23,7 +23,7 @@ EnvironmentFile=-/etc/default/unoq-usb
 # rather than systemd's 90s, which would kill it mid-wait and leave the radio
 # off with nobody left to turn it on.
 TimeoutStartSec=600
-ExecStart=/home/arduino/two-computers-one-board/usb/uplink-fallback.sh
+ExecStart=/home/arduino/two-computers-one-board/net/uplink-fallback.sh
 
 [Install]
 WantedBy=multi-user.target

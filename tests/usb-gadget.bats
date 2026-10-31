@@ -24,7 +24,7 @@ setup() {
   REAL="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   PROJECT="$BATS_TEST_TMPDIR/checkout"
   mkdir -p "$PROJECT/docs/reference"
-  cp -r "$REAL/provision" "$REAL/mcu" "$REAL/usb" "$REAL/status" "$PROJECT/"
+  cp -r "$REAL/provision" "$REAL/mcu" "$REAL/usb" "$REAL/net" "$REAL/status" "$PROJECT/"
   cp "$REAL/docs/reference/usb.md" "$PROJECT/docs/reference/"
   STEP="$PROJECT/provision/95-usb-gadget.sh"
 

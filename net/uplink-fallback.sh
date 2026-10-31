@@ -4,7 +4,7 @@
 # Turn wifi back on if the USB link has not produced a route to the internet
 # within a few minutes of boot. Run once per boot by unoq-uplink-fallback.service.
 #
-#   ~/two-computers-one-board/usb/uplink-fallback.sh          # the check, as the unit runs it
+#   ~/two-computers-one-board/net/uplink-fallback.sh          # the check, as the unit runs it
 #   UNOQ_UPLINK_DEADLINE=60 ...              # shorter wait, for testing
 #
 # WHY THIS IS SEPARATE FROM THE BIND GUARD

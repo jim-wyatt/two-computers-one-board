@@ -131,7 +131,7 @@ That line is the moment the change reaches a root service. Until a step is
 run, the board goes on running the old copy.
 
 **Which copy you run yourself.** For commands that only read
-(`usb/status.sh`, `status/leds.sh explain`, `usb/wifi.sh status`), run the one
+(`usb/status.sh`, `status/leds.sh explain`, `net/wifi.sh status`), run the one
 in the checkout, as before. `usb/status.sh` has a section named *what root
 runs* that compares the two sets and names any script that differs. For
 commands that need `sudo`, either copy works; the one under

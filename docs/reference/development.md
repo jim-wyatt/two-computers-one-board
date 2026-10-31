@@ -42,6 +42,7 @@ The reasoning behind the checks is the chapter
 │   ├── lib.sh              the primitives that make every step idempotent
 │   └── user/               the half that must not run as root
 ├── usb/                    the composite USB gadget: network + fileshare (the services run root's copies)
+├── net/                    the uplink: wifi.sh switches the radio, uplink-fallback.sh brings it back (root's copies too)
 ├── status/                 the status LEDs Linux can drive, and their unit (likewise)
 ├── share/                  the drive image the board hands out
 ├── tests/                  bats suites for the shell scripts

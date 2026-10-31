@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Jim Wyatt
 # SPDX-License-Identifier: MIT
 #
-# usb/wifi.sh decides whether it is safe to turn off the radio you are probably
+# net/wifi.sh decides whether it is safe to turn off the radio you are probably
 # connected over. Its preflight is the whole safety story, and the question it
 # has to answer is narrow: is there a computer on the other end of the cable
 # that will still be able to reach this board once wifi is gone?
@@ -25,7 +25,7 @@ setup() {
   stub_setup
 
   PROJECT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
-  WIFI="$PROJECT/usb/wifi.sh"
+  WIFI="$PROJECT/net/wifi.sh"
 
   # A bound gadget, without reaching into configfs. wifi.sh reads this path
   # directly rather than through a command, so it is redirected, not stubbed.
