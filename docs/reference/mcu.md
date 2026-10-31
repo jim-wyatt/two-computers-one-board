@@ -623,6 +623,7 @@ is not repeated here, where it would be wrong the next time one was added.
   wraparound, what `since` means at each edge, the gap reported when it is
   older than the oldest sample held, the cap on one reply, the drop count,
   and that the timer samples on its own.
+- **`spi_proto`** tests the SPI link's frames and services in [`spi_proto.c`](../../mcu/app/src/spi_proto.c), which [`spi_link.c`](../../mcu/app/src/spi_link.c) runs on `spi3` as a slave; the protocol is in [hardware.md](hardware.md#the-protocol-on-the-spi-link).
 
 ### The MCU suite tests the firmware, not a copy of it
 
