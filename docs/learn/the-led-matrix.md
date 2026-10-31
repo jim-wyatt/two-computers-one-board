@@ -184,6 +184,45 @@ yes > /dev/null & sleep 6; kill %1
 That keeps one core flat out for six seconds: `&` starts `yes` in the
 background, `sleep 6` waits, and `kill %1` stops the background job.
 
+## Try it: a build light
+
+The bars are one picture the MCU knows how to draw. `matrix_frame()` sends it
+any picture: eight strings of thirteen levels, row 0 at the top. That's
+enough to make the panel show something from somewhere else entirely, such
+as whether this project's tests last passed on GitHub.
+
+```bash
+sudo systemctl stop unoq-cpu-bars
+cd ~/two-computers-one-board
+./.venv/bin/python -c "
+from unoq import MCU
+from unoq.buildlight import CHECK, CROSS, QUESTION, running_frame
+import time
+with MCU() as mcu:
+    for rows in (CHECK, CROSS, QUESTION):
+        mcu.matrix_frame(rows)
+        time.sleep(2)
+    for step in range(26):
+        mcu.matrix_frame(running_frame(step))
+        time.sleep(0.25)
+"
+./.venv/bin/unoq-buildlight --once        # ask GitHub, once, and show the answer
+sudo systemctl start unoq-cpu-bars
+```
+
+`unoq-buildlight` does on Linux everything the MCU couldn't: DNS, TLS, HTTP,
+JSON, and waiting politely when GitHub says it's had enough requests. What
+crosses the serial line is 129 characters of digits. That's the split this
+chapter is about, applied to something the MCU has never heard of.
+
+To leave it running from boot instead of the bars, see
+[Build light](../reference/mpu.md#build-light).
+
+**Exercise.** Draw a glyph of your own for a fifth state. Write it as eight
+strings in a Python list, check each is 13 characters of `0`..`7`, and send
+it with `mcu.matrix_frame()`. Then use the levels: make the check mark's
+long stroke dimmer than its short one.
+
 > [!TIP]
 > **Go deeper.** Which pin pair lights which LED, and how long each gets, are
 > facts read out of Arduino's own core for this panel. No code or table was
@@ -198,6 +237,8 @@ background, `sleep 6` waits, and `kill %1` stops the background job.
    possible, and what would break it?
 4. You read the sweep counter twice and it has not moved. Give two very
    different explanations, and say how you would tell them apart.
+5. You pass `matrix_frame()` a picture with one row of 12 characters. What
+   happens, and does anything reach the MCU?
 
 <details markdown="1">
 <summary>Answers — try each one first</summary>
@@ -217,6 +258,10 @@ background, `sleep 6` waits, and `kill %1` stops the background job.
    zero times and that is healthy. To tell them apart, give it something to
    draw — `mcu.bars([50, 50, 50, 50])` — and read the counter again: it should
    now climb by about 1100 a second.
+5. **It raises `ValueError`, and nothing is sent.** Python checks every row
+   with the same rule the firmware uses before it writes a byte. If it didn't,
+   the MCU would refuse the frame anyway, with `Error: row N: ...`, and leave
+   the panel as it was: it checks all eight rows before changing a pixel.
 
 </details>
 

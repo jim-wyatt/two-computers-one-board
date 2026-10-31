@@ -162,6 +162,7 @@ bootstrap() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"--with-watchdog"* ]]
   [[ "$output" == *"--with-temp-log"* ]]
+  [[ "$output" == *"--with-buildlight"* ]]
   [[ "$output" == *"TIME AND SPACE"* ]]
   [[ "$output" != *"set -uo pipefail"* ]]
   [[ "$output" != *"PROJECT="* ]]
@@ -377,6 +378,7 @@ line_of() { grep -nE "$1" "$STUB_LOG" | head -1 | cut -d: -f1; }
   refute ran_step provision/82-boot-counting.sh
   refute ran_step provision/84-rescue-entry.sh
   refute ran_step provision/66-temp-log.sh
+  refute ran_step provision/67-buildlight.sh
 }
 
 @test "boot counting runs with --everything or by name, and not by default" {
@@ -653,4 +655,122 @@ SH
   start="$(line_of '^sudo systemctl start unoq-temp-log.service$')"
   [ -n "$reset" ] && [ -n "$start" ] && [ "$reset" -lt "$start" ]
   refute ran_step provision/66-temp-log.sh
+}
+
+# --- the build light ----------------------------------------------------------
+
+# The third program that holds /dev/ttyHS1, so a run sets up one of the three.
+
+# port_units <unit>=<ActiveState>/<UnitFileState> ... - what systemctl shows.
+# A unit not named is inactive and not installed.
+port_units() {
+  local body="" pair unit states
+  for pair in "$@"; do
+    unit="${pair%%=*}"
+    states="${pair#*=}"
+    body="$body  $unit:ActiveState) echo ${states%/*} ;;
+  $unit:UnitFileState) echo ${states#*/} ;;
+"
+  done
+  stub_body systemctl <<SH
+[ "\$1" = show ] || exit 0
+case "\$2:\$4" in
+$body
+esac
+exit 0
+SH
+}
+
+@test "--with-buildlight sets up the light instead of the demo, and says so first" {
+  bootstrap --with-buildlight
+  [ "$status" -eq 0 ]
+  ran_step provision/67-buildlight.sh
+  refute ran_step provision/65-cpu-bars.sh
+  refute ran_step provision/66-temp-log.sh
+  [[ "$output" == *"show a GitHub Actions workflow on the LED matrix INSTEAD OF the CPU-bars demo"* ]]
+  [[ "$output" != *"run the CPU-bars demo from boot"* ]]
+  # ...and ends by saying where the settings are, and how to go back.
+  [[ "$output" == *"sudoedit /etc/unoq/buildlight.env"* ]]
+  [[ "$output" == *"sudo systemctl disable --now unoq-buildlight && sudo bash provision/65-cpu-bars.sh"* ]]
+  [[ "$output" != *"A build light for CI:"* ]]
+}
+
+@test "the light is set up where the demo would have been" {
+  bootstrap --with-buildlight
+  light="$(line_of "^sudo -E bash $PROJECT/provision/67-buildlight\.sh\$")"
+  image="$(line_of "^sudo -E bash $PROJECT/share/build-image\.sh\$")"
+  [ -n "$light" ] && [ -n "$image" ]
+  [ "$light" -lt "$image" ]
+}
+
+@test "--with-buildlight and --with-temp-log together are refused before anything runs" {
+  bootstrap --with-buildlight --with-temp-log
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"both want the serial port"* ]]
+  refute ran_like '^sudo'
+  refute ran_like 'zbuild'
+}
+
+@test "without it, the end of the run says how to get the light" {
+  bootstrap
+  [[ "$output" == *"sudo bash provision/67-buildlight.sh"* ]]
+}
+
+@test "a board with the light keeps it on a plain re-run" {
+  port_units unoq-buildlight.service=active/enabled
+  bootstrap
+  [ "$status" -eq 0 ]
+  ran_step provision/67-buildlight.sh
+  refute ran_step provision/65-cpu-bars.sh
+  refute ran_step provision/66-temp-log.sh
+  [[ "$output" == *"keep the build light this board already runs"* ]]
+}
+
+@test "asked for by name, the logger replaces a light the board runs" {
+  port_units unoq-buildlight.service=active/enabled
+  bootstrap --with-temp-log
+  [ "$status" -eq 0 ]
+  ran_step provision/66-temp-log.sh
+  refute ran_step provision/67-buildlight.sh
+  # Stopped for the flash and left stopped: 66 disables it.
+  ran "sudo systemctl stop unoq-buildlight.service"
+  refute ran "sudo systemctl start unoq-buildlight.service"
+}
+
+@test "asked for by name, the light replaces a logger the board runs" {
+  port_units unoq-temp-log.service=active/enabled
+  bootstrap --with-buildlight
+  [ "$status" -eq 0 ]
+  ran_step provision/67-buildlight.sh
+  refute ran_step provision/66-temp-log.sh
+  [[ "$output" != *"keep the temperature logger"* ]]
+  ran "sudo systemctl stop unoq-temp-log.service"
+  refute ran "sudo systemctl start unoq-temp-log.service"
+}
+
+@test "a light that is running is stopped before the flash, and left for step 67" {
+  port_units unoq-buildlight.service=active/enabled
+  bootstrap
+  stop="$(line_of '^sudo systemctl stop unoq-buildlight.service$')"
+  flash="$(line_of 'mcu/flash-all\.sh')"
+  [ -n "$stop" ] && [ "$stop" -lt "$flash" ]
+  refute ran "sudo systemctl start unoq-buildlight.service"
+}
+
+@test "the demo stopped for the flash is not started again on a run that installs the light" {
+  port_units unoq-cpu-bars.service=active/enabled
+  bootstrap --with-buildlight
+  ran "sudo systemctl stop unoq-cpu-bars.service"
+  refute ran "sudo systemctl start unoq-cpu-bars.service"
+  ran_step provision/67-buildlight.sh
+}
+
+@test "a light started by hand, on a run without it, is started again after the flash" {
+  port_units unoq-buildlight.service=active/disabled
+  bootstrap --no-cpu-bars
+  ran "sudo systemctl stop unoq-buildlight.service"
+  reset="$(line_of '^sudo systemctl reset-failed unoq-buildlight.service$')"
+  start="$(line_of '^sudo systemctl start unoq-buildlight.service$')"
+  [ -n "$reset" ] && [ -n "$start" ] && [ "$reset" -lt "$start" ]
+  refute ran_step provision/67-buildlight.sh
 }

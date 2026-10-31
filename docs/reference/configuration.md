@@ -148,6 +148,25 @@ the directory the `--data` of `unoq-learn.service` with it.
 | `UNOQ_TEMPLOG_DIR` | `/var/lib/unoq/templog` | `unoq-temp-log` | Where `temps.csv` and the graph page beside it are written. |
 | `UNOQ_TEMPLOG_INTERVAL` | `10` | `unoq-temp-log` | Seconds between pulls of the MCU's log. It holds ten minutes, so anything well under 600 loses nothing. |
 
+## The build light
+
+Read by `unoq-buildlight` ([`python/unoq/buildlight.py`](../../python/unoq/buildlight.py)),
+the daemon `--with-buildlight` installs. Unlike the logger's, its unit passes
+no arguments: it reads these from `/etc/unoq/buildlight.env`
+(`EnvironmentFile=` in
+[`python/unoq-buildlight.service`](../../python/unoq-buildlight.service)), which
+`provision/67-buildlight.sh` writes once, with each line commented, and never
+again. Edit it, then `sudo systemctl restart unoq-buildlight`. The file is mode
+`0640`, root and your group, because the token goes there.
+
+| Variable | Default | Read by | What it does |
+|---|---|---|---|
+| `UNOQ_BUILDLIGHT_REPO` | `jim-wyatt/two-computers-one-board` | `unoq-buildlight` | The repository to watch, as `owner/name`. A fork puts its own name here. |
+| `UNOQ_BUILDLIGHT_WORKFLOW` | `ci.yml` | `unoq-buildlight` | The workflow: its file name in `.github/workflows/`, or its numeric id. |
+| `UNOQ_BUILDLIGHT_BRANCH` | `main` | `unoq-buildlight` | The branch whose latest run is shown. |
+| `UNOQ_BUILDLIGHT_INTERVAL` | `60` | `unoq-buildlight` | Seconds between polls. Failures in a row double it, up to 15 minutes, and GitHub's rate-limit headers can make it longer. |
+| `UNOQ_BUILDLIGHT_TOKEN` | none | `unoq-buildlight` | Optional for a public repository, needed for a private one: a fine-grained token with read-only access to Actions on that one repository. Sent as `Authorization: Bearer`, never printed, and only ever read from the environment: there is no command-line flag, because `ps` would show it to every user. Without one GitHub allows 60 requests an hour from an address, which a 60-second interval would use up; the daemon's requests are conditional, and GitHub does not count an unchanged answer (a `304`) against that limit. |
+
 ## Provisioning switches
 
 Set on the command line, for one run of `bootstrap.sh` or of the script named.

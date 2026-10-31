@@ -7,7 +7,8 @@
 #
 # Idempotent. Like 65 it is a convenience, not a prerequisite, and like 65 it
 # holds /dev/ttyHS1 while it runs. The port has one owner, so the two are
-# alternatives: THIS STEP STOPS AND DISABLES THE CPU-BARS DEMO. The units say
+# alternatives: THIS STEP STOPS AND DISABLES THE CPU-BARS DEMO (and the build
+# light, 67, if the board runs that instead). The units say
 # Conflicts= on each other as well, but two enabled units that conflict leave
 # which one runs at boot to chance, so the demo is disabled rather than only
 # stopped. To go back to the demo:
@@ -69,6 +70,13 @@ if systemctl is-enabled --quiet unoq-cpu-bars.service 2>/dev/null; then
   did "stopped and disabled the CPU-bars demo: the port to the MCU has one owner"
 else
   skip "the CPU-bars demo is not enabled"
+fi
+# The build light (67) holds the same port, and its unit conflicts with this
+# one. Disabled for the same reason as the demo.
+if systemctl is-enabled --quiet unoq-buildlight.service 2>/dev/null; then
+  systemctl disable --now unoq-buildlight.service >/dev/null 2>&1 ||
+    fail "could not stop unoq-buildlight, which holds the serial port"
+  did "stopped and disabled the build light: the port to the MCU has one owner"
 fi
 
 step "$U"

@@ -1,0 +1,52 @@
+# Copyright (c) 2026 Jim Wyatt
+# SPDX-License-Identifier: MIT
+[Unit]
+Description=Arduino UNO Q build light: a GitHub Actions workflow, on the LED matrix
+Documentation=file:/home/arduino/two-computers-one-board/docs/reference/mpu.md
+
+# The serial port to the MCU has one owner at a time: MCU() opens it with an
+# exclusive lock. The CPU-bars demo and the temperature logger are the other
+# two programs that hold it from boot, so the three are alternatives. Starting
+# this one stops those, and the other way round. provision/67-buildlight.sh
+# also disables them, since two enabled units that conflict leave which one
+# runs at boot to chance.
+Conflicts=unoq-cpu-bars.service unoq-temp-log.service
+
+# /dev/ttyHS1 reads nothing until link-up.sh has driven the UART enable GPIO;
+# see unoq-cpu-bars.service, whose reasoning this copies. The network is not
+# waited for: a poll that finds none draws the question mark and tries again,
+# which is what a build light should show while there is no network.
+Requires=unoq-link.service
+After=unoq-link.service
+# The same limit as the CPU-bars demo, for the same reasons: twelve starts in
+# five minutes is about two and a half minutes of an MCU that does not answer,
+# and then the unit is failed and LED 2 says so. A firmware without
+# `app matrix frame` fails every start the same way.
+# Recover, once the MCU is answering again:
+#   sudo systemctl reset-failed unoq-buildlight && sudo systemctl start unoq-buildlight
+StartLimitIntervalSec=300
+StartLimitBurst=12
+
+[Service]
+Type=simple
+User=arduino
+Group=arduino
+# The settings, and the token if there is one. Written once by
+# provision/67-buildlight.sh, mode 0640 root:<user>, and then yours to edit;
+# `sudo systemctl restart unoq-buildlight` after editing. The leading `-`
+# means a missing file is not an error: the defaults watch this project.
+EnvironmentFile=-/etc/unoq/buildlight.env
+ExecStart=/home/arduino/two-computers-one-board/.venv/bin/unoq-buildlight
+
+# The MCU may still be coming up at boot; the next attempt finds it. A network
+# that is down is not a failure: the daemon carries on and backs off.
+Restart=on-failure
+RestartSec=5
+
+# SIGTERM reaches Python as a plain kill. SIGINT takes the Ctrl-C path, which
+# blanks the panel, so a stopped build light is dark rather than a stale check.
+KillSignal=SIGINT
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

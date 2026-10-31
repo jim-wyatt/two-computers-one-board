@@ -65,6 +65,7 @@ application flashed by itself has no bootloader in front of it.
 | `55-purge-arduino.sh` | `--with-purge` | Removes the remaining Arduino packages. Backs up the stock MCU firmware first, and checks `/opt/openocd` survives before and after. |
 | `65-cpu-bars.sh` | on; `--no-cpu-bars` | Installs `unoq-cpu-bars.service`. Optional because it holds the serial port: see [mpu.md](mpu.md#at-every-boot). |
 | `66-temp-log.sh` | `--with-temp-log`, and on a re-run of a board that has it | Installs `unoq-temp-log.service`, which keeps the MCU's temperature log in `/var/lib/unoq/templog` (a directory it makes for you), **instead of the CPU-bars demo**: both hold the serial port, so it disables `unoq-cpu-bars` and the units conflict. Costs: about 4 MB of disk a day, never trimmed. `bootstrap.sh` runs it after `75`, whose server shows its graph at `/data/`. See [mpu.md](mpu.md#temperature-log), which also has the way back to the demo. |
+| `67-buildlight.sh` | `--with-buildlight`, and on a re-run of a board that has it | Installs `unoq-buildlight.service`, which polls GitHub Actions for one workflow's latest run and shows it on the LED matrix, **instead of the CPU-bars demo**: it disables `unoq-cpu-bars`, and `unoq-temp-log` if the board runs that, and the units conflict. Writes `/etc/unoq/buildlight.env` once, mode `0640` root and your group, with every setting commented and the repository set to this one; a re-run keeps your edits and only puts the mode back. Not with `--with-temp-log`. Costs: one HTTPS request a minute to `api.github.com`. See [mpu.md](mpu.md#build-light), which also has the way back to the demo. |
 | `share/build-image.sh` (stage `70`) | on, unless both of the next two are off | Renders this documentation and builds the FAT32 image both of them hand out. `bootstrap.sh` runs it for you; run by hand, it has to come first. |
 | `75-learning-web.sh` | on; `--no-learning` | Serves the course, and the installers if you fetched them, on port 8080. No authentication, on every interface. Adds a read-only mount to `/etc/fstab`. |
 | `80-watchdog.sh` | `--with-watchdog` | Arms the hardware watchdog through a `systemd` drop-in (`RuntimeWatchdogSec=30s`) and re-executes `systemd` to read it. Costs: the board resets itself if `systemd` stalls for 30 seconds, though a clean firmware build with swap 80% full did not cause that on the one board it was tried on. Both timeouts are set to the same value, because this watchdog cannot count past 32 seconds and `systemd`'s ten-minute default for shutdown is refused. Not part of `--everything`. |
@@ -86,7 +87,7 @@ listed in [What you can change](configuration.md#provisioning-switches).
 
 ## What root runs
 
-Six of the nine units run as root: `unoq-link`, `unoq-leds`, `unoq-usb-gadget`,
+Six of the ten units run as root: `unoq-link`, `unoq-leds`, `unoq-usb-gadget`,
 `unoq-usb-bind`, `unoq-usb-confirm` and `unoq-uplink-fallback`. They used to
 execute scripts in the checkout, which is in a home directory. Anything that
 could write there could then change what root did at the next boot or cable
@@ -108,7 +109,7 @@ relative path. Files are mode `0755`, directories `0755`, all owned by root.
 
 **Which units point where.** `ExecStart` and every other `Exec` line of a unit
 that runs as root name `/usr/local/lib/unoq/…`. The two units that have
-`User=` (`unoq-cpu-bars`, `unoq-temp-log` and `unoq-learn`) run as you from the Python
+`User=` (`unoq-cpu-bars`, `unoq-temp-log`, `unoq-buildlight` and `unoq-learn`) run as you from the Python
 environment, and still name the checkout. `Documentation=` lines name the
 checkout in every unit.
 

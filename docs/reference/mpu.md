@@ -225,10 +225,11 @@ See [mcu.md](mcu.md#update-over-serial-no-swd).
 
 ## What runs at boot
 
-Nine systemd units. A plain `./bootstrap.sh` installs eight of them; `--no-cpu-bars`,
+Ten systemd units. A plain `./bootstrap.sh` installs eight of them; `--no-cpu-bars`,
 `--no-learning` and `--no-usb-gadget` (or `--minimal`, for all three) leave out
 the ones named. `--with-temp-log` installs the ninth, `unoq-temp-log`, in place
-of `unoq-cpu-bars`: both hold the serial port.
+of `unoq-cpu-bars`, and `--with-buildlight` the tenth, `unoq-buildlight`, in
+place of either: all three hold the serial port.
 
 | Unit | What it does | Installed by | Runs as | Kind |
 |---|---|---|---|---|
@@ -236,6 +237,7 @@ of `unoq-cpu-bars`: both hold the serial port.
 | `unoq-leds` | Drives LED 1 (connectivity) and LED 2 (does anything need a human) | always (`provision/50-status-leds.sh`) | root | long-running, always restarted |
 | `unoq-cpu-bars` | Draws CPU load on the LED matrix. Holds `/dev/ttyHS1` | default; not with `--no-cpu-bars` (`provision/65-cpu-bars.sh`) | you | long-running |
 | `unoq-temp-log` | Keeps the MCU's temperature log in `/var/lib/unoq/templog`. Holds `/dev/ttyHS1`, and conflicts with `unoq-cpu-bars` | with `--with-temp-log`, instead of `unoq-cpu-bars` (`provision/66-temp-log.sh`) | you | long-running |
+| `unoq-buildlight` | Shows a GitHub Actions workflow's latest run on the LED matrix. Holds `/dev/ttyHS1`, and conflicts with `unoq-cpu-bars` and `unoq-temp-log` | with `--with-buildlight`, instead of either (`provision/67-buildlight.sh`) | you | long-running |
 | `unoq-learn` | Serves the documentation and installers over HTTP on port 8080, and the temperature log at `/data/` | default; not with `--no-learning` (`provision/75-learning-web.sh`) | you | long-running |
 | `unoq-usb-gadget` | Builds the USB gadget definition and prepares the `br-usb` bridge. Never binds | default; not with `--no-usb-gadget` (`provision/95-usb-gadget.sh`) | root | one-shot, stays active |
 | `unoq-usb-bind` | Asks the bind guard, then binds the gadget and brings the USB network up. Not enabled at boot: udev starts it when a USB device controller or the gadget's network interface appears | default; not with `--no-usb-gadget` | root | one-shot, re-run on every plug-in |
@@ -249,7 +251,7 @@ The six that run as root do not run the scripts in the checkout. They run
 root-owned copies in `/usr/local/lib/unoq/`, which the step that installs each
 unit makes first. After editing one of those scripts, run the step again for
 the board to use it: see [What root runs](provisioning.md#what-root-runs).
-The three that run as you run from the Python environment in the checkout.
+The four that run as you run from the Python environment in the checkout.
 
 The four USB units are explained in
 [usb.md](usb.md#you-cannot-switch-the-role-from-software) and
@@ -650,3 +652,87 @@ its older part, whenever you like.
 | `UNOQ_TEMPLOG_INTERVAL` | `10` | Seconds between pulls. `--interval` overrides it |
 
 The unit passes both as arguments, so these are for running it by hand.
+
+## Build light
+
+`unoq-buildlight` turns the panel into a build light. Once a minute it asks
+GitHub for the latest run of one workflow on one branch, and draws what it
+finds with [`MCU.matrix_frame()`](mcu.md#drawing-a-whole-frame):
+
+| State | When | Panel |
+|---|---|---|
+| `passing` | The latest run finished `success`, `neutral` or `skipped` | a check mark |
+| `failing` | It finished any other way: `failure`, `timed_out`, stopped by someone, ... | a cross |
+| `running` | It hasn't finished: `queued`, `in_progress`, `waiting`, ... | a bar sweeping left to right, four frames a second |
+| `unreachable` | No network, an HTTP error, a body that isn't the expected shape, or no runs on that branch yet | a question mark |
+| `rate-limited` | GitHub said to slow down (`403` or `429` with its rate-limit headers or message) | the same question mark |
+
+```bash
+sudo bash ~/two-computers-one-board/provision/67-buildlight.sh   # install + enable
+sudoedit /etc/unoq/buildlight.env && sudo systemctl restart unoq-buildlight
+journalctl -u unoq-buildlight -f       # one line per change of state
+```
+
+> **It replaces the CPU-bars demo, or the temperature logger.** All three hold
+> `/dev/ttyHS1`, so its unit says `Conflicts=` on both and the step disables
+> whichever is enabled. To go back:
+>
+> ```bash
+> sudo systemctl disable --now unoq-buildlight
+> sudo bash ~/two-computers-one-board/provision/65-cpu-bars.sh
+> ```
+>
+> A plain `./bootstrap.sh` re-run on a board with the light keeps the light.
+
+By hand, with the service stopped, one poll and one picture that stays up:
+
+```bash
+(set -a; . /etc/unoq/buildlight.env; unoq-buildlight --once)
+```
+
+The subshell keeps the token out of your shell's environment. Leave out the
+file and it watches this project's `ci.yml` on `main`, with no token.
+
+### The request
+
+`GET https://api.github.com/repos/{repo}/actions/workflows/{workflow}/runs?branch={branch}&per_page=1`,
+with `urllib`, so nothing beyond the standard library. It's the documented
+endpoint for one workflow's runs, newest first. The state is worked out by
+`state_from(status, headers, body)`, a pure function with no clock and no
+network in it, so each answer GitHub can give is a test, against responses
+recorded in `python/tests/fixtures/buildlight/`.
+
+**The rate limit.** Without a token, GitHub allows 60 requests an hour from
+one address, and a 60-second interval would spend all of them. So every
+request after the first is conditional: it sends back the last answer's
+`ETag` as `If-None-Match`, and while nothing has changed GitHub answers `304`,
+which it does not count against the limit. When an answer says no requests
+are left (`x-ratelimit-remaining: 0`), the next poll waits for
+`x-ratelimit-reset`. A `retry-after` is waited out too. Polls that get no
+answer double the wait each time, up to 15 minutes, and the first good answer
+puts it back.
+
+**The token** is optional for a public repository and needed for a private
+one. Use a fine-grained token with read-only access to Actions on that one
+repository. It goes in `/etc/unoq/buildlight.env` (`0640`, root and your
+group), and the daemon reads it from the environment only. There is no flag
+for it, because a flag would be visible in `ps`. It is sent as
+`Authorization: Bearer` and is never printed: the journal says "with a token"
+and nothing more. The repository holds no token, and the step that writes the
+file writes the line commented out.
+
+### Cost
+
+On the MCU, nothing new: a frame is one shell command, and the bar is four of
+them a second, while a run is going. On Linux, one Python process and one
+small HTTPS request a minute. When the daemon stops, it blanks the panel, so
+a dead build light is dark rather than a check mark nobody is updating.
+`--once` leaves its picture up, since that's the point of running it.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `UNOQ_BUILDLIGHT_REPO` | `jim-wyatt/two-computers-one-board` | The repository, `owner/name`. `--repo` overrides it |
+| `UNOQ_BUILDLIGHT_WORKFLOW` | `ci.yml` | The workflow file or id. `--workflow` overrides it |
+| `UNOQ_BUILDLIGHT_BRANCH` | `main` | The branch. `--branch` overrides it |
+| `UNOQ_BUILDLIGHT_INTERVAL` | `60` | Seconds between polls. `--interval` overrides it |
+| `UNOQ_BUILDLIGHT_TOKEN` | none | Read from the environment only |
