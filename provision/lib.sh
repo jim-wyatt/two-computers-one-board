@@ -33,6 +33,14 @@ TARGET_USER="${UNOQ_USER:-${SUDO_USER:-$(stat -c %U "$PROJECT")}}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 export TARGET_USER TARGET_HOME
 
+# Put in front of the system paths a step reads or writes that have no variable
+# of their own: /etc, /usr/bin, /dev. Empty on a board. It is for the tests,
+# which cannot write to /etc and must not see the board's own /dev/ttyHS1, and
+# it is one prefix rather than a variable per path, so that a fixed path such as
+# the serial port stays fixed everywhere a person would change it.
+# shellcheck disable=SC2034 # read by the steps that source this file
+SYSROOT="${UNOQ_ROOT:-}"
+
 # Debian's needrestart runs after every apt install and draws progress bars
 # ("Scanning processes...") straight onto the terminal, past any redirection:
 # four screens of them in a first run, none saying anything a reader can use.

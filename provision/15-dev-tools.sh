@@ -73,8 +73,8 @@ else
   apt_install "$CLANGD_PKG"
   # The unversioned name is what .vscode/settings.json and clangd extensions
   # look for; Debian's versioned package does not provide it.
-  if [ ! -e /usr/bin/clangd ] && [ -x "/usr/bin/${CLANGD_PKG}" ]; then
-    ln -sf "/usr/bin/${CLANGD_PKG}" /usr/bin/clangd
+  if [ ! -e "$SYSROOT/usr/bin/clangd" ] && [ -x "$SYSROOT/usr/bin/${CLANGD_PKG}" ]; then
+    ln -sf "/usr/bin/${CLANGD_PKG}" "$SYSROOT/usr/bin/clangd"
     did "/usr/bin/clangd -> $CLANGD_PKG"
   fi
 fi
@@ -92,7 +92,7 @@ fi
 # again before the next line. So: the trigger, then what it starts, then what
 # that needs.
 # REVERT: systemctl enable --now arduino-router-serial.path arduino-router \
-#           arduino-router-serial arduino-app-cli
+#           arduino-router-serial arduino-app-cli arduino-avahi-serial
 step "Arduino services"
 disable_unit arduino-router-serial.path arduino-router-serial.service \
   arduino-router.service arduino-app-cli.service arduino-avahi-serial.service ||
@@ -131,12 +131,13 @@ disable_unit docker.service docker.socket containerd.service
 # --- 4. Verify the UART is actually free now. This is the whole point of the
 # --- step, and it is cheap to check rather than assert.
 step "verify /dev/ttyHS1 is free"
-if [ ! -e /dev/ttyHS1 ]; then
-  warn "/dev/ttyHS1 does not exist - is this an UNO Q?"
-elif holder=$(fuser /dev/ttyHS1 2>/dev/null | tr -s ' ' ' ' | sed 's/^ *//;s/ *$//') && [ -n "$holder" ]; then
-  report_port_holders /dev/ttyHS1 "$holder"
+TTY="$SYSROOT/dev/ttyHS1"
+if [ ! -e "$TTY" ]; then
+  warn "$TTY does not exist - is this an UNO Q?"
+elif holder=$(fuser "$TTY" 2>/dev/null | tr -s ' ' ' ' | sed 's/^ *//;s/ *$//') && [ -n "$holder" ]; then
+  report_port_holders "$TTY" "$holder"
 else
-  skip "/dev/ttyHS1 is free"
+  skip "$TTY is free"
 fi
 
 echo

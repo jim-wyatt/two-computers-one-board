@@ -204,6 +204,7 @@ and setting one will mostly make a script look in the wrong place.
 | `UNOQ_WATCHDOG_CONF_DIR` | `/etc/systemd/system.conf.d` | Where `80-watchdog.sh` writes its `systemd` drop-in. |
 | `UNOQ_WATCHDOG_SYSFS` | `/sys/class/watchdog` | Where `80-watchdog.sh` looks for a watchdog device. |
 | `UNOQ_FSTAB` | `/etc/fstab` | The mount table `85-esp-permissions.sh` edits, and `75-learning-web.sh` adds the share's line to. The first writes its backup beside it. |
+| `UNOQ_ROOT` | empty | Put in front of the system paths a provisioning step reads or writes that have no variable of their own (`/etc`, `/usr/bin`, `/dev`), as `$SYSROOT` in the scripts. One prefix, not a variable per path, so the serial port stays [fixed](#what-is-not-a-variable). |
 | `UNOQ_CODESPELL` | `.venv/bin/codespell` | The spelling checker `tools/check-spelling.sh` runs. |
 | `UNOQ_PY_LOCK`, `UNOQ_ZEPHYR_LOCK`, `UNOQ_ZEPHYR_IN`, `UNOQ_PYPROJECT`, `UNOQ_WORKSPACE_STEP` | the files in the repository | The five files `tools/check-constraints.sh` compares, so its tests can hand it copies with one thing wrong. |
 | `UNOQ_RUN_DIR` | `/run` | Where `usb-net-up.sh` keeps the DHCP client's pid file (and `wifi.sh` and `gadget-down.sh` look for it), and where provisioning notes that packages changed in this boot. |
