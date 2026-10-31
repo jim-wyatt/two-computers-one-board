@@ -93,6 +93,7 @@ abl_a   abl_b     boot_a boot_b   uefi_a  uefi_b
 Every stage of the boot chain is stored **twice**, in an A slot and a B slot.
 An update writes the inactive slot and switches a pointer; if the new one fails
 to boot, the pointer goes back.
+[Which slot this board runs, and how it is marked good](../reference/hardware.md#the-qualcomm-boot-chain-look-do-not-touch).
 
 You will meet this idea again: it is exactly what a later chapter,
 [Updating safely](updating-safely.md), describes for the microcontroller, where
