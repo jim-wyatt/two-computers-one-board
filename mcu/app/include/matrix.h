@@ -4,7 +4,7 @@
  *
  * The 8x13 LED panel.
  *
- * Everything hardware about the matrix is behind these four calls, so the
+ * Everything hardware about the matrix is behind these five calls, so the
  * interesting half of the feature (bars.h) stays testable on the host.
  */
 #ifndef MATRIX_H
@@ -34,5 +34,12 @@ void matrix_off(void);
  * started; a count climbing at ~962/s means the ISR is running to schedule.
  */
 uint32_t matrix_sweeps(void);
+
+/*
+ * Is the refresh timer meant to be running? True from the first matrix_draw()
+ * that starts it until matrix_off(). While it is, matrix_sweeps() should be
+ * climbing, and the watchdog (guard.h) is fed only if it is.
+ */
+bool matrix_running(void);
 
 #endif /* MATRIX_H */

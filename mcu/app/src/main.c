@@ -14,6 +14,9 @@
  * `app bars` is the MCU half of the CPU monitor: the MPU measures
  * (python/unoq/cpu.py), this side draws. See docs/mpu.md.
  *
+ * The MCU also watches itself: guard.c arms the chip's watchdog at boot, and
+ * `app reset` says why the last reset happened. See guard.h.
+ *
  * There is no main loop. Everything that runs after init runs on its own:
  * the shell has a thread, and the panel is refreshed from a timer ISR inside
  * matrix.c. A loop here would have nothing to do but sleep, and printing from
@@ -30,6 +33,7 @@
 
 #include "app_proto.h"
 #include "bars.h"
+#include "guard.h"
 #include "matrix.h"
 #include "status_leds.h"
 #include "templog.h"
@@ -191,6 +195,59 @@ static int cmd_app_temp_log_stat(const struct shell *sh, size_t argc, char **arg
 		    (unsigned int)APP_TEMPLOG_SIZE, (unsigned int)st.dropped,
 		    (unsigned int)APP_TEMPLOG_PERIOD_MS);
 	return 0;
+}
+
+/* --- the watchdog --------------------------------------------------------- */
+
+/* `app reset`: why the MCU last reset. See APP_RESET_FMT. */
+static int cmd_app_reset(const struct shell *sh, size_t argc, char **argv)
+{
+	status_leds_link_seen();
+	char names[GUARD_RESET_NAMES_MAX];
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	if (guard_reset_cause_known()) {
+		(void)guard_reset_names(guard_reset_cause(), names, sizeof(names));
+	} else {
+		strcpy(names, GUARD_RESET_UNKNOWN);
+	}
+	shell_print(sh, APP_RESET_FMT, names);
+	return 0;
+}
+
+/* `app hang yes`: stall until the watchdog resets the chip.
+ *
+ * k_sched_lock() stops every other thread from running, the system workqueue
+ * included, and the status-LED beat that feeds the watchdog is a work item on
+ * it. The beat never runs again, so the dog is never fed again. Interrupts
+ * still run, so the panel keeps its last frame lit to the end: the sweep
+ * count climbing is not enough on its own to feed the dog, which is what this
+ * demonstrates. The shell stops answering, LED 3 and LED 4 freeze where they
+ * are, and about eight seconds later the chip resets and `app reset` says
+ * "watchdog".
+ *
+ * The pause before the lock lets the shell's interrupt-driven output finish
+ * the line above, so the reader sees why the prompt does not come back.
+ */
+static int cmd_app_hang(const struct shell *sh, size_t argc, char **argv)
+{
+	status_leds_link_seen();
+	ARG_UNUSED(argc);
+
+	if (strcmp(argv[1], "yes") != 0) {
+		shell_error(sh, APP_ERR "this resets the MCU: type app hang yes");
+		return -EINVAL;
+	}
+	shell_print(sh, APP_HANG_FMT, GUARD_TIMEOUT_MS);
+	k_msleep(100);
+
+	k_sched_lock();
+	for (;;) {
+		arch_nop();
+	}
+	return 0; /* not reached */
 }
 
 /* --- the LED panel -------------------------------------------------------- */
@@ -357,7 +414,11 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
 	SHELL_CMD(temp, &temp_cmds, "die temp in millidegrees C", cmd_app_temp),
 	SHELL_CMD_ARG(bars, NULL, "Draw CPU bars: app bars <pct> [pct ...]", cmd_app_bars, 2,
 		      APP_BARS_MAX - 1),
-	SHELL_CMD(matrix, &matrix_cmds, "LED panel control", NULL), SHELL_SUBCMD_SET_END);
+	SHELL_CMD(matrix, &matrix_cmds, "LED panel control", NULL),
+	SHELL_CMD(reset, NULL, "why the MCU last reset", cmd_app_reset),
+	SHELL_CMD_ARG(hang, NULL, "Stall until the watchdog resets the MCU: app hang yes",
+		      cmd_app_hang, 2, 0),
+	SHELL_SUBCMD_SET_END);
 SHELL_CMD_REGISTER(app, &app_cmds, "UNO Q application commands", NULL);
 
 /* --- main ---------------------------------------------------------------- */
@@ -365,6 +426,21 @@ SHELL_CMD_REGISTER(app, &app_cmds, "UNO Q application commands", NULL);
 int main(void)
 {
 	printk("\n=== UNO Q MCU up: %s ===\n", CONFIG_BOARD_TARGET);
+
+	/* First, so the reset cause is read before anything else can reset
+	 * the chip, and so a hang anywhere in the rest of init is caught. The
+	 * first feed is the status-LED beat below, well inside the timeout. */
+	int wdt_rc = guard_init();
+	char why[GUARD_RESET_NAMES_MAX];
+
+	(void)guard_reset_names(guard_reset_cause(), why, sizeof(why));
+	printk("reset cause: %s\n", guard_reset_cause_known() ? why : GUARD_RESET_UNKNOWN);
+	if (wdt_rc == 0) {
+		printk("watchdog armed: %d ms, fed while the panel refresh runs\n",
+		       GUARD_TIMEOUT_MS);
+	} else {
+		printk("watchdog unavailable (%d)\n", wdt_rc);
+	}
 
 	/* Load the persisted panel orientation before the matrix comes up, so
 	 * the first frame drawn is already the right way round. */
