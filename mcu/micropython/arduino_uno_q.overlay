@@ -1,0 +1,110 @@
+/*
+ * Copyright (c) 2026 Jim Wyatt
+ * SPDX-License-Identifier: MIT
+ *
+ * The devicetree overlay for MicroPython's Zephyr port on the UNO Q, used
+ * INSTEAD of the port's own boards/arduino_uno_q.overlay: mcu/micropython/
+ * build.sh passes this file as DTC_OVERLAY_FILE, and naming one turns the
+ * board overlay off. Two reasons it is replaced rather than added to.
+ *
+ * IT DOES NOT PARSE
+ * -----------------
+ * MicroPython v1.29.0's overlay opens with a license block written as '#'
+ * lines. The devicetree preprocessor passes those through, and Zephyr's
+ * devicetree parser stops at the first one:
+ *
+ *   arduino_uno_q.overlay:1 (column 1): parse error: expected '/' or label
+ *   reference (&foo)
+ *
+ * MicroPython's CI does not build this board, so nothing upstream sees it.
+ *
+ * ITS FILESYSTEM WOULD ERASE THIS PROJECT'S SETTINGS
+ * --------------------------------------------------
+ * It moves the board's storage_partition to 0xf0000, 256 KiB, and mounts a
+ * littlefs there at /flash. On the Zephyr this project pins, storage_partition
+ * is 0xe0000..0xfffff and holds this project's NVS settings (the panel
+ * orientation, mcu/app/prj.conf). Zephyr formats a littlefs partition it
+ * cannot mount, so MicroPython's first boot would erase the upper half of the
+ * settings, and the firmware it reverts to would come back to them broken.
+ *
+ * So storage_partition is left where the board file has it, and the
+ * filesystem gets a partition of its own at the start of the second megabyte,
+ * which nothing on this board uses ("The flash, as the board file lays it
+ * out" in docs/reference/mcu.md).
+ *
+ * storage_partition's label changes, though, and that is a guard rather than
+ * a tidy-up. The port's frozen _boot.py has a fallback: when /flash cannot be
+ * mounted or formatted, it looks for a flash area labeled "storage" and
+ * formats THAT as littlefs. Under its own label the board's partition is still
+ * there for anyone who asks for it by name (zephyr.FlashArea.areas), and no
+ * longer what a failed mount reaches for.
+ *
+ * Everything else is what MicroPython's overlay does, plus two things off:
+ *
+ * - spi3, the SPI link to Linux. Linux is the master on that bus, and this
+ *   project's firmware is its slave. Zephyr's driver would make the MCU a
+ *   master as well, and machine.SPI("spi3") would then drive a clock against
+ *   Linux's. The header's SPI, spi2, stays on.
+ * - adc4, as in mcu/app/boards/arduino_uno_q.overlay: bringing up an ADC
+ *   waits for its regulator with no timeout, and nothing here reads adc4.
+ */
+
+/ {
+	chosen {
+		/* lpuart1 (PG7/PG8, RTS/CTS on PG6/PG5) is the UART wired to the
+		 * Linux side, /dev/ttyHS1. The board file chooses usart1, the
+		 * header's D0/D1, which Linux cannot see. Same as mcu/app. */
+		zephyr,console = &lpuart1;
+		zephyr,shell-uart = &lpuart1;
+	};
+
+	/* machine.ADC(("adc1", ch)): A0 = PA4 ch 9, A1 = PA5 ch 10,
+	 * A2 = PA6 ch 11, A3 = PA7 ch 12, A4 = PC1 ch 2, A5 = PC0 ch 1. */
+	zephyr,user {
+		io-channels = <&adc1 9>, <&adc1 10>, <&adc1 11>,
+			      <&adc1 12>, <&adc1 2>, <&adc1 1>;
+	};
+
+	fstab: fstab {
+		compatible = "zephyr,fstab";
+
+		lfs1: lfs1 {
+			compatible = "zephyr,fstab,littlefs";
+			mount-point = "/flash";
+			partition = <&mpy_partition>;
+			automount;
+			/* The STM32U5 writes 16 bytes at a time. */
+			read-size = <16>;
+			prog-size = <16>;
+			cache-size = <64>;
+			lookahead-size = <32>;
+			block-cycles = <512>;
+		};
+	};
+};
+
+&lpuart1 {
+	status = "okay";
+	current-speed = <115200>;
+};
+
+&storage_partition {
+	label = "unoq_settings";
+};
+
+&flash0 {
+	partitions {
+		mpy_partition: partition@100000 {
+			label = "micropython";
+			reg = <0x00100000 DT_SIZE_K(256)>;
+		};
+	};
+};
+
+&adc4 {
+	status = "disabled";
+};
+
+&spi3 {
+	status = "disabled";
+};

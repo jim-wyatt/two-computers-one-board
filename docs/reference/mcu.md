@@ -810,6 +810,158 @@ link.close()
 print(cap, min(burst.samples), max(burst.samples))
 ```
 
+## MicroPython, as a test image
+
+MicroPython has no release for this chip. Its Zephyr port does build for
+Zephyr's `arduino_uno_q` board, and `mcu/micropython/build.sh` builds it as an
+MCUboot application image, signed with this project's key the way `zbuild`
+signs the firmware. Uploaded as a test, it runs until the next reset, and that
+reset brings this project's firmware back by itself: it is the same revert
+every untested firmware update gets ([Update over serial](#update-over-serial-no-swd)).
+Nothing on the MCU is replaced. MCUboot stays where it is, and this project's
+firmware waits in slot 1 while MicroPython runs.
+
+**Status: built and checked, not yet run on this board.** The checks: the
+signed image verifies against the key, its header carries a version stamped
+from the clock, it is about 242 KiB of the 416 KiB slot, its vector table is at
+`0x08010400` (slot 0 plus the 1 KiB header), and the generated
+`zephyr.dts` in the build directory chooses `lpuart1` as the console.
+
+### Build it
+
+```bash
+~/two-computers-one-board/mcu/micropython/build.sh
+```
+
+It fetches MicroPython, builds the port, signs it with `mcu/zbuild.sh`, checks
+the console UART and the size, and prints the commands below with the paths
+filled in. On the board it takes about ten minutes. Everything goes beside the
+Zephyr workspace, by its real path, not in `$HOME`: here that is
+`/srv/arduino-home/micropython/`, and the image is
+`/srv/arduino-home/micropython/zephyr.signed.bin`. `--clean` deletes the source
+and the build afterwards and keeps the image; `-p` builds from clean.
+
+**The pin.** MicroPython is pinned at **v1.29.0**, by tag and by commit, at the
+top of the script. Each MicroPython release builds its Zephyr port against one
+Zephyr release, the `ZEPHYR_VERSION` in its `tools/ci.sh`. v1.29.0's is
+v4.4.0, with SDK 1.0.1, and this project pins v4.4.2, a patch release of the
+same minor. v1.28.0 was made for v4.2.0, which is too old. The script reads
+both versions on every run and refuses a different major.minor, which is what
+moving the Zephyr pin will one day cause; see
+[Upgrading Zephyr](#upgrading-zephyr).
+
+**The port's own UNO Q files, and why one is replaced.** v1.29.0 has a board
+configuration for the UNO Q (`ports/zephyr/boards/arduino_uno_q.*`). The
+`.conf` is used as it is. The devicetree overlay is replaced by
+`mcu/micropython/arduino_uno_q.overlay`, for two reasons:
+
+- It does not parse. It opens with a license block written as `#` lines,
+  and Zephyr's devicetree parser stops at the first one. MicroPython's CI does
+  not build this board.
+- Its filesystem would erase this project's settings. It moves
+  `storage_partition` to `0xf0000` for a 256 KiB littlefs, and on this Zephyr
+  that partition is `0xe0000` to `0xfffff` and holds the firmware's NVS. A
+  littlefs that cannot mount is formatted, so the first boot would have erased
+  half of it. The filesystem gets a partition of its own at `0x100000`, in the
+  megabyte nothing uses, and the board's partition is relabeled so that the
+  port's fallback, which formats a partition labeled `storage`, cannot reach
+  it.
+
+`mcu/micropython/mcuboot.conf` adds `CONFIG_BOOTLOADER_MCUBOOT` and turns the
+network stack off: the port enables one by default, and this MCU has no
+interface.
+
+### Try it
+
+The port is needed, so stop the demo first. Then upload, mark it for test,
+and reset:
+
+```bash
+sudo systemctl stop unoq-cpu-bars
+hpy -c "from unoq import fota; fota.upload('/srv/arduino-home/micropython/zephyr.signed.bin'); fota.test(); fota.reset()"
+tio /dev/ttyHS1 -b 115200      # Ctrl-T then q to exit
+```
+
+The upload takes a few minutes. After the reset MCUboot swaps the slots, and
+MicroPython's banner and `>>>` prompt appear on `/dev/ttyHS1`, at the same
+115200 baud. Press Enter if the banner went by before `tio` opened. Then:
+
+```python
+>>> from machine import Pin
+>>> led = Pin(("gpioh", 11), Pin.OUT)   # LED 3 green; LEDs 3 and 4 are PH10..PH15
+>>> led.value(0)                        # on: the LEDs are active low
+>>> led.value(1)                        # off
+>>> import os; os.listdir("/flash")
+```
+
+`fota.test()` needs the image's version to be newer than the running
+firmware's, and so does the bootloader. Both are build times. If the firmware
+has been rebuilt and updated since the image was built, run `build.sh` again:
+nothing is recompiled, and the image is signed again with a new stamp.
+
+### Go back
+
+Reset the MCU without confirming. `fota.reset()` cannot do it now, because it
+asks the firmware over SMP and MicroPython does not speak SMP. Reset from the
+REPL instead:
+
+```python
+>>> import machine; machine.reset()
+```
+
+MCUboot finds the image unconfirmed and swaps this project's firmware back.
+Nothing can confirm MicroPython by accident: `fota.confirm()` needs SMP too.
+If the REPL does not answer, any other reset of the MCU does the same,
+including unplugging the board and plugging it in again. Once it is back:
+
+```bash
+hpy -c "from unoq import fota; print(fota.images())"   # this firmware active and confirmed
+sudo systemctl start unoq-cpu-bars
+```
+
+**MicroPython is still in slot 1 afterwards**, and it is newer than the
+firmware. `fota.test()` with no argument marks the inactive slot when it holds
+a newer image, so the next bare `fota.test()` would run MicroPython again.
+Uploading a new firmware build replaces it.
+
+### What works and what does not
+
+What the port offers, from its own code and the board's upstream pull request
+(tested there on an UNO Q, not yet here):
+
+| Works | How |
+|---|---|
+| The REPL | `lpuart1`, `/dev/ttyHS1`, 115200 baud |
+| `machine.Pin` | `Pin(("gpioh", 11), Pin.OUT)`; any port by its devicetree name |
+| `machine.I2C` | `I2C("i2c2")`, the header's SDA/SCL; `I2C("i2c4")`, the Qwiic connector |
+| `machine.SPI` | `SPI("spi2")`, the header's D10..D13 |
+| `machine.ADC` | `ADC(("adc1", 9))` is A0; the overlay lists A0..A5 |
+| A filesystem | littlefs at `/flash`, 256 KiB at `0x100000`; it survives the revert, for the next try |
+
+What does not:
+
+- **The LED matrix.** MicroPython has no driver for it, and the matrix stays
+  dark. Nothing configures PF0..PF10.
+- **Anything that talks to this project's firmware.** There is no Zephyr
+  shell, no `app` commands and no SMP, so `unoq.MCU`, the CPU-bars demo, the
+  temperature logger and every `fota` call fail while MicroPython runs. The
+  demo would give up after a few minutes and turn LED 2 red, which is why it
+  is stopped first.
+- **The SPI link to Linux.** `spi3` is off in the overlay. Linux is the master
+  on that bus, and Zephyr's driver would have made the MCU a second one. So
+  `unoq.spilink` and the scope do not work either.
+- **Networking and threads.** There is no network interface, and the port's
+  `_thread` module is not built.
+
+### Not in CI
+
+The image is not built in CI. It takes about ten minutes, fetches 80 MB of
+someone else's source, and would mostly test that MicroPython still compiles
+for a board its own CI does not build. What this project owns is the script's
+handling of its arguments and pins, and `tests/micropython-build.bats` covers
+that on every run, with `west` stubbed. The image itself is proved by the
+checks the script makes when it builds it.
+
 ## Debugging
 
 Open this folder in VS Code and pick **Debug (attach to running MCU)** or
@@ -935,6 +1087,7 @@ of the disagreements, so change all of them in one commit:
 | Zephyr | `west.yml` and `provision/user/30-zephyr-workspace.sh` (`tools/check-zephyr-pin.sh` fails if they differ) |
 | Zephyr's Python packages | `tools/update-constraints.sh`, which reads the version from the step above and rewrites `mcu/requirements-zephyr-lock.txt` |
 | The SDK | `provision/user/25-zephyr-sdk.sh`, `env.sh`, `bootstrap.sh`, the defaults in `mcu/zbuild.sh`, `mcu/flash-all.sh` and `mcu/ztest.sh`, and `.vscode/launch.json` and `.vscode/tasks.json` (`tools/check-zephyr-pin.sh` fails if any differs from the first) |
+| MicroPython, for a new Zephyr minor release | `MICROPYTHON_VERSION` and `MICROPYTHON_COMMIT` in `mcu/micropython/build.sh`: a release whose `tools/ci.sh` names the new Zephyr (the script refuses any other; see [MicroPython, as a test image](#micropython-as-a-test-image)) |
 
 On a board that already has a workspace, running `bootstrap.sh` again, or just
 `provision/user/30-zephyr-workspace.sh`, moves it to the new pin: it fetches
