@@ -554,7 +554,7 @@ measures it. Linux sends `app jitter tick` on a fixed schedule, and the MCU
 writes down how far from the schedule each one arrived. Beside it, the MCU
 keeps the same record for a square wave its own timers make and measure, with
 no software in the path. The two histograms side by side are the difference
-between scheduled timing and hardware timing, measured on this board. The
+between scheduled timing and hardware timing, measured on this board ([the course chapter](../learn/jitter-measured.md) has the numbers). The
 record is [`jitter.c`](../../mcu/app/src/jitter.c); the timers are set up in
 [`main.c`](../../mcu/app/src/main.c) and the
 [overlay](../../mcu/app/boards/arduino_uno_q.overlay).
