@@ -9,6 +9,18 @@ toolchain, the display, safe updates, the USB gadget, and how to find out what i
 wrong. This page is about what to do next, because reading about embedded
 development is not the same as doing any.
 
+> [!NOTE]
+> **In this chapter**
+>
+> - the six ideas from the course that are not about this board at all
+> - things to build, from an afternoon to a project, each using both halves
+>   of the board
+> - where the open work is, what to run before you change anything, and
+>   where the files are
+>
+> **You need:** the whole course. This is the last chapter, and its recap is
+> the course's.
+
 ## What you actually learned
 
 Worth naming, because most of it is not about this board:
@@ -58,7 +70,9 @@ timing.
 **Read a real sensor over I²C.** The Qwiic connector is right there, the buses are
 enabled, and `smbus2` is already installed. A temperature or distance sensor sampled
 by the *microcontroller* at an exact interval, with Linux only displaying it, is
-this project's architecture applied to something new.
+this project's architecture applied to something new. The BME680 behind
+`--with-ble-sensor` is one worked example of the wiring; your sensor and
+your split can be different.
 
 **Add a serial console over USB.** The kernel has a CDC-ACM gadget function. Add
 it and your laptop gets a COM port that is the MCU's console — no SSH needed.
@@ -75,10 +89,12 @@ abstraction.
 
 **Use the watchdog.** `./bootstrap.sh --with-watchdog` arms the Linux side's
 hardware watchdog, so a wedged kernel resets the board instead of sitting there.
-The microcontroller has a watchdog of its own, and nothing uses it yet.
+The microcontroller's own watchdog is already armed by the firmware, and
+[Debugging without a screen](debugging-without-a-screen.md) made it fire;
+if you add work of your own to the firmware, decide what it should watch.
 
-**Use the empty microcontroller.** The application is about 90 KB of 2048 KB. The
-chip is 95% empty.
+**Use the empty microcontroller.** The application is about 110 KB of
+2048 KB. The chip is about 95% empty.
 
 ## Where the open work is
 
@@ -135,7 +151,7 @@ The four places a newcomer edits first:
 |---|---|
 | `mcu/app/` | The firmware: `main.c`, `matrix.c` (the driver), `bars.c` (the arithmetic) |
 | `mcu/app/include/app_proto.h` | The contract both sides agree on |
-| `python/unoq/` | The Linux side: `cpu.py`, `thermal.py`, `mcu.py`, `fota.py`, `link.py`, and the daemons `cpubars.py` and `learn.py` |
+| `python/unoq/` | The Linux side: `cpu.py`, `thermal.py`, `mcu.py`, `fota.py`, `link.py`, the daemons `cpubars.py` and `learn.py`, and one module per later chapter's tool — `templog.py`, `jitter.py`, `heat.py`, `buildlight.py`, `blesensor.py` among them |
 | `docs/` | This course, and the reference it links into |
 
 The rest — `usb/`, `status/`, `provision/`, `share/`, `tools/`, `tests/` — is

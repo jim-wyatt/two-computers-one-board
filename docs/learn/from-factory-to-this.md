@@ -17,6 +17,22 @@ The claim the whole repository stands on:
 That is a much stronger claim than "here are the steps", and everything about
 how the scripts are written follows from trying to make it true.
 
+> [!NOTE]
+> **In this chapter**
+>
+> - why a script beats a list of steps, and why "the setup is the
+>   specification" is stronger still
+> - idempotence: what it means, what it buys, and the shape every step has
+>   to take to get it
+> - how the run is ordered, why half of it must not be root, and why the
+>   costly parts are named before they happen
+> - what happened when the claim above was actually tested
+>
+> **You need:** [The Linux side](the-linux-side.md) for systemd units, and
+> [Set up a board](../setup.md), which is the page this chapter explains.
+> The Try it reads a script and re-runs one small, safe step; it does not
+> re-provision the board.
+
 ## Why not just write down the steps
 
 Because instructions rot, and because you will need them at the worst possible
@@ -37,6 +53,11 @@ configured, because the scripts are it.
 The single most important property here:
 
 **Running `bootstrap.sh` twice does the same thing as running it once.**
+
+You have used idempotent commands already. `mkdir -p` is one: run it twice
+and there is one directory. Plain `mkdir` is not: the second run is an error.
+`x = 5` is idempotent; `x += 5` is not. The whole script is written to be
+the first kind.
 
 That is not a tidiness point. It changes what the script *is*:
 
@@ -92,7 +113,7 @@ flowchart TD
   U --> R3["45 MCU link GPIOs<br/>50 status LEDs"]
   R3 --> E4["55 purge Arduino packages<br/><small>only with --with-purge</small>"]
   E4 --> B["60 build + sign + flash<br/>the firmware"]
-  B --> O["65 CPU bars at boot<br/>70 the drive image<br/>75 learning web server<br/><small>80 watchdog · 85 EFI permissions,<br/>only if asked for</small>"]
+  B --> O["65 CPU bars at boot<br/><small>or 66 temp log · 67 build light · 68 BLE sensor</small><br/>70 the drive image<br/>75 learning web server<br/><small>80 watchdog · 82 boot counting · 84 rescue entry<br/>85 EFI permissions, only if asked for</small>"]
   O --> C["90 disk space back<br/><small>downloads nobody needs again</small>"]
   C --> E2["95 USB gadget<br/><small>always last</small>"]
 ```
@@ -105,7 +126,8 @@ changes.
 
 Numbered, because order matters and a reader should be able to see it. Split at
 `provision/user/`, because **half of it must not be root**: the Zephyr
-workspace, the Python venv and the shell environment all belong to you, and a
+workspace, the Python venv (a private Python installation for this project)
+and the shell environment all belong to you, and a
 `sudo` in the wrong place leaves a 2 GB directory you cannot write to. That is
 a real failure mode, and the split is how it is prevented rather than warned
 about.
@@ -265,5 +287,25 @@ idempotence, working.
    depended on is to start from nothing.
 
 </details>
+
+## What to remember
+
+- **Instructions rot; a script that runs is executable documentation**, and
+  one that is run regularly cannot be wrong for long. Here the setup *is*
+  the specification.
+- **Idempotent**: running it twice does what running it once did. That makes
+  it the recovery path, safe on a working board, and testable — a second run
+  should be a wall of `ok`.
+- Every step **checks before it changes**, says one of four words about
+  every action (`changed`, `ok`, `warn`, `FAILED`), and carries a
+  **`REVERT:`** line saying how to undo it.
+- Steps are **numbered** because order matters, and **split at
+  `provision/user/`** because half of the result must belong to you, not
+  root.
+- **Anything with a cost is named before it happens**, and the one file a
+  person edits is never overwritten.
+- **"It works on my board" is a claim about your board's history.** The only
+  way to find out what you depend on is to start from nothing — which found
+  seventeen bugs, five of which reported success.
 
 Next: [what to build with all of this](make-it-yours.md).

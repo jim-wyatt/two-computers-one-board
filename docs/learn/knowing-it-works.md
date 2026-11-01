@@ -15,6 +15,25 @@ wrong.** Flashing takes tens of seconds, a bad image can require a physical
 recovery, and half the failures produce no output at all. Anything you can find
 before the wire is worth finding there.
 
+> [!NOTE]
+> **In this chapter**
+>
+> - the one command that runs every check, and three decisions in how it is
+>   built that are worth copying
+> - how C written for a Cortex-M33 is tested on a laptop, and where that
+>   stops
+> - testing Linux-side code against fakes, and shell scripts by faking the
+>   programs they call
+> - what 100% coverage does and does not mean
+> - where the checks run — a pre-commit hook and CI — and the gap that
+>   remains
+>
+> **You need:** [The LED matrix](the-led-matrix.md), where `bars.c` was
+> split from `matrix.c` so that one could be tested, and
+> [Debugging without a screen](debugging-without-a-screen.md) for "a check
+> that cannot fail". The Try it runs the gates and breaks code on purpose;
+> nothing is flashed and the demo keeps running.
+
 ## The gates
 
 Everything in this project is checked by one command, which is also exactly what
@@ -61,7 +80,7 @@ What each one looks for:
 
 | Gate | What it catches |
 |---|---|
-| `ruff lint`, `ruff format` | Python mistakes, and Python layout |
+| `ruff lint`, `ruff format` | Python mistakes, and Python layout (a *linter* reads code for mistakes without running it) |
 | `mypy (strict)` | Python type errors |
 | `ruff lint (scripts)`, `ruff format (scripts)`, `mypy (scripts)` | The same three, for the Python that is not the package: the docs build's hooks, the diagram check, the signing helper |
 | `pytest + coverage` | Python behavior, with every branch run by a test |
@@ -121,7 +140,8 @@ flash cycle, on any machine, with a debugger that works properly.
 mcu/ztest.sh          # what `tools/check.sh mcu` runs
 ```
 
-This project tests two things that way:
+This project has nine suites under `mcu/tests/` that run that way. The first
+three:
 
 - **`bars/`** — the rasterizer: given four CPU percentages, which of the 104
   pixels light up, and at what brightness. Pure arithmetic, no hardware, and
@@ -129,6 +149,11 @@ This project tests two things that way:
 - **`link_protocol/`** — framing and parsing of the messages coming from Linux.
 - **`status_leds/`** — what LEDs 3 and 4 show, and in what rhythm, for each
   state the firmware can be in.
+
+The rest followed the same rule as each later chapter added firmware: the
+temperature log's sequence numbers and gaps, the jitter histogram's bin
+edges, when the watchdog is fed and what each reset cause is called, and
+more.
 
 What it *cannot* test is the part that touches registers: the charlieplexing
 driver writes `MODER` and `BSRR` directly, and there is no such register on a
@@ -151,7 +176,7 @@ That is the design decision, drawn: the boundary between the two boxes exists
 
 ## Testing Linux-side code without a board
 
-The Python suite is over a hundred tests and touches no hardware at all. There
+The Python suite is several hundred tests and touches no hardware at all. There
 is no serial port, no GPIO chip and no MCU involved; every one of them runs
 against a fake.
 
@@ -233,8 +258,9 @@ shell.
 The first two suites exist because two scripts had already failed in ways that
 were expensive:
 
-- **The bind guard counted wrong.** At the time, `udev` triggered the bind unit
-  three times on a perfectly healthy plug-in: once for the controller and once
+- **The bind guard counted wrong.** At the time, `udev` — the part of Linux
+  that reacts when a device appears — triggered the bind unit three times on
+  a perfectly healthy plug-in: once for the controller and once
   for each of the two network interfaces the gadget then had. Counting
   invocations reached the limit of 3 during the first *successful* plug-in and
   refused to bind ever again — a guard causing exactly the outage it exists to
@@ -250,8 +276,9 @@ only once.
 
 > [!TIP]
 > A suite that passes the first time you run it may be asserting nothing. Break
-> the code on purpose and check the *right* test goes red. Both of these were
-> mutation-tested against the two bugs above before being committed — reversing
+> the code on purpose and check the *right* test goes red. That is
+> **mutation testing**, and both of these suites were mutation-tested against
+> the two bugs above before being committed — reversing
 > the guard's same-boot check turns exactly one test red, and it is the one
 > named after the bug.
 
@@ -322,9 +349,11 @@ reference failed `checks` in two seconds, and `firmware` never started.
 One gap remains, and naming it is deliberate — a test suite you have oversold is
 worse than a small one you have described accurately:
 
-- **CI runs mostly on x86_64; the board is aarch64.** The fresh-install job runs
-  on both, and for the Python that is enough: the tests use fakes and the
-  libraries ship wheels for both. The firmware
+- **CI runs mostly on x86_64; the board is aarch64.** That is the Intel/AMD
+  architecture of most PCs against the 64-bit Arm of this board. The
+  fresh-install job runs on both, and for the Python that is enough: the
+  tests use fakes and the libraries ship *wheels* — pre-built packages — for
+  both. The firmware
   cross-compiles, so its output is identical either way. But nothing in CI runs
   on the actual hardware, so CI proves the logic and the build, never the board.
 
@@ -415,6 +444,25 @@ this gate existed, and nothing noticed for months.
    is where every finding in the log was.
 
 </details>
+
+## What to remember
+
+- **A board is a terrible place to find out you were wrong.** Find it before
+  the wire: `tools/check.sh` runs every gate, and CI runs the same script.
+- Three decisions worth copying: **every gate runs even after one fails**;
+  **a missing tool is a failure, not a skip**; **formatting is a gate, and
+  the formatter is version-pinned**.
+- Firmware logic runs on a laptop as **`native_sim`**. The boundary is
+  registers: `bars.c` is testable because it was kept away from them.
+- Test **your** code against **fakes**: a fake serial port for Python, fake
+  `ip`/`systemctl` on `PATH` for shell. The tested part tends to be the easy
+  part, so look at what is not tested.
+- **Write the bug down as a test**, then break the code and check the right
+  test goes red.
+- **100% coverage is a ratchet, not a quality claim.** Any drop is a signal;
+  the number says nothing about the assertions.
+- CI proves **the logic and the build, never the board**. A skipped job is
+  not a passed one; require the job that always runs.
 
 Next: [how a factory-fresh board becomes this one, one idempotent script at a
 time](from-factory-to-this.md).
