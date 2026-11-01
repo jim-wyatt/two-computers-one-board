@@ -81,6 +81,18 @@ def firmware() -> dict[str, int]:
         ("JITTER_PERIOD_US_MAX", "APP_JITTER_PERIOD_US_MAX"),
         ("JITTER_PWM_HZ_MIN", "APP_JITTER_PWM_HZ_MIN"),
         ("JITTER_PWM_HZ_MAX", "APP_JITTER_PWM_HZ_MAX"),
+        ("SCOPE_POINTS", "APP_SCOPE_POINTS"),
+        ("SCOPE_DAC_MID", "APP_SCOPE_DAC_MID"),
+        ("SCOPE_DAC_AMPLITUDE", "APP_SCOPE_DAC_AMPLITUDE"),
+        ("SCOPE_DAC_MAX", "APP_SCOPE_DAC_MAX"),
+        ("SCOPE_ADC_MAX", "APP_SCOPE_ADC_MAX"),
+        ("SCOPE_WAVE_HZ_MIN", "APP_SCOPE_WAVE_HZ_MIN"),
+        ("SCOPE_WAVE_HZ_MAX", "APP_SCOPE_WAVE_HZ_MAX"),
+        ("SCOPE_N_MIN", "APP_SCOPE_N_MIN"),
+        ("SCOPE_N_MAX", "APP_SCOPE_N_MAX"),
+        ("SCOPE_RATE_HZ_MIN", "APP_SCOPE_RATE_HZ_MIN"),
+        ("SCOPE_RATE_HZ_MAX", "APP_SCOPE_RATE_HZ_MAX"),
+        ("SCOPE_BURST_MS_MAX", "APP_SCOPE_BURST_MS_MAX"),
     ],
 )
 def test_python_constants_match_the_firmware(
@@ -490,6 +502,115 @@ def test_the_firmware_registers_the_jitter_commands_python_sends() -> None:
     for name in ("tick", "stat", "off"):
         assert re.search(rf"SHELL_CMD\({name},", body), name
     assert re.search(r"SHELL_CMD\(jitter, &jitter_cmds,", source)
+
+
+# -- the scope -------------------------------------------------------------------
+#
+# `app scope` prints rates as %u.%03u, hertz with three decimals, and names its
+# waves with %s; everything else is %u. The subcommands live in scope_hw.c,
+# with the hardware, in a table main.c's `app` names.
+
+
+def scope_regex(fmt: str) -> str:
+    """implied_regex(), and the two conversions only `app scope` uses."""
+    return implied_regex(fmt).replace("%03u", r"(\d{3})").replace("%s", "([a-z]+)")
+
+
+@pytest.mark.parametrize(
+    ("python_name", "c_name"),
+    [
+        ("_SCOPE_GEN", "APP_SCOPE_GEN_FMT"),
+        ("_SCOPE_CAPTURE", "APP_SCOPE_CAPTURE_FMT"),
+        ("_SCOPE_STAT", "APP_SCOPE_STAT_FMT"),
+        ("_SCOPE_OFF", "APP_SCOPE_OFF_FMT"),
+    ],
+)
+def test_scope_reply_regexes_are_the_ones_the_firmware_formats_imply(
+    python_name: str, c_name: str
+) -> None:
+    fmt = firmware_format(c_name)
+    assert getattr(mcu, python_name).pattern == scope_regex(fmt), (
+        f"unoq.mcu.{python_name} no longer matches {c_name} ({fmt!r}) - "
+        f"a change to app_proto.h is a protocol change; update python/unoq/mcu.py"
+    )
+
+
+def test_python_knows_the_waves_the_firmware_names() -> None:
+    assert (
+        firmware_format("APP_SCOPE_WAVE_SINE"),
+        firmware_format("APP_SCOPE_WAVE_TRIANGLE"),
+    ) == mcu.SCOPE_WAVES
+    assert firmware_format("APP_SCOPE_WAVE_OFF") == mcu.SCOPE_WAVE_OFF
+
+
+@pytest.mark.parametrize(
+    ("n", "rate"),
+    [
+        (16, 100),
+        (50, 100),
+        (51, 100),
+        (4096, 8192),
+        (4096, 8191),
+        (4096, 250000),
+        (15, 1000),
+        (4097, 250000),
+        (100, 99),
+        (100, 250001),
+    ],
+)
+def test_python_holds_a_capture_to_the_firmware_rule(n: int, rate: int) -> None:
+    """app_scope_capture_valid(), restated: ranges, and the burst's length."""
+    f = macros()
+    want = (
+        f["APP_SCOPE_N_MIN"] <= n <= f["APP_SCOPE_N_MAX"]
+        and f["APP_SCOPE_RATE_HZ_MIN"] <= rate <= f["APP_SCOPE_RATE_HZ_MAX"]
+        and n * 1000 <= f["APP_SCOPE_BURST_MS_MAX"] * rate
+    )
+    assert mcu.scope_capture_valid(n, rate) == want
+
+
+def test_scope_replies_the_firmware_would_print_parse_back(mcu_factory: Any) -> None:
+    board = mcu_factory(
+        {
+            "app scope gen sine 1000": [
+                firmware_format("APP_SCOPE_GEN_FMT").replace("%s", "sine") % (1000, 1000, 0)
+            ],
+            "app scope capture 4096 100000": [
+                firmware_format("APP_SCOPE_CAPTURE_FMT") % (3, 4096, 100000, 0, 1641, 14741, 8191)
+            ],
+            "app scope stat": [
+                firmware_format("APP_SCOPE_STAT_FMT").replace("%s", "triangle")
+                % (447, 998, 3, 4096, 99999, 5, 1, 2)
+            ],
+            "app scope off": [firmware_format("APP_SCOPE_OFF_FMT")],
+        }
+    )
+    assert board.scope_gen("sine", 1000) == 1000.0
+    assert board.scope_capture(4096, 100000) == mcu.ScopeCapture(
+        3, 4096, 100000.0, 1641, 14741, 8191
+    )
+    assert board.scope_stat() == mcu.ScopeStat("triangle", 447.998, 3, 4096, 99999.005, True, 2)
+    board.scope_off()
+
+
+def test_the_firmware_registers_the_scope_commands_python_sends() -> None:
+    """gen and capture take exactly two arguments; stat and off none."""
+    source = (MCU_APP / "src" / "scope_hw.c").read_text()
+    table = re.search(r"scope_entries\[\] = \{(.*?)SHELL_SUBCMD_SET_END", source, re.S)
+    assert table, "the `app scope` subcommands are gone from scope_hw.c"
+    body = table.group(1)
+    for name in ("gen", "capture"):
+        assert re.search(rf"SHELL_CMD_ARG\({name},.*?,\s*3,\s*0\)", body, re.S), name
+    for name in ("stat", "off"):
+        assert re.search(rf"SHELL_CMD\({name},", body), name
+    assert re.search(r"union shell_cmd_entry scope_cmds = \{\.entry = scope_entries\}", source)
+    assert re.search(r"SHELL_CMD\(scope, &scope_cmds,", (MCU_APP / "src" / "main.c").read_text())
+
+
+def test_the_spi_link_gives_its_scope_service_the_burst() -> None:
+    """svc.scope NULL would build, and answer every SCOPE "unavailable"."""
+    source = (MCU_APP / "src" / "spi_link.c").read_text()
+    assert re.search(r"svc\.scope = scope_burst_get\(\);", source)
 
 
 # -- the SPI link's temperature log --------------------------------------------

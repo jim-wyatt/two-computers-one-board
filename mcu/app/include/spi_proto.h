@@ -48,6 +48,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "scope.h"
 #include "templog.h"
 
 /* One transaction, both ways: well under the 4096 bytes Linux's spidev takes
@@ -67,6 +68,7 @@
 #define SPI_PROTO_ECHO    0x01 /* payload: anything; answered with the same */
 #define SPI_PROTO_TEMPLOG 0x02 /* payload: SPI_PROTO_TEMPLOG_REQ_LEN bytes */
 #define SPI_PROTO_STAT    0x03 /* payload: none; answered with the counters */
+#define SPI_PROTO_SCOPE   0x04 /* payload: SPI_PROTO_SCOPE_REQ_LEN bytes */
 
 /* An answer's type is its request's with this bit set. */
 #define SPI_PROTO_RESPONSE  0x80
@@ -81,8 +83,9 @@
 #define SPI_PROTO_ERR_LENGTH      3 /* detail: the length that was received */
 #define SPI_PROTO_ERR_TYPE        4 /* not a request this firmware knows */
 #define SPI_PROTO_ERR_REQUEST     5 /* known type, wrong payload size */
-#define SPI_PROTO_ERR_RANGE       6 /* `since` is past the newest; detail: head */
-#define SPI_PROTO_ERR_UNAVAILABLE 7 /* the service has nothing behind it */
+#define SPI_PROTO_ERR_RANGE       6 /* past the end; detail: TEMPLOG head, SCOPE n */
+#define SPI_PROTO_ERR_UNAVAILABLE 7 /* nothing behind it; SCOPE detail: 1 if busy */
+#define SPI_PROTO_ERR_STALE       8 /* not the capture asked for; detail: the one held */
 
 /* --- TEMPLOG -------------------------------------------------------------- */
 /*
@@ -114,6 +117,32 @@ struct spi_proto_stat {
 	uint32_t bad_frames;   /* of those, ones that did not */
 	uint32_t spi_errors;   /* transfers the driver failed: overrun, underrun */
 };
+
+/* --- SCOPE ---------------------------------------------------------------- */
+/*
+ * The burst the last `app scope capture` took (scope.h, app_proto.h), in
+ * pieces: a burst is up to 8 KB and an answer holds SPI_PROTO_SCOPE_MAX
+ * samples, so a reader asks again with offset += count until offset is n.
+ *
+ * Request payload, 6 bytes:   id u32, offset u16
+ * Answer payload:             id u32, rate_mhz u32, n u16, offset u16,
+ *                             count u16, then count samples of u16
+ *
+ * id 0 asks for whatever capture is held, and every answer names the one it
+ * came from; a reader asks for that id from then on, so a capture taken in
+ * the middle of its reading is SPI_PROTO_ERR_STALE, not a burst stitched from
+ * two. rate_mhz is the sample rate in millihertz, n the samples in the whole
+ * capture. A sample is the ADC's 14-bit code, 0..APP_SCOPE_ADC_MAX.
+ *
+ * Errors: SPI_PROTO_ERR_UNAVAILABLE with detail 0 before any good capture or
+ * after a failed one, 1 while a capture is running; SPI_PROTO_ERR_STALE;
+ * SPI_PROTO_ERR_RANGE for an offset past n.
+ */
+#define SPI_PROTO_SCOPE_REQ_LEN    6
+#define SPI_PROTO_SCOPE_HDR_LEN    14
+#define SPI_PROTO_SCOPE_SAMPLE_LEN 2
+#define SPI_PROTO_SCOPE_MAX                                                                        \
+	((SPI_PROTO_MAX_PAYLOAD - SPI_PROTO_SCOPE_HDR_LEN) / SPI_PROTO_SCOPE_SAMPLE_LEN)
 
 /* --- frames --------------------------------------------------------------- */
 
@@ -149,11 +178,12 @@ int spi_proto_decode(const uint8_t *buf, size_t n, struct spi_proto_frame *out);
 int spi_proto_encode_error(uint8_t *buf, size_t cap, uint8_t seq, uint8_t code, uint8_t req_type,
 			   uint32_t detail);
 
-/* What the services answer from. Either pointer may be NULL: TEMPLOG then
- * answers SPI_PROTO_ERR_UNAVAILABLE, STAT answers zeros. */
+/* What the services answer from. Any pointer may be NULL: TEMPLOG and SCOPE
+ * then answer SPI_PROTO_ERR_UNAVAILABLE, STAT answers zeros. */
 struct spi_proto_services {
 	struct templog *templog;
 	const struct spi_proto_stat *stat;
+	struct scope_burst *scope;
 };
 
 /** The whole slave side of one transaction, without the SPI: decode what came
@@ -161,7 +191,7 @@ struct spi_proto_services {
  *  With cap at least SPI_PROTO_XFER_LEN it always writes a frame, an error
  *  frame if nothing else, and returns its length; a smaller cap may give
  *  -ENOSPC. *decoded is set true if rx held a valid frame. rx and tx must not
- *  overlap. Not reentrant: TEMPLOG answers from one static batch. */
+ *  overlap. Not reentrant: TEMPLOG and SCOPE answer from static batches. */
 int spi_proto_handle(const uint8_t *rx, size_t n, uint8_t *tx, size_t cap,
 		     const struct spi_proto_services *svc, bool *decoded);
 

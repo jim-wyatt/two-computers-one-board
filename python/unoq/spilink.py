@@ -7,6 +7,7 @@ Talk to the MCU over the SPI link: /dev/spidev0.0 on this side, spi3 on its.
     python -m unoq.spilink echo hello
     python -m unoq.spilink templog --since 120
     python -m unoq.spilink stat
+    python -m unoq.spilink scope                 # the last `app scope capture`
 
 The serial line carries the shell, the panel and firmware updates at 115200
 baud, about 11 KB/s. Four other pins were always wired to the MCU as well
@@ -51,6 +52,7 @@ NOP = 0x00
 ECHO = 0x01
 TEMPLOG = 0x02
 STAT = 0x03
+SCOPE = 0x04
 RESPONSE = 0x80
 ERROR = 0x7F
 ERROR_LEN = 6
@@ -62,6 +64,7 @@ ERR_TYPE = 4
 ERR_REQUEST = 5
 ERR_RANGE = 6
 ERR_UNAVAILABLE = 7
+ERR_STALE = 8
 
 TEMPLOG_REQ_LEN = 5
 TEMPLOG_SINCE = 0x01
@@ -71,6 +74,11 @@ TEMPLOG_MAX = (MAX_PAYLOAD - TEMPLOG_HDR_LEN) // TEMPLOG_SAMPLE_LEN
 
 STAT_COUNT = 4
 STAT_LEN = STAT_COUNT * 4
+
+SCOPE_REQ_LEN = 6
+SCOPE_HDR_LEN = 14
+SCOPE_SAMPLE_LEN = 2
+SCOPE_MAX = (MAX_PAYLOAD - SCOPE_HDR_LEN) // SCOPE_SAMPLE_LEN
 
 # --- this side --------------------------------------------------------------
 
@@ -93,8 +101,9 @@ _ERROR_NAMES = {
     ERR_LENGTH: "bad length",
     ERR_TYPE: "unknown request type",
     ERR_REQUEST: "wrong payload for this request",
-    ERR_RANGE: "since is past the newest sample",
+    ERR_RANGE: "out of range (TEMPLOG: since is past the newest sample; SCOPE: offset past n)",
     ERR_UNAVAILABLE: "service unavailable",
+    ERR_STALE: "a newer capture replaced the one asked for",
 }
 # Errors that say the request was damaged on the way, not that it was wrong:
 # sending it again is the answer.
@@ -152,6 +161,27 @@ class Stat:
     spi_errors: int
 
 
+@dataclass(frozen=True)
+class ScopeChunk:
+    """One SCOPE answer: part of a capture."""
+
+    id: int
+    rate_mhz: int
+    n: int
+    offset: int
+    samples: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class Burst:
+    """A whole capture, as `app scope capture` took it: 14-bit ADC codes, one
+    every 1 / rate_hz seconds."""
+
+    id: int
+    rate_hz: float
+    samples: tuple[int, ...]
+
+
 def crc16(data: bytes) -> int:
     """CRC-16/CCITT-FALSE, the firmware's spi_proto_crc16()."""
     return binascii.crc_hqx(data, 0xFFFF)
@@ -204,6 +234,20 @@ def decode_stat(payload: bytes) -> Stat:
     if len(payload) != STAT_LEN:
         raise FrameError(f"STAT answer is {len(payload)} bytes, not {STAT_LEN}")
     return Stat(*struct.unpack("<IIII", payload))
+
+
+def scope_request(id_: int, offset: int) -> bytes:
+    return struct.pack("<IH", id_, offset)
+
+
+def decode_scope(payload: bytes) -> ScopeChunk:
+    if len(payload) < SCOPE_HDR_LEN:
+        raise FrameError(f"SCOPE answer is {len(payload)} bytes, shorter than its header")
+    id_, rate_mhz, n, offset, count = struct.unpack_from("<IIHHH", payload)
+    if len(payload) != SCOPE_HDR_LEN + count * SCOPE_SAMPLE_LEN:
+        raise FrameError(f"SCOPE answer is {len(payload)} bytes for {count} samples")
+    samples = struct.unpack_from(f"<{count}H", payload, SCOPE_HDR_LEN)
+    return ScopeChunk(id_, rate_mhz, n, offset, samples)
 
 
 # --- transports -------------------------------------------------------------
@@ -311,6 +355,26 @@ class SpiLink:
 
     def templog(self, since: int | None = None) -> TempBatch:
         return decode_templog(self.request(TEMPLOG, templog_request(since)).payload)
+
+    def scope_chunk(self, id_: int = 0, offset: int = 0) -> ScopeChunk:
+        return decode_scope(self.request(SCOPE, scope_request(id_, offset)).payload)
+
+    def scope_read(self, id_: int = 0) -> Burst:
+        """A whole capture, in as many SCOPE answers as it takes.
+
+        id_ 0 reads whichever capture the MCU holds; the first answer names
+        it, and every later request asks for that one. A capture taken in the
+        middle of the reading is a RemoteError (ERR_STALE), never a burst
+        stitched from two.
+        """
+        first = self.scope_chunk(id_, 0)
+        samples = list(first.samples)
+        while len(samples) < first.n:
+            chunk = self.scope_chunk(first.id, len(samples))
+            if not chunk.samples or (chunk.id, chunk.n) != (first.id, first.n):
+                raise FrameError(f"SCOPE at offset {len(samples)} of {first.n}: {chunk!r}")
+            samples += chunk.samples
+        return Burst(first.id, first.rate_mhz / 1000, tuple(samples))
 
     def close(self) -> None:
         self.transport.close()
@@ -448,6 +512,8 @@ def main(
     t = sub.add_parser("templog", help="the MCU's temperature log")
     t.add_argument("--since", type=int, default=None)
     sub.add_parser("stat", help="the MCU's counters for the link")
+    sc = sub.add_parser("scope", help="the samples of the last `app scope capture`")
+    sc.add_argument("--id", type=int, default=0, help="that capture, or fail (default: any)")
     args = parser.parse_args(argv)
 
     if args.cmd == "bench" and not 0 <= args.size <= MAX_PAYLOAD:
@@ -467,13 +533,17 @@ def main(
                 kind = "temp_mc" if s.ok else "temp_err"
                 print(f"seq={s.seq} ms={s.ms} {kind}={s.value}")
             print(f"end head={batch.head} more={batch.more}")
+        elif args.cmd == "scope":
+            burst = link.scope_read(args.id)
+            print(f"id={burst.id} n={len(burst.samples)} rate_hz={burst.rate_hz:.3f}")
+            print(" ".join(map(str, burst.samples)))
         else:
             st = link.stat()
             print(
                 f"transactions={st.transactions} requests={st.requests}"
                 f" bad_frames={st.bad_frames} spi_errors={st.spi_errors}"
             )
-    except LinkError as exc:
+    except (LinkError, FrameError) as exc:
         print(f"spilink: {exc}", file=sys.stderr)
         return 1
     finally:

@@ -161,6 +161,63 @@ static int answer_stat(const struct spi_proto_frame *req, uint8_t *tx, size_t ca
 	return spi_proto_encode(tx, cap, req->type | SPI_PROTO_RESPONSE, req->seq, p, sizeof(p));
 }
 
+/* One answer's worth of samples, static for the same reason as templog_batch. */
+static uint16_t scope_batch[SPI_PROTO_SCOPE_MAX];
+
+static int answer_scope(const struct spi_proto_frame *req, uint8_t *tx, size_t cap,
+			struct scope_burst *burst)
+{
+	uint8_t *p = &tx[SPI_PROTO_HEADER_LEN];
+	const size_t fixed = SPI_PROTO_OVERHEAD + SPI_PROTO_SCOPE_HDR_LEN;
+	struct scope_chunk c;
+	uint16_t max;
+	int rc;
+
+	if (cap < fixed) {
+		return -ENOSPC;
+	}
+	/* As in answer_templog(): the cap on samples is known only here. */
+	max = (uint16_t)MIN(SPI_PROTO_SCOPE_MAX, (cap - fixed) / SPI_PROTO_SCOPE_SAMPLE_LEN);
+
+	if (req->len != SPI_PROTO_SCOPE_REQ_LEN) {
+		return spi_proto_encode_error(tx, cap, req->seq, SPI_PROTO_ERR_REQUEST, req->type,
+					      req->len);
+	}
+	if (burst == NULL) {
+		return spi_proto_encode_error(tx, cap, req->seq, SPI_PROTO_ERR_UNAVAILABLE,
+					      req->type, 0);
+	}
+
+	rc = scope_burst_read(burst, sys_get_le32(&req->payload[0]), sys_get_le16(&req->payload[4]),
+			      scope_batch, max, &c);
+	switch (rc) {
+	case 0:
+		break;
+	case -ESTALE:
+		return spi_proto_encode_error(tx, cap, req->seq, SPI_PROTO_ERR_STALE, req->type,
+					      c.id);
+	case -ERANGE:
+		return spi_proto_encode_error(tx, cap, req->seq, SPI_PROTO_ERR_RANGE, req->type,
+					      c.n);
+	default:
+		return spi_proto_encode_error(tx, cap, req->seq, SPI_PROTO_ERR_UNAVAILABLE,
+					      req->type, rc == -EBUSY ? 1U : 0U);
+	}
+
+	sys_put_le32(c.id, &p[0]);
+	sys_put_le32(c.rate_mhz, &p[4]);
+	sys_put_le16(c.n, &p[8]);
+	sys_put_le16(c.offset, &p[10]);
+	sys_put_le16(c.count, &p[12]);
+	p += SPI_PROTO_SCOPE_HDR_LEN;
+	for (uint16_t i = 0; i < c.count; i++) {
+		sys_put_le16(scope_batch[i], &p[2 * i]);
+	}
+	return spi_proto_encode(
+		tx, cap, req->type | SPI_PROTO_RESPONSE, req->seq, &tx[SPI_PROTO_HEADER_LEN],
+		(uint16_t)(SPI_PROTO_SCOPE_HDR_LEN + c.count * SPI_PROTO_SCOPE_SAMPLE_LEN));
+}
+
 int spi_proto_handle(const uint8_t *rx, size_t n, uint8_t *tx, size_t cap,
 		     const struct spi_proto_services *svc, bool *decoded)
 {
@@ -192,6 +249,8 @@ int spi_proto_handle(const uint8_t *rx, size_t n, uint8_t *tx, size_t cap,
 		return answer_templog(&req, tx, cap, svc->templog);
 	case SPI_PROTO_STAT:
 		return answer_stat(&req, tx, cap, svc->stat);
+	case SPI_PROTO_SCOPE:
+		return answer_scope(&req, tx, cap, svc->scope);
 	default:
 		return spi_proto_encode_error(tx, cap, req.seq, SPI_PROTO_ERR_TYPE, req.type, 0);
 	}

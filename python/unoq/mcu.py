@@ -119,6 +119,30 @@ _JITTER = re.compile(
 _JITTER_ARM = re.compile(r"^ok jitter arm period_us=(\d+)$")
 _JITTER_PWM = re.compile(r"^ok jitter pwm hz=(\d+) period_us=(\d+)$")
 _JITTER_OFF = re.compile(r"^ok jitter off$")
+# `app scope`: APP_SCOPE_* in app_proto.h, checked by tests/test_contract.py.
+SCOPE_POINTS = 64
+SCOPE_DAC_MID = 2048
+SCOPE_DAC_AMPLITUDE = 1638
+SCOPE_DAC_MAX = 4095
+SCOPE_ADC_MAX = 16383
+SCOPE_WAVE_HZ_MIN = 1
+SCOPE_WAVE_HZ_MAX = 10_000
+SCOPE_N_MIN = 16
+SCOPE_N_MAX = 4096
+SCOPE_RATE_HZ_MIN = 100
+SCOPE_RATE_HZ_MAX = 250_000
+SCOPE_BURST_MS_MAX = 500
+SCOPE_WAVE_OFF = "off"
+SCOPE_WAVES = ("sine", "triangle")
+_SCOPE_GEN = re.compile(r"^ok scope gen wave=([a-z]+) hz=(\d+) actual_hz=(\d+)\.(\d{3})$")
+_SCOPE_CAPTURE = re.compile(
+    r"^ok scope capture id=(\d+) n=(\d+) rate_hz=(\d+)\.(\d{3}) min=(\d+) max=(\d+) mean=(\d+)$"
+)
+_SCOPE_STAT = re.compile(
+    r"^scope wave=([a-z]+) hz=(\d+)\.(\d{3}) id=(\d+) n=(\d+) rate_hz=(\d+)\.(\d{3})"
+    r" busy=(\d+) failed=(\d+)$"
+)
+_SCOPE_OFF = re.compile(r"^ok scope off$")
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 _PROMPT = re.compile(r"^\s*\S*:~\$\s*$")
 # A prompt with something typed after it on the same line: how a command's
@@ -351,6 +375,61 @@ _NO_JITTER = (
     "this firmware has no `app jitter` command - it predates it. "
     "Rebuild and update it (mcu/zbuild.sh, then unoq.fota)"
 )
+
+
+_NO_SCOPE = (
+    "this firmware has no `app scope` command - it predates it. "
+    "Rebuild and update it (mcu/zbuild.sh, then unoq.fota)"
+)
+
+
+def scope_capture_valid(n: int, rate_hz: int) -> bool:
+    """app_scope_capture_valid(): each in range, and no longer than
+    SCOPE_BURST_MS_MAX, which is how long a capture may keep adc1 from the
+    die temperature."""
+    return (
+        SCOPE_N_MIN <= n <= SCOPE_N_MAX
+        and SCOPE_RATE_HZ_MIN <= rate_hz <= SCOPE_RATE_HZ_MAX
+        and n * 1000 <= SCOPE_BURST_MS_MAX * rate_hz
+    )
+
+
+def _hz3(whole: str, frac: str) -> float:
+    """A %u.%03u rate, back to hertz."""
+    return int(whole) + int(frac) / 1000
+
+
+@dataclass(frozen=True)
+class ScopeCapture:
+    """`app scope capture`: what the MCU took, summarized by the MCU itself.
+
+    The samples are not here: they go up the SPI link (unoq.spilink,
+    SpiLink.scope_read). `rate_hz` is the rate TIM6 really ran at. `min`,
+    `max` and `mean` are 14-bit ADC codes, so the burst read over SPI can be
+    checked against them.
+    """
+
+    id: int
+    n: int
+    rate_hz: float
+    min: int
+    max: int
+    mean: int
+
+
+@dataclass(frozen=True)
+class ScopeStat:
+    """`app scope stat`: the wave playing (`wave` "off" and `hz` 0 if none),
+    the capture that can be read (`id` 0 if none), whether one is running,
+    and how many have failed since boot."""
+
+    wave: str
+    hz: float
+    id: int
+    n: int
+    rate_hz: float
+    busy: bool
+    failed: int
 
 
 _NO_TEMP_LOG = (
@@ -766,6 +845,64 @@ class MCU:
         out = self._jitter_cmd("app jitter off")
         if not out or not _JITTER_OFF.match(out[0]):
             raise MCUError(f"could not parse app jitter off: {out!r}")
+
+    # -- scope -------------------------------------------------------------
+
+    def _scope_cmd(self, command: str, timeout: float = 2.0) -> list[str]:
+        out = self.cmd(command, timeout=timeout)
+        if "Subcommands:" in out:
+            raise MCUError(_NO_SCOPE)
+        return out
+
+    def scope_gen(self, wave: str, hz: int) -> float:
+        """Play `wave` ("sine" or "triangle") at `hz` out of A0 (PA4), from
+        the DAC, until scope_off(). Returns the frequency TIM7 really gives."""
+        hz = int(hz)
+        if wave not in SCOPE_WAVES:
+            raise ValueError(f"wave {wave!r} is not one of {SCOPE_WAVES}")
+        if not SCOPE_WAVE_HZ_MIN <= hz <= SCOPE_WAVE_HZ_MAX:
+            raise ValueError(f"hz {hz} outside {SCOPE_WAVE_HZ_MIN}..{SCOPE_WAVE_HZ_MAX}")
+        out = self._scope_cmd(f"app scope gen {wave} {hz}")
+        m = _SCOPE_GEN.match(out[0]) if out else None
+        if not m or m[1] != wave or int(m[2]) != hz:
+            raise MCUError(f"could not parse app scope gen: {out!r}")
+        return _hz3(m[3], m[4])
+
+    def scope_capture(self, n: int, rate_hz: int) -> ScopeCapture:
+        """Sample A0 `n` times at `rate_hz` into the MCU's RAM, and wait for
+        it. Read the samples with unoq.spilink.SpiLink.scope_read(id)."""
+        n, rate_hz = int(n), int(rate_hz)
+        if not scope_capture_valid(n, rate_hz):
+            raise ValueError(
+                f"{n} samples at {rate_hz} Hz: n is {SCOPE_N_MIN}..{SCOPE_N_MAX}, the rate "
+                f"{SCOPE_RATE_HZ_MIN}..{SCOPE_RATE_HZ_MAX} Hz, and at most {SCOPE_BURST_MS_MAX} ms"
+            )
+        out = self._scope_cmd(f"app scope capture {n} {rate_hz}", timeout=2.0 + n / rate_hz)
+        m = _SCOPE_CAPTURE.match(out[0]) if out else None
+        if not m or int(m[2]) != n:
+            raise MCUError(f"could not parse app scope capture: {out!r}")
+        return ScopeCapture(int(m[1]), n, _hz3(m[3], m[4]), int(m[5]), int(m[6]), int(m[7]))
+
+    def scope_stat(self) -> ScopeStat:
+        out = self._scope_cmd("app scope stat")
+        m = _SCOPE_STAT.match(out[0]) if out else None
+        if not m:
+            raise MCUError(f"could not parse app scope stat: {out!r}")
+        return ScopeStat(
+            m[1],
+            _hz3(m[2], m[3]),
+            int(m[4]),
+            int(m[5]),
+            _hz3(m[6], m[7]),
+            m[8] != "0",
+            int(m[9]),
+        )
+
+    def scope_off(self) -> None:
+        """Stop the wave. The last capture stays, to be read."""
+        out = self._scope_cmd("app scope off")
+        if not out or not _SCOPE_OFF.match(out[0]):
+            raise MCUError(f"could not parse app scope off: {out!r}")
 
     # -- LED matrix --------------------------------------------------------
 

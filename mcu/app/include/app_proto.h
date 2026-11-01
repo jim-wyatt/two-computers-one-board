@@ -12,6 +12,8 @@
  *   - mcu/tests/templog/        tests the log's sequence, gap and batch rules
  *   - mcu/app/src/jitter.c      keeps the jitter histograms `app jitter` prints
  *   - mcu/tests/jitter/         tests their bins, clamp and tick bookkeeping
+ *   - mcu/app/src/scope_hw.c    runs `app scope`, the DAC and ADC on PA4
+ *   - mcu/tests/scope/          tests its tables, timer division and bursts
  *   - mcu/tests/link_protocol/  tests these definitions directly
  *   - python/unoq/mcu.py        parses those lines, calls `app bars`
  *
@@ -253,6 +255,96 @@ static inline bool app_parse_int(const char *s, int *out)
 #define APP_JITTER_ARM_FMT "ok jitter arm period_us=%u"
 #define APP_JITTER_PWM_FMT "ok jitter pwm hz=%u period_us=%u"
 #define APP_JITTER_OFF_FMT "ok jitter off"
+
+/* --- the scope: the DAC and the ADC share a pin ----------------------------
+ *
+ * PA4, header A0, is both dac1 output 1 and adc1 channel 9. The DAC plays a
+ * waveform table out of it, paced by TIM7 and fed by DMA; the ADC samples the
+ * same pin in bursts, paced by TIM6 and emptied by DMA into RAM. So the MCU
+ * watches its own output with no wire. The samples go up the SPI link
+ * (SPI_PROTO_SCOPE in spi_proto.h), not this shell: a whole burst is 8 KB,
+ * most of a second of the 115200 line. See scope.h.
+ *
+ * The commands, and the line each answers with:
+ *
+ *   app scope gen <wave> <hz>   APP_SCOPE_GEN_FMT. wave is APP_SCOPE_WAVE_SINE
+ *                               or APP_SCOPE_WAVE_TRIANGLE; hz the waveform's
+ *                               frequency. Replaces whatever was playing.
+ *   app scope capture <n> <rate_hz>
+ *                               APP_SCOPE_CAPTURE_FMT, once the n samples are
+ *                               in: it blocks for n / rate_hz seconds
+ *   app scope stat              APP_SCOPE_STAT_FMT
+ *   app scope off               APP_SCOPE_OFF_FMT. Stops the DAC; the last
+ *                               capture stays, to be read
+ *
+ * The rates the timers really run at are not always the ones asked for: a
+ * timer divides its 160 MHz clock by whole numbers. Every "actual" rate is
+ * printed in hertz with three decimals, as %u.%03u, because this build has no
+ * floating-point printf.
+ *
+ * The table is APP_SCOPE_POINTS 12-bit DAC codes around APP_SCOPE_DAC_MID,
+ * APP_SCOPE_DAC_AMPLITUDE either side: about 0.33 V to 2.97 V with a 3.3 V
+ * reference, kept off the rails, where the output buffer is not linear. The
+ * ADC is 14-bit, so a sample reads about four times the DAC code behind it.
+ */
+#define APP_SCOPE_POINTS        64
+#define APP_SCOPE_DAC_MID       2048
+#define APP_SCOPE_DAC_AMPLITUDE 1638
+#define APP_SCOPE_DAC_MAX       4095
+#define APP_SCOPE_ADC_MAX       16383
+
+/* What `app scope gen` takes. The DAC is updated APP_SCOPE_POINTS times a
+ * period, so the top is a 640 kHz update rate, under the DAC's rated
+ * 1 Msps with its output buffer on. */
+#define APP_SCOPE_WAVE_HZ_MIN 1
+#define APP_SCOPE_WAVE_HZ_MAX 10000
+
+/* What `app scope capture` takes. The burst buffer holds APP_SCOPE_N_MAX
+ * samples, 8 KB. The top rate leaves room under the ADC's own conversion
+ * time: 68 cycles of sampling and about 17 of conversion at 14 bits, on a
+ * 40 MHz ADC clock, is about 2 us. And a capture borrows adc1 from the die
+ * temperature for its whole length, so its length is held to
+ * APP_SCOPE_BURST_MS_MAX: a temperature sample is late by at most that much,
+ * never lost. */
+#define APP_SCOPE_N_MIN        16
+#define APP_SCOPE_N_MAX        4096
+#define APP_SCOPE_RATE_HZ_MIN  100
+#define APP_SCOPE_RATE_HZ_MAX  250000
+#define APP_SCOPE_BURST_MS_MAX 500
+
+#define APP_SCOPE_WAVE_OFF      "off"
+#define APP_SCOPE_WAVE_SINE     "sine"
+#define APP_SCOPE_WAVE_TRIANGLE "triangle"
+
+static inline bool app_scope_wave_hz_valid(int hz)
+{
+	return hz >= APP_SCOPE_WAVE_HZ_MIN && hz <= APP_SCOPE_WAVE_HZ_MAX;
+}
+
+/* n samples at rate_hz: each in range, and the burst no longer than
+ * APP_SCOPE_BURST_MS_MAX. */
+static inline bool app_scope_capture_valid(int n, int rate_hz)
+{
+	return n >= APP_SCOPE_N_MIN && n <= APP_SCOPE_N_MAX && rate_hz >= APP_SCOPE_RATE_HZ_MIN &&
+	       rate_hz <= APP_SCOPE_RATE_HZ_MAX &&
+	       (int64_t)n * 1000 <= (int64_t)APP_SCOPE_BURST_MS_MAX * rate_hz;
+}
+
+/* `app scope gen`: the wave, the frequency asked for, and the one TIM7 gives.
+ *
+ * `app scope capture`: the capture's id (1, 2, ... since boot, and what the
+ * SPI service is asked for), its samples, the rate TIM6 gives, and the
+ * smallest, largest and mean sample, so the shell alone shows whether it
+ * worked.
+ *
+ * `app scope stat`: the wave playing and the frequency TIM7 gives it
+ * (APP_SCOPE_WAVE_OFF at 0.000 if none), the capture held (id 0, n 0, rate
+ * 0.000 if none can be read), whether a capture is running, and how many
+ * have failed since boot. */
+#define APP_SCOPE_GEN_FMT     "ok scope gen wave=%s hz=%u actual_hz=%u.%03u"
+#define APP_SCOPE_CAPTURE_FMT "ok scope capture id=%u n=%u rate_hz=%u.%03u min=%u max=%u mean=%u"
+#define APP_SCOPE_STAT_FMT "scope wave=%s hz=%u.%03u id=%u n=%u rate_hz=%u.%03u busy=%u failed=%u"
+#define APP_SCOPE_OFF_FMT  "ok scope off"
 
 /* --- LED matrix ----------------------------------------------------------
  *

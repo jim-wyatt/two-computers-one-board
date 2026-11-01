@@ -668,6 +668,148 @@ with MCU() as mcu:
 print(stat.tick.max_ns, stat.pwm.max_ns)
 ```
 
+### The scope
+
+PA4, header A0, is two things at once on the STM32U585: output 1 of `dac1`
+and channel 9 of `adc1`. So the MCU can play a wave out of the pin with its
+DAC and sample the same pin with its ADC, and read its own output with no
+wire at all. `app scope` is that, and it is the first thing in the firmware
+that moves data by DMA. Linux asks for a burst on the shell and collects the
+samples over [the SPI link](hardware.md#the-protocol-on-the-spi-link): a burst
+of 4096 samples is 8 KB, most of a second of the serial line and about 40 ms
+of the SPI link at 2 MHz. The arithmetic is
+[`scope.c`](../../mcu/app/src/scope.c), and the hardware and the commands are
+[`scope_hw.c`](../../mcu/app/src/scope_hw.c).
+
+**How it runs.**
+
+| Half | Paced by | Moved by | CPU per sample |
+|---|---|---|---|
+| Generator: `dac1` channel 1 plays a 64-point table round and round | TIM7's update event, the DAC's trigger | GPDMA1 channel 15, cyclic, memory to DAC | none |
+| Capture: `adc1` channel 9 takes n samples into RAM | TIM6's update event, the ADC's trigger | GPDMA1 channel 14, one block, ADC to memory | none; one interrupt when the burst is in |
+
+Both timers count the 160 MHz APB1 timer clock, so a rate is whatever whole
+division of 160 MHz is nearest to the one asked for, and the replies say what
+it came to. The wave is 64 DAC codes a period around 2048, 1638 either side:
+about 0.33 V to 2.97 V with a 3.3 V reference, kept off the rails, where the
+DAC's output buffer is not linear. The ADC is 14-bit, so a sample reads about
+four times the DAC code behind it, about 1640 to 14744.
+
+**Why it is register-level.** Zephyr's drivers stop short of this. The STM32
+DAC driver (`drivers/dac/dac_stm32.c`) writes one value from software, with
+no trigger and no DMA. The STM32 ADC driver (`drivers/adc/adc_stm32.c`)
+starts every conversion from software; with `CONFIG_ADC_STM32_DMA` it moves
+one sequence, one sample per channel, per DMA transfer, and repeats are timed
+by a kernel timer. Neither has a timer trigger. So the timers, the DAC and the
+ADC's trigger are set with STM32Cube LL. What Zephyr has is used: its GPDMA
+driver moves the data (in cyclic mode for the DAC), and its clock control
+turns the clocks on. `CONFIG_DAC` stays off, so no driver claims `dac1`.
+
+**Sharing `adc1`.** The die temperature reads `adc1` through Zephyr's ADC
+driver every second, for the log. A capture borrows the converter: it takes
+the same lock the temperature reads take, saves the registers the driver
+relies on, programs its own, and puts them back when the burst is in, with the
+ADC disabled, as the driver's next read expects. A capture is held to 500 ms,
+so a temperature sample can be up to that late, and is never lost.
+
+**The pins.** None to wire for the loopback: the DAC and the ADC share A0.
+
+| Header | Pin | Use |
+|---|---|---|
+| A0 | PA4 | `dac1` OUT1 and `adc1` IN9 |
+| none | none | TIM6 (the ADC's trigger), TIM7 (the DAC's), GPDMA1 channels 14 and 15 |
+
+PA4 is not used by the panel (PF0..PF10), `spi3` (PG9, PG10, PB5, PG12),
+`lpuart1` (PG5..PG8), `usart1` (PB6, PB7), `i2c2` (PB10, PB11), `spi2` (PB13,
+PB14, PB15, PB9), the status LEDs (PH10..PH15) or jitter's PB0 and PB3. TIM6
+and TIM7 were unused; jitter has TIM2, TIM3 and TIM5, and the panel TIM17.
+Nothing else in this build uses the GPDMA. With the generator off the DAC lets
+go of the pin, and a capture reads whatever is on A0, from 0 to 3.3 V. Never
+drive A0 from outside while the generator is on: the two outputs would fight.
+
+**The commands.** Every line is a format in
+[`app_proto.h`](../../mcu/app/include/app_proto.h), pinned by
+`python/tests/test_contract.py`.
+
+```
+unoq:~$ app scope gen sine 1000
+ok scope gen wave=sine hz=1000 actual_hz=1000.000
+unoq:~$ app scope capture 4096 100000
+ok scope capture id=1 n=4096 rate_hz=100000.000 min=1641 max=14741 mean=8191
+unoq:~$ app scope stat
+scope wave=sine hz=1000.000 id=1 n=4096 rate_hz=100000.000 busy=0 failed=0
+unoq:~$ app scope off
+ok scope off
+```
+
+(The `capture` numbers are what the table should give, not a measurement.)
+
+| Command | What it does |
+|---|---|
+| `app scope gen <sine\|triangle> <hz>` | Plays the wave at 1..10000 Hz out of A0, replacing whatever was playing. Replies with the frequency TIM7 really gives |
+| `app scope capture <n> <rate_hz>` | Takes n samples (16..4096) at 100..250000 a second, at most 500 ms of them, and replies when they are in, with the capture's id, the rate TIM6 gave, and the smallest, largest and mean sample |
+| `app scope stat` | The wave playing (`off` at 0.000 if none), the capture that can be read (id 0 if none), whether one is running, and how many have failed |
+| `app scope off` | Stops the wave. The last capture stays, to be read |
+
+The ids count captures since boot from 1. A failed capture (a DMA error, or
+no completion within the burst's length plus 100 ms) is counted in `failed`
+and leaves nothing to read: its buffer is half overwritten.
+
+**The SPI service.** `SCOPE` (type 0x04) returns a capture in pieces of up to
+501 samples. A request is the capture's id (0 for whichever is held) and an
+offset; an answer is the id, the rate in millihertz, the capture's n, the
+offset, the count, and that many 16-bit samples. A reader asks again with
+offset plus count until it reaches n, naming the id the first answer gave, so
+a capture taken in the middle of a read is an error (`ERR_STALE`) and never a
+burst stitched from two. Before any good capture, or while one is running,
+the service answers `ERR_UNAVAILABLE`. The layout is in
+[`spi_proto.h`](../../mcu/app/include/spi_proto.h), tested by
+`mcu/tests/spi_proto` and `python/tests/test_spilink.py`.
+
+**Limits.** The capture's top rate, 250 kHz, leaves room under the ADC's own
+conversion time: 68 cycles of sampling and about 17 of conversion at 14 bits,
+on a 40 MHz ADC clock, is about 2 µs. The wave's top, 10 kHz, is a 640 kHz
+update rate, under the DAC's rated 1 Msps. At 10 kHz a period is 64 steps;
+nothing smooths them, so the ADC sees the staircase. The buffer is 8 KB, and
+the whole of `app scope` costs about 6.9 KB of flash and 9.8 KB of RAM.
+
+**Try it.** Build and update the firmware ([Update over
+serial](#update-over-serial-no-swd)), stop the demo so that the serial port is
+free, and run:
+
+```bash
+sudo systemctl stop unoq-cpu-bars
+hpy -m unoq.scope                                   # 1 kHz sine, 4096 samples at 100 kHz
+hpy -m unoq.scope --wave triangle --hz 250 --rate 20000
+hpy -m unoq.scope --csv burst.csv                   # and every sample, for a spreadsheet
+hpy -m unoq.spilink scope                           # the last capture's raw codes
+```
+
+`unoq.scope` plays the wave, takes the burst on the shell, reads it over SPI,
+and prints the smallest, largest and mean sample in codes and volts, and the
+frequency from the rising crossings of the middle. It checks the samples that
+came over SPI against the MCU's own summary on the shell, and fails if they
+differ. The volts assume a 3.3 V reference. It stops a wave it started,
+unless `--keep`; `--wave none` leaves A0 alone and shows what is on it.
+
+From Python, `MCU.scope_gen()`, `scope_capture()`, `scope_stat()` and
+`scope_off()` drive the shell, and `SpiLink.scope_read(id)` collects the
+samples:
+
+```python
+from unoq import MCU
+from unoq.spilink import SpidevTransport, SpiLink
+
+with MCU() as mcu:
+    mcu.scope_gen("sine", 1000)
+    cap = mcu.scope_capture(4096, 100_000)
+    mcu.scope_off()
+link = SpiLink(SpidevTransport())
+burst = link.scope_read(cap.id)
+link.close()
+print(cap, min(burst.samples), max(burst.samples))
+```
+
 ## Debugging
 
 Open this folder in VS Code and pick **Debug (attach to running MCU)** or
@@ -714,7 +856,7 @@ The serial tasks (FOTA, confirm, console, status) need the port: stop
 Use `native_sim/native/64`; plain `native_sim` is 32-bit and fails on aarch64
 with a `CONFIG_64BIT` error.
 
-Seven suites run. `ztest.sh` ends by saying how many cases passed; the number
+Eight suites run. `ztest.sh` ends by saying how many cases passed; the number
 is not repeated here, where it would be wrong the next time one was added.
 
 - **`bars`** compiles [`mcu/app/src/bars.c`](../../mcu/app/src/bars.c) — the
@@ -750,6 +892,13 @@ is not repeated here, where it would be wrong the next time one was added.
   older than the oldest sample held, the cap on one reply, the drop count,
   and that the timer samples on its own.
 - **`spi_proto`** tests the SPI link's frames and services in [`spi_proto.c`](../../mcu/app/src/spi_proto.c), which [`spi_link.c`](../../mcu/app/src/spi_link.c) runs on `spi3` as a slave; the protocol is in [hardware.md](hardware.md#the-protocol-on-the-spi-link).
+- **`scope`** compiles [`mcu/app/src/scope.c`](../../mcu/app/src/scope.c), the
+  scope's arithmetic, without the DAC, ADC, timers or DMA it feeds: the sine
+  and triangle tables (in range, odd about the middle, peaks where they
+  should be), the timer division at every wave and capture rate (within half
+  a count, prescaler as small as will do), the burst's bookkeeping (nothing
+  readable while the DMA writes, after a failure, or across two captures),
+  and how long the shell lets a capture hold `adc1`.
 
 ### The MCU suite tests the firmware, not a copy of it
 

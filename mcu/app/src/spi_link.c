@@ -24,7 +24,8 @@
  * the clock: past some rate the CPU stops keeping the FIFO fed, the driver
  * reports an underrun or overrun, and the transaction is counted in
  * spi_errors. `python -m unoq.spilink bench` finds where that is. DMA would
- * lift it; it is part of #159's second half.
+ * lift it; the scope (scope_hw.c) uses the GPDMA for its own data, but this
+ * link still moves bytes by interrupt.
  */
 #include <errno.h>
 #include <zephyr/device.h>
@@ -92,6 +93,7 @@ static void spi_link_thread(void *a, void *b, void *c)
 		return;
 	}
 	svc.templog = spi_link_templog();
+	svc.scope = scope_burst_get();
 
 	/* Something to send before any request has come: a NOP answer, seq 0. */
 	(void)spi_proto_encode(tx_buf, sizeof(tx_buf), SPI_PROTO_NOP | SPI_PROTO_RESPONSE, 0, NULL,

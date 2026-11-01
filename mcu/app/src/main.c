@@ -42,6 +42,7 @@
 #include "guard.h"
 #include "jitter.h"
 #include "matrix.h"
+#include "scope.h"
 #include "spi_proto.h"
 #include "status_leds.h"
 #include "templog.h"
@@ -98,8 +99,9 @@ static const struct device *const die_temp = DEVICE_DT_GET(DT_ALIAS(die_temp0));
 /* Two threads read the sensor now: the shell's, for `app temp`, and the
  * system workqueue's, for the log. The driver locks the conversion but not
  * the step after it, which converts whatever raw value the last conversion
- * left - so without this, one thread could report the other's reading. */
-static K_MUTEX_DEFINE(die_temp_lock);
+ * left - so without a lock, one thread could report the other's reading.
+ * The lock is adc1_lock, scope.h's, because `app scope capture` borrows the
+ * same ADC and holds it for its whole burst. */
 
 static int read_die_temp(int32_t *temp_mc)
 {
@@ -113,12 +115,12 @@ static int read_die_temp(int32_t *temp_mc)
 		return -ENODEV;
 	}
 
-	k_mutex_lock(&die_temp_lock, K_FOREVER);
+	k_mutex_lock(&adc1_lock, K_FOREVER);
 	rc = sensor_sample_fetch(die_temp);
 	if (rc == 0) {
 		rc = sensor_channel_get(die_temp, SENSOR_CHAN_DIE_TEMP, &val);
 	}
-	k_mutex_unlock(&die_temp_lock);
+	k_mutex_unlock(&adc1_lock);
 
 	if (rc == 0) {
 		*temp_mc = (int32_t)sensor_value_to_milli(&val);
@@ -694,6 +696,9 @@ SHELL_STATIC_SUBCMD_SET_CREATE(temp_cmds,
 					     cmd_app_temp_log, 1, 1),
 			       SHELL_SUBCMD_SET_END);
 
+/* `app scope`'s subcommands are scope_hw.c's, with the hardware they drive. */
+extern const union shell_cmd_entry scope_cmds;
+
 SHELL_STATIC_SUBCMD_SET_CREATE(
 	jitter_cmds,
 	SHELL_CMD_ARG(arm, NULL, "Expect a tick every period: app jitter arm <period_us>",
@@ -716,6 +721,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
 	SHELL_CMD_ARG(hang, NULL, "Stall until the watchdog resets the MCU: app hang yes",
 		      cmd_app_hang, 2, 0),
 	SHELL_CMD(jitter, &jitter_cmds, "how well Linux keeps a schedule", NULL),
+	SHELL_CMD(scope, &scope_cmds, "a wave out of A0, sampled back in", NULL),
 	SHELL_SUBCMD_SET_END);
 SHELL_CMD_REGISTER(app, &app_cmds, "UNO Q application commands", NULL);
 

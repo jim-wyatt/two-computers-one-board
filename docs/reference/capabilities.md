@@ -46,17 +46,17 @@ The board file enables these. The SoC has more (see
 | `rtc` | Real-time clock on the LSE crystal | `&rtc` `okay` | No | Maybe |
 | `iwdg` | Independent watchdog, `watchdog0` alias | `&iwdg` `okay` | **No**: the MCU's watchdog is unclaimed | **Yes**: [#161](https://github.com/jim-wyatt/two-computers-one-board/issues/161) |
 | `flash0` | 2 MB; partitions `mcuboot` 64K, `image-0` and `image-1` 416K each, `storage` 128K | `&flash0` partitions in `arduino_uno_q.dts` | **Yes**: MCUboot slots and FOTA ([`fota.py`](../../python/unoq/fota.py)); `storage` holds one byte, the panel orientation (NVS) | No |
-| `gpdma1` | General-purpose DMA controller | `&gpdma1` `okay` in `arduino_uno_q.dts` | No | **Yes**: [#159](https://github.com/jim-wyatt/two-computers-one-board/issues/159) |
+| `gpdma1` | General-purpose DMA controller | `&gpdma1` `okay` in `arduino_uno_q.dts` | **Yes**: channels 14 and 15, for `app scope` | **Yes**: [#159](https://github.com/jim-wyatt/two-computers-one-board/issues/159) |
 
 ### Analog
 
 | Item | What it is | Evidence | Used today | Demo |
 |---|---|---|---|---|
-| `adc1` | 14-bit ADC; channels 9, 10, 11, 12, 2, 1 on PA4, PA5, PA6, PA7, PC1, PC0 (header A0..A5) | `&adc1` channels, `arduino_r3_connector.dtsi` | Only its internal channel, for the die temperature | **Yes**: [#157](https://github.com/jim-wyatt/two-computers-one-board/issues/157), [#159](https://github.com/jim-wyatt/two-computers-one-board/issues/159) |
+| `adc1` | 14-bit ADC; channels 9, 10, 11, 12, 2, 1 on PA4, PA5, PA6, PA7, PC1, PC0 (header A0..A5) | `&adc1` channels, `arduino_r3_connector.dtsi` | **Yes**: its internal channel for the die temperature, and channel 9 for `app scope` | **Yes**: [#157](https://github.com/jim-wyatt/two-computers-one-board/issues/157), [#159](https://github.com/jim-wyatt/two-computers-one-board/issues/159) |
 | `die_temp` | The STM32's internal temperature sensor, read through `adc1` | `&die_temp` `okay`, `CONFIG_STM32_TEMP=y` | **Yes**: `app temp`, `MCU.die_temp()` | **Yes**: [#157](https://github.com/jim-wyatt/two-computers-one-board/issues/157), [#162](https://github.com/jim-wyatt/two-computers-one-board/issues/162) |
 | `vref1` | Internal reference voltage sensor | `&vref1` `okay`, alias `volt-sensor0` | No: `CONFIG_STM32_VREF=n` | **Yes**: [#157](https://github.com/jim-wyatt/two-computers-one-board/issues/157) |
 | `adc4`, `vbat4` | Second ADC, and the battery-voltage sensor it serves | `&adc4`, `&vbat4`, alias `volt-sensor1` | **Switched off** by the project overlay: its bring-up waits with no timeout, and nothing reads it | No |
-| `dac1` | Two DAC outputs, on PA4 and PA5: the same pins as A0 and A1 | `&dac1` `pinctrl-0 = <&dac1_out1_pa4 &dac1_out2_pa5>` | No | **Yes**: [#159](https://github.com/jim-wyatt/two-computers-one-board/issues/159) |
+| `dac1` | Two DAC outputs, on PA4 and PA5: the same pins as A0 and A1 | `&dac1` `pinctrl-0 = <&dac1_out1_pa4 &dac1_out2_pa5>` | **Yes**: output 1, for `app scope` | **Yes**: [#159](https://github.com/jim-wyatt/two-computers-one-board/issues/159) |
 
 PA4 being both `dac1` output 1 and `adc1` channel 9 is worth pointing out: the
 MCU can sample its own analog output with no wire at all.
