@@ -18,6 +18,25 @@ The rule everything below follows:
 > you did not already have. Anything else is decoration that costs you attention
 > every time you glance at the board.
 
+> [!NOTE]
+> **In this chapter**
+>
+> - why seven entries in `/sys/class/leds/` are two LEDs, and where the
+>   other two are
+> - what each of the four lights was chosen to say, and the two designs that
+>   were thrown away
+> - why "healthy" must be a lit light and not a dark one
+> - why color alone was not enough, and what rhythm adds
+> - the bug that taught the rule: an indicator that samples once is a memory
+>
+> **You need:** [The Linux side](the-linux-side.md) for sysfs and systemd,
+> and [Updating safely](updating-safely.md) for the unconfirmed-image state
+> LED 3 shows. The Try it stops and starts the demo, which is the point:
+> watch LED 4 notice.
+>
+> This is a long chapter because it is really about **designing an
+> indicator**, and the design is the argument. Each section is one decision.
+
 ## Counting them is the first surprise
 
 Ask Linux what LEDs it has:
@@ -122,9 +141,10 @@ unit needs a human now.
 A dark LED cannot distinguish "nothing is wrong" from "the thing that checks
 whether anything is wrong is not running". Those need very different responses,
 so healthy is a *color*, not an absence: a lit, steady light. The service that
-drives these has `Restart=always` and an `ExecStopPost` that turns them off —
-so if the checker dies, the board goes dark rather than staying confidently
-green.
+drives these has `Restart=always` (systemd starts it again whenever it exits)
+and an `ExecStopPost` that turns them off (a command systemd runs after the
+service stops, however it stopped) — so if the checker dies, the board goes
+dark rather than staying confidently green.
 
 ## The two that got thrown away
 
@@ -289,7 +309,23 @@ What each light means, from the board itself:
 ~/two-computers-one-board/status/leds.sh explain
 ```
 
-Learn them by watching them cycle:
+```
+Four RGB LEDs in a row, at the end of the board opposite the USB-C port. From
+the board's edge inwards: LED 4, LED 3, LED 2, LED 1. Linux drives LED 1 and
+LED 2, the two furthest from the edge; LED 3 and LED 4 belong to the STM32.
+
+Each state has a rhythm as well as a color, and the rhythm is enough by
+itself - you do not need to tell red from green to read these:
+
+  steady       fine
+  slow blink   degraded, or in progress      (once every two seconds)
+  fast blink   a fault that needs a human    (twice a second)
+  dark         nothing is driving the LED - the checker is not running
+...
+```
+
+It goes on to list every state of every LED, which is this chapter's tables
+in the board's own words. Learn them by watching them cycle:
 
 ```bash
 sudo ~/two-computers-one-board/status/leds.sh test
@@ -383,6 +419,25 @@ should be able to say which state each LED is in from its rhythm alone.
    states can be told apart without telling red from green.
 
 </details>
+
+## What to remember
+
+- The rule: **an indicator earns its place only if a change in it tells you
+  something you did not know.** Blinking on every message fails it; so does
+  a light wired to a trigger that never fires.
+- `/sys/class/leds/` lists **color channels, not LEDs**. Two RGB packages
+  belong to Linux; the other two belong to the MCU.
+- **Healthy is a lit, steady light**, never dark. Dark means "nothing is
+  driving this", and `ExecStopPost` makes sure a dead checker looks dark.
+- Each light reports something **only its chip can know**: LED 3 the
+  firmware's confirmed state, LED 4 whether Linux has gone quiet — which
+  Linux cannot report about itself.
+- **Rhythm is a second channel.** Steady, slow, fast: readable without
+  telling red from green. The rhythm belongs to the state, so the rule
+  still holds.
+- **An indicator that samples once is a memory, not an instrument.**
+  Everything here re-samples, and reads back what the kernel is doing rather
+  than remembering what it last set.
 
 Next: [Trial, confirm, roll back](trial-confirm-roll-back.md) — the pattern
 behind LED 2's two slow blinks, at every layer of the board.
