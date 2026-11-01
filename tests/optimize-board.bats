@@ -9,10 +9,12 @@
 # upgrade is `upgrade`, never one that removes packages, it keeps the board's
 # config files, and Arduino's audio package is pinned before it runs. The
 # image list is written before the images are deleted. A board that asked to
-# keep Bluetooth, or its images, keeps them.
+# keep Bluetooth, or its images, keeps them. The CPU governor it sets is one
+# every policy offers, and one it was not told to leave to the kernel.
 #
-# The board's /etc is under UNOQ_ROOT and apt's cache under
-# UNOQ_APT_CACHE_DIR; everything else it changes is a command, stubbed.
+# The board's /etc and the cpufreq policies in its /sys are under UNOQ_ROOT,
+# and apt's cache under UNOQ_APT_CACHE_DIR; everything else it changes is a
+# command, stubbed.
 #
 # What this cannot show: that the board boots to a login prompt afterwards, or
 # that the upgrade leaves it bootable. That is the board's job.
@@ -32,6 +34,7 @@ setup() {
   export UNOQ_APT_CACHE_DIR="$BATS_TEST_TMPDIR/var/cache/apt"
   export UNOQ_RUN_DIR="$BATS_TEST_TMPDIR/run"
   export UNOQ_IN_BOOTSTRAP=1
+  unset UNOQ_CPU_GOVERNOR
   mkdir -p "$UNOQ_APT_CACHE_DIR/archives" "$UNOQ_RUN_DIR"
   UNOQ_USER="$(id -un)"
   export UNOQ_USER
@@ -41,9 +44,20 @@ setup() {
   PIN="$UNOQ_ROOT/etc/apt/preferences.d/arduino-alsa-ucm-conf.pref"
   SPI_RULE="$UNOQ_ROOT/etc/udev/rules.d/91-spidev-local.rules"
   PYDEV="python$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')-dev"
+  CPUFREQ="$UNOQ_ROOT/sys/devices/system/cpu/cpufreq"
+  GOV_CONF="$UNOQ_ROOT/etc/tmpfiles.d/unoq-cpufreq.conf"
   export PIN
 
   stub udevadm
+  # systemd-tmpfiles: what --create does with a `w` line, under UNOQ_ROOT. The
+  # glob is left unquoted on purpose, to expand the way tmpfiles expands it.
+  stub_body systemd-tmpfiles <<'SH'
+[ "$1" = --create ] || exit 0
+while read -r type path _ _ _ _ arg; do
+  [ "$type" = w ] || continue
+  for f in "$UNOQ_ROOT"$path; do [ -e "$f" ] && printf '%s' "$arg" >"$f"; done
+done <"$2"
+SH
   stub_body id <<'SH'
 case "${1:-}" in
   -u) echo 0 ;;
@@ -144,6 +158,15 @@ stock_board() {
   printf '%s\n' "ghcr.io/arduino/app-bricks/python-base:0.6.4" \
     "ghcr.io/arduino/app-bricks/ei-models-runner:0.6.4" >"$FLAGS/images"
   : >"$FLAGS/group-gpiod"
+  cpufreq_policy policy0
+}
+
+# cpufreq_policy <name> [governors] - a policy dir as the kernel shows it, on
+# the kernel's default governor.
+cpufreq_policy() {
+  mkdir -p "$CPUFREQ/$1"
+  echo "${2:-ondemand userspace performance schedutil} " >"$CPUFREQ/$1/scaling_available_governors"
+  echo schedutil >"$CPUFREQ/$1/scaling_governor"
 }
 
 # revert <step heading> - the REVERT comment above that part of the step, as
@@ -240,6 +263,28 @@ revert() {
     ghcr.io/arduino/app-bricks/ei-models-runner:0.6.4)" ]
 }
 
+@test "a stock board is set to ondemand now, and at every boot" {
+  # Two policies, so the one glob line is seen to reach both.
+  stock_board
+  cpufreq_policy policy4
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  grep -qx 'w /sys/devices/system/cpu/cpufreq/policy\*/scaling_governor - - - - ondemand' "$GOV_CONF"
+  ran "systemd-tmpfiles --create $GOV_CONF"
+  [ "$(cat "$CPUFREQ/policy0/scaling_governor")" = ondemand ]
+  [ "$(cat "$CPUFREQ/policy4/scaling_governor")" = ondemand ]
+  [[ "$output" == *"policy0 now reads ondemand"* ]]
+  [[ "$output" == *"policy4 now reads ondemand"* ]]
+}
+
+@test "a governor that does not take is said so" {
+  stock_board
+  stub systemd-tmpfiles
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"policy0 reads 'schedutil', not ondemand"* ]]
+}
+
 # --- the second run ---------------------------------------------------------
 
 @test "a second run changes nothing" {
@@ -252,7 +297,7 @@ revert() {
   [[ "$output" == *"all packages already current"* ]]
   refute ran_like '^apt-get (upgrade|install)'
   refute ran_like '^systemctl (disable|mask|set-default)'
-  refute ran_like '^(groupadd|usermod|udevadm)'
+  refute ran_like '^(groupadd|usermod|udevadm|systemd-tmpfiles)'
 }
 
 # --- what it can be told to leave -------------------------------------------
@@ -300,6 +345,69 @@ revert() {
   [ "$status" -eq 0 ]
   refute ran "docker image prune -af"
   [ -s "$FLAGS/images" ]
+}
+
+@test "UNOQ_CPU_GOVERNOR=kernel leaves the governor to the kernel, and removes nothing" {
+  stock_board
+  UNOQ_CPU_GOVERNOR=kernel run "$STEP"
+  [ "$status" -eq 0 ]
+  [ ! -e "$GOV_CONF" ]
+  refute ran_like '^systemd-tmpfiles'
+  [ "$(cat "$CPUFREQ/policy0/scaling_governor")" = schedutil ]
+  [[ "$output" == *"left to the kernel (UNOQ_CPU_GOVERNOR=kernel)"* ]]
+  # A file an earlier run wrote is the REVERT line's to remove, not this.
+  run "$STEP"
+  UNOQ_CPU_GOVERNOR='' run "$STEP"
+  [ "$status" -eq 0 ]
+  [ -e "$GOV_CONF" ]
+}
+
+@test "UNOQ_CPU_GOVERNOR=performance writes performance" {
+  stock_board
+  UNOQ_CPU_GOVERNOR=performance run "$STEP"
+  [ "$status" -eq 0 ]
+  grep -q ' performance$' "$GOV_CONF"
+  [ "$(cat "$CPUFREQ/policy0/scaling_governor")" = performance ]
+}
+
+@test "a governor the kernel does not offer fails before anything changes" {
+  # powersave is not built into this kernel, so not offered. Caught at the
+  # top, not in its step: nothing else in the run has happened yet either.
+  stock_board
+  UNOQ_CPU_GOVERNOR=powersave run "$STEP"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"UNOQ_CPU_GOVERNOR=powersave is not offered by policy0"* ]]
+  [ ! -e "$GOV_CONF" ]
+  [ ! -e "$PIN" ]
+  refute ran_like '^(systemd-tmpfiles|apt-get|systemctl (set-default|disable|mask))'
+}
+
+@test "two governors at once are not one the kernel offers" {
+  # Each word is offered, and in that order, so the list contains the pair as
+  # it stands. But the line would write both, which the kernel refuses.
+  stock_board
+  UNOQ_CPU_GOVERNOR="userspace performance" run "$STEP"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"is not offered by policy0"* ]]
+  [ ! -e "$GOV_CONF" ]
+}
+
+@test "a governor missing from one policy of two fails too" {
+  stock_board
+  cpufreq_policy policy4 "userspace performance schedutil"
+  run "$STEP"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"=ondemand is not offered by policy4 (it offers: userspace performance schedutil )"* ]]
+  [ ! -e "$GOV_CONF" ]
+}
+
+@test "a machine without cpufreq is left alone" {
+  stock_board
+  rm -r "$CPUFREQ"
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no cpufreq policies"* ]]
+  [ ! -e "$GOV_CONF" ]
 }
 
 # --- what it finds ----------------------------------------------------------
@@ -382,4 +490,16 @@ revert() {
   bash -c "$cmd"
   [ "$(cat "$FLAGS/default-target")" = graphical.target ]
   [ -e "$FLAGS/enabled-lightdm" ]
+}
+
+@test "the REVERT line for the governor removes the file and puts schedutil back" {
+  stock_board
+  run "$STEP"
+  [ "$(cat "$CPUFREQ/policy0/scaling_governor")" = ondemand ]
+  cmd="$(revert "CPU governor")"
+  [ -n "$cmd" ]
+  cmd="${cmd//\/etc/$UNOQ_ROOT/etc}"
+  bash -c "${cmd// \/sys\// $UNOQ_ROOT/sys/}"
+  [ ! -e "$GOV_CONF" ]
+  [ "$(cat "$CPUFREQ/policy0/scaling_governor")" = schedutil ]
 }

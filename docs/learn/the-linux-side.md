@@ -178,11 +178,12 @@ system state out of a file, and doing arithmetic on it. It never touched an LED.
 
 The kernel picks the cores' clock speed for you. The rule it uses is called the
 **governor**, and it is a file:
-`/sys/devices/system/cpu/cpufreq/policy0/scaling_governor`. This board boots
+`/sys/devices/system/cpu/cpufreq/policy0/scaling_governor`. The kernel boots
 on `schedutil`, which raises the clock when the cores get busy and drops it when
 they go quiet. `performance` holds it at the top; `ondemand` is an older way of
-doing what `schedutil` does. A faster clock finishes the work sooner, but it
-draws more current and makes more heat. On a board powered from a laptop's USB
+doing what `schedutil` does, and the one provisioning sets
+([why](../reference/mpu.md#the-choice-ondemand)). A faster clock finishes the
+work sooner, but it draws more current and makes more heat. On a board powered from a laptop's USB
 port, current is the budget, so which governor to use is a real choice.
 
 `unoq.heat` measures the choice. For each governor in turn it switches to it,
@@ -223,7 +224,7 @@ board, and note its reading against the CSV's `time` column (Unix seconds). That
 turns "hotter" into "this many milliamps more".
 
 When the tool ends, it puts back the governor that was there before it started,
-which on a fresh boot is `schedutil`. That includes Ctrl-C and a `kill`. Check
+which on a provisioned board is `ondemand`. That includes Ctrl-C and a `kill`. Check
 for yourself afterwards:
 
 ```bash

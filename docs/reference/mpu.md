@@ -107,7 +107,7 @@ microcontroller.
 from unoq import read_policies
 
 for p in read_policies():
-    print(p.name, p.cpus, p.governor, p.cur_khz)   # policy0 (0, 1, 2, 3) schedutil 2016000
+    print(p.name, p.cpus, p.governor, p.cur_khz)   # policy0 (0, 1, 2, 3) ondemand 864000
 ```
 
 `read_policies()` reads `/sys/devices/system/cpu/cpufreq/policy*/` and returns
@@ -124,7 +124,7 @@ What this board reports, read under kernel 7.0.0:
 |---|---|
 | Policies | one, `policy0`, clocking all four cores (`related_cpus` is `0 1 2 3`) |
 | Driver | `qcom-cpufreq-hw`, the SoC's own frequency hardware |
-| Governor | `schedutil`, the kernel's built-in default (`CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL`) |
+| Governor | `schedutil` as the kernel boots (`CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL`); `ondemand` once provisioned, see [the choice](#the-choice-ondemand) |
 | Available governors | `ondemand userspace performance schedutil` |
 | Frequencies (MHz) | 300, 614.4, 864, 1017.6, 1305.6, 1420.8, 1612.8, 1804.8, 2016 |
 | `stats/time_in_state` | present (`CONFIG_CPU_FREQ_STAT=y`) |
@@ -146,14 +146,82 @@ loop. That is the reasoning in the header of
 loop ([The bind guard](usb.md#the-bind-guard)). The guard recovers from a
 brownout; the governor is the lever left for making one less likely, because it
 sets how much current the cores can ask for at once. Whether a different one
-helps, and what it costs, is a measurement, not a guess — so nothing in this
-repository changes the governor yet.
+helps, and what it costs, is a measurement, not a guess.
 
-**Measuring it.** The procedure below needs a USB power meter inline between the
-computer's port and the board, and it switches the governor by hand. A governor
-set this way does not survive a reboot: the next boot is back on `schedutil`.
-Do it **over wifi**, not over the USB link, because the bind step drops the
-link.
+#### The choice: ondemand
+
+Provisioning sets the governor to **`ondemand`**, decided on 2026-11-01 from
+the heat and clock run in
+[#162](https://github.com/jim-wyatt/two-computers-one-board/issues/162)
+(`python -m unoq.heat`: 60 s at rest, then 120 s of spin load on all four
+cores, for each governor in turn, kernel 7.0.0):
+
+| governor | clock, rest | clock, load | `cpuss0` at rest, mean (max) | `cpuss0` under load, mean (max) | MCU die, load |
+|---|---|---|---|---|---|
+| `ondemand` | 852 MHz | 2016 MHz | 38.3 °C (40.4) | 54.7 °C (56.9) | 39.1 °C |
+| `performance` | 2016 MHz | 2016 MHz | 45.7 °C (48.8) | 55.8 °C (57.3) | 41.0 °C |
+| `schedutil` | 1587 MHz | 1952 MHz | 44.5 °C (45.7) | 56.4 °C (57.9) | 41.2 °C |
+
+Under a sustained load the three are the same: about full clock, with peaks
+within 1 °C of each other, so `ondemand` costs nothing when there is work to
+do. At rest it is the only one that comes well down, to a little over half the
+clock `schedutil` held, and it ran about 6 °C cooler than `schedutil` and 7 °C
+cooler than `performance`.
+
+What that run does not settle:
+
+- **The order was fixed**, `ondemand` first, and each governor rested before
+  its load. So `ondemand`'s rest was the only one with no load before it to
+  carry heat in from, which flatters its rest temperature; part of that 6 °C
+  may be the order. The clocks are the governors' own and do not depend on
+  it. A cleaner run would shuffle the order and rest for longer.
+- **The board was not truly idle**: an agent session was running on it.
+- **Current was not measured.** The case for `ondemand` rests on clock and
+  heat; a lower clock at rest should draw less, but nobody has put a USB meter
+  inline to show it, at rest or during a gadget bind. The procedure below is
+  how to.
+- **Short bursts were not measured.** The load was two minutes of spin, not a
+  program that wakes, works briefly and sleeps. How quickly each governor
+  raises the clock for that, and so the latency a waking program sees, is
+  untested; the [jitter measurements](../learn/jitter-measured.md) were
+  taken on `schedutil`.
+
+`provision/10-optimize-board.sh` writes the choice to
+`/etc/tmpfiles.d/unoq-cpufreq.conf`, which `systemd-tmpfiles-setup.service`
+applies at every boot, and applies it straight away with `systemd-tmpfiles
+--create`, then prints what each policy reads back. Under two comment lines, its one
+rule is:
+
+```text
+w /sys/devices/system/cpu/cpufreq/policy*/scaling_governor - - - - ondemand
+```
+
+`w` writes its argument to a file that exists, and `tmpfiles.d(5)` says its
+lines accept shell-style globs, so the one line reaches every policy the
+kernel has. Before the run changes anything, the step checks the governor
+against `scaling_available_governors` of every policy, and stops if one does
+not offer it. To choose another, or none:
+
+```bash
+sudo UNOQ_CPU_GOVERNOR=performance bash provision/10-optimize-board.sh
+sudo UNOQ_CPU_GOVERNOR=kernel bash provision/10-optimize-board.sh   # leave it to the kernel
+```
+
+`kernel` writes nothing, and removes nothing either. To take back a choice an
+earlier run made:
+
+```bash
+sudo rm /etc/tmpfiles.d/unoq-cpufreq.conf
+echo schedutil | sudo tee /sys/devices/system/cpu/cpufreq/policy*/scaling_governor   # or reboot
+```
+
+#### Measuring it
+
+The procedure below needs a USB power meter inline between the computer's port
+and the board, and it switches the governor by hand. A governor set this way
+does not survive a reboot: the next boot is back on the provisioned one
+(`ondemand`), or on `schedutil` on a board without the tmpfiles rule. Do it
+**over wifi**, not over the USB link, because the bind step drops the link.
 
 1. Log what the board is doing next to what the meter reads. `unoq-powerlog`
    appends a row every `--interval` seconds (default 5) to the CSV you name:
@@ -202,10 +270,12 @@ link.
         itself two minutes into a boot that stays up (`usb/bind-guard.sh
         status`).
 
-3. Put the default back:
+3. Put the board's governor back, or reboot. On a provisioned board that is
+   the tmpfiles rule again; on one without it, `schedutil`:
 
     ```bash
-    echo schedutil | sudo tee /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
+    sudo systemd-tmpfiles --create /etc/tmpfiles.d/unoq-cpufreq.conf
+    echo schedutil | sudo tee /sys/devices/system/cpu/cpufreq/policy0/scaling_governor   # no rule
     ```
 
 `userspace` is in the list too, but it holds whatever frequency it is given in

@@ -19,6 +19,25 @@ set -uo pipefail
 . "$(cd "$(dirname "$0")" && pwd)/lib.sh"
 need_root
 
+# --- UNOQ_CPU_GOVERNOR, checked before anything changes. --------------------
+# Its step is further down ("CPU governor", which says why ondemand), but a
+# typo is caught here: found there, it would stop the run after the apt
+# upgrade, with the steps below it not done. It has to be one word that every
+# cpufreq policy lists in scaling_available_governors.
+GOVERNOR="${UNOQ_CPU_GOVERNOR-ondemand}"
+CPUFREQ="$SYSROOT/sys/devices/system/cpu/cpufreq"
+POLICIES=()
+for p in "$CPUFREQ"/policy*; do [ -d "$p" ] && POLICIES+=("$p"); done
+if [ -n "$GOVERNOR" ] && [ "$GOVERNOR" != kernel ]; then
+  for p in "${POLICIES[@]}"; do
+    offered="$(cat "$p/scaling_available_governors" 2>/dev/null)"
+    found=0
+    for g in $offered; do [ "$g" = "$GOVERNOR" ] && found=1; done
+    [ "$found" = 1 ] ||
+      fail "UNOQ_CPU_GOVERNOR=$GOVERNOR is not offered by $(basename "$p") (it offers: ${offered:-nothing}) - use one of those, or kernel. Nothing was changed."
+  done
+fi
+
 echo "== Before =="
 free -h | sed -n 2p
 df -h / | sed -n 2p
@@ -202,6 +221,63 @@ fi
 step "python headers"
 PYVER="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 apt_install "python${PYVER}-dev"
+
+# --- CPU governor: ondemand, whose clock comes down at rest. ----------------
+# The kernel boots on schedutil (CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL).
+# Measured on this board (#162, 2026-11-01): under a full load on all four
+# cores every governor sits at about 2016 MHz, so the choice costs nothing
+# when there is work to do. At rest is where they differ: ondemand dropped to
+# ~852 MHz, where schedutil held ~1587 doing nothing, and the cores ran about
+# 6 degrees cooler. A board powered from a computer's USB 2 port has 500 mA
+# for four cores and an MCU, so a clock that comes down when the cores do is
+# the one to keep.
+#
+# What that run did not show, said plainly: the governors were tried in a
+# fixed order, ondemand first, so its rest was the only one with no load
+# before it to carry heat into, which flatters its temperature (the clocks are
+# the governors' own, and stand). And nobody measured current: the choice
+# rests on clock and heat, not on milliamps.
+#
+# A tmpfiles.d `w` line, not a unit of our own: systemd-tmpfiles-setup already
+# runs at every boot, and `w` writes only to a file that exists, which a sysfs
+# attribute either is or is not. tmpfiles.d(5) says `w` lines "accept
+# shell-style globs in place of normal path names", so one line over policy*
+# covers every policy the kernel has, today's one or a later kernel's several.
+# The governor was checked against every one of them at the top of this
+# script, before anything changed, rather than written at boot, where the
+# kernel would refuse it and nobody would see.
+#
+# UNOQ_CPU_GOVERNOR=kernel (or empty) leaves the kernel's choice alone. It
+# removes nothing: a file an earlier run wrote is undone by the line below.
+# REVERT: rm /etc/tmpfiles.d/unoq-cpufreq.conf &&
+#   echo schedutil | tee /sys/devices/system/cpu/cpufreq/policy*/scaling_governor
+# A reboot after the rm does the second half as well.
+step "CPU governor"
+if [ -z "$GOVERNOR" ] || [ "$GOVERNOR" = kernel ]; then
+  skip "left to the kernel (UNOQ_CPU_GOVERNOR=$GOVERNOR)"
+elif [ "${#POLICIES[@]}" -eq 0 ]; then
+  skip "no cpufreq policies under $CPUFREQ - nothing to set"
+else
+  TMPFILES_CONF="$SYSROOT/etc/tmpfiles.d/unoq-cpufreq.conf"
+  if write_file 0644 "$TMPFILES_CONF" <<CONF
+# Written by provision/10-optimize-board.sh: the CPU governor, set at boot.
+# UNOQ_CPU_GOVERNOR chooses it. Remove this file to leave it to the kernel.
+w /sys/devices/system/cpu/cpufreq/policy*/scaling_governor - - - - $GOVERNOR
+CONF
+  then
+    # Now, rather than at the next boot, through the same file the boot uses.
+    systemd-tmpfiles --create "$TMPFILES_CONF" ||
+      fail "systemd-tmpfiles --create $TMPFILES_CONF"
+    for p in "${POLICIES[@]}"; do
+      now="$(cat "$p/scaling_governor" 2>/dev/null)"
+      if [ "$now" = "$GOVERNOR" ]; then
+        echo "  $(basename "$p") now reads $now"
+      else
+        warn "$(basename "$p") reads '${now:-nothing}', not $GOVERNOR - check: cat ${p#"$SYSROOT"}/scaling_governor"
+      fi
+    done
+  fi
+fi
 
 # --- Docker images: the Arduino App framework's container runtime. ~2 GB. ---
 # These are pulled by the stock image and nothing here uses them: the Arduino
