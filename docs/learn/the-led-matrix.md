@@ -9,6 +9,19 @@ the answer explains why the job belongs on the microcontroller at all — and it
 is the clearest example in the whole project of a timing problem masquerading as
 a display problem.
 
+> [!NOTE]
+> **In this chapter**
+>
+> - how 11 pins drive 104 LEDs, and why that turns a picture into a schedule
+> - the number that proves the refresh cannot be Linux's job
+> - how a panel with only on and off shows eight brightnesses
+> - where the three jobs of "draw a bar chart" live, and why one of them is
+>   tested without the chip
+>
+> **You need:** [Two computers on one board](two-computers.md) for the
+> timing argument, and [How they talk](how-they-talk.md) for the Python
+> `MCU` class. Every Try it borrows the serial line from the demo.
+
 ## The problem: not enough pins
 
 The obvious way to control 104 LEDs is 104 wires. The chip does not have 104
@@ -22,12 +35,15 @@ steady image.
 
 So the matrix is never actually showing a picture. It is showing one LED at a
 time, extremely fast, and your eye assembles it. Photograph one with a fast
-shutter and you catch a single dot.
+shutter and you catch a single dot. It is time-slicing, the same trick a
+kernel uses to run many processes on one core — except that here a missed
+slice is not a slow program, it is a dark LED.
 
 This board goes further and uses **charlieplexing**, which exploits the fact that
 LEDs conduct in one direction only. With *n* pins you can address *n × (n − 1)*
 LEDs — 11 pins gets you 110, enough for 104 — by driving one pin high, one low,
-and leaving all the others floating so no current flows through them.
+and leaving all the others **floating**: switched to input, connected to
+nothing, so no current flows through them.
 
 The cost is that only one LED can be lit at any instant, so the refresh loop has
 to be quick and utterly regular.
@@ -264,6 +280,23 @@ long stroke dimmer than its short one.
    the panel as it was: it checks all eight rows before changing a pixel.
 
 </details>
+
+## What to remember
+
+- The panel lights **one LED at a time**, about 100,000 times a second, and
+  persistence of vision does the rest. **Charlieplexing** is why 11 pins are
+  enough for 104 LEDs.
+- That makes the display a **timing job**: a 2 ms hiccup is 200 missed
+  slots, and a visible hole in the picture. The MCU does it because it is
+  reliable, not because it is fast.
+- Brightness is **PWM**: level 3 of 7 means lit on three sweeps in seven.
+  Eight levels from a two-state LED, bought with timing.
+- A dark panel sweeps **zero** times. That is the driver saving power, not
+  the chip being stuck.
+- Three jobs, split by what is hard about each: **measure** (Linux, it has
+  the data), **rasterize** (MCU, pure arithmetic — testable without
+  hardware), **refresh** (MCU, 10 µs of slack). Keeping the arithmetic out
+  of the driver is what made it testable.
 
 Next: [Two clocks, one record](two-clocks-one-record.md) — the other
 direction: the microcontroller measures on its own clock, and Linux keeps the

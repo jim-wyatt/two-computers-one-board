@@ -15,6 +15,20 @@ raises, which any two machines sharing data have to answer: whose clock says
 when something happened, who remembers it until the other side asks, and how
 anyone notices a reading that never arrived.
 
+> [!NOTE]
+> **In this chapter**
+>
+> - why the chip that takes a sample should also be the one that stamps the
+>   time
+> - push versus pull, and why pulling loses nothing when Linux goes away
+> - how a sequence number turns a silent gap into a line in the file
+> - how one record can use two clocks, each for what it is good at
+>
+> **You need:** [The LED matrix](the-led-matrix.md), which is the same split
+> in the other direction, and [The microcontroller side](the-microcontroller-side.md)
+> for interrupts and threads. The Try it installs the temperature logger
+> **in place of** the CPU-bars demo; the last step puts the demo back.
+
 ## Why the microcontroller keeps the time
 
 Ask Linux to read a sensor once a second and it will, roughly. `sleep(1)`
@@ -24,10 +38,13 @@ adds up, and nothing in the readings shows it.
 
 The STM32 has no such problem. In
 [`mcu/app/src/templog.c`](https://github.com/jim-wyatt/two-computers-one-board/blob/main/mcu/app/src/templog.c)
-a hardware timer (`k_timer`) fires every 1000 ms. Its callback cannot read the
-sensor itself, because the read waits for an analog conversion and an
-interrupt must not wait, so it hands the work to a thread that does. Each
-sample is stamped with two numbers:
+a hardware timer (`k_timer`) fires every 1000 ms. Its callback runs as an
+interrupt, and it cannot read the sensor itself: the read waits for an
+analog-to-digital conversion to turn a voltage into a number, and an
+interrupt must not wait, because while it runs nothing else on the chip
+does. So it hands the work to a thread, as a **work item** — a job queued
+for later — and the thread does the read. Each sample is stamped with two
+numbers:
 
 - `seq`, counting up by one from 1 at boot, and
 - `ms`, the microcontroller's uptime when the sample was taken.
@@ -46,8 +63,9 @@ Linux side for a minute, to update it or because it crashed, and that
 minute's samples go out into a serial port nobody has open. They are gone, and
 nothing on either side knows.
 
-So the microcontroller keeps them. The samples go into a ring of 600: ten
-minutes at one a second. When it is full, the newest overwrites the oldest.
+So the microcontroller keeps them. The samples go into a **ring buffer** of
+600 — a fixed-size array used as a circle, where the newest entry overwrites
+the oldest: ten minutes at one a second.
 Linux asks, every ten seconds, for everything newer than the last sample it
 stored:
 
@@ -72,6 +90,8 @@ zero (`MCU.temp_log()` in
 A missing reading is easy to miss. A graph draws a straight line across it,
 and an average quietly leaves it out. This is what the sequence number is for:
 it is the one thing about a sample that is *predictable*. After 41 comes 42.
+(TCP numbers its bytes for the same reason: a receiver cannot notice what
+never arrived unless it knows what should have.)
 
 The daemon
 ([`python/unoq/templog.py`](https://github.com/jim-wyatt/two-computers-one-board/blob/main/python/unoq/templog.py))
@@ -212,6 +232,23 @@ what it costs.
    thread does the read.
 
 </details>
+
+## What to remember
+
+- **The chip that samples should stamp the time.** The MCU's timer fires
+  every second whatever Linux is doing; `sleep(1)` on Linux only promises
+  *at least* a second.
+- **Pull, do not push,** when the receiver might be away. The MCU keeps ten
+  minutes in a ring buffer and Linux asks for everything newer than it has.
+- **A sequence number makes absence visible.** A gap in the count becomes a
+  `gap` row; a count that starts again becomes `mcu-restart`; and every pull
+  re-reads the last stored sample to catch a restart the count alone would
+  hide.
+- **Two clocks, two jobs.** Linux supplies the date, once per pull; the
+  MCU's `ms` supplies the spacing between samples. Readings that were never
+  taken are never written.
+- Flush and **`fsync`** after every pull: a pulled cable then costs at most
+  one pull, and the ring covers even that.
 
 Next: [Jitter, measured](jitter-measured.md) — how late Linux really is,
 timed by the microcontroller.

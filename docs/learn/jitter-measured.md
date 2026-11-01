@@ -15,6 +15,20 @@ every 20 ms, exactly on schedule, for 30 seconds. Both sides write down how
 far from the schedule each one was. Then it does the same again with every
 core of the Linux side kept busy.
 
+> [!NOTE]
+> **In this chapter**
+>
+> - what jitter is, and why Linux has it and a hardware timer does not
+> - how to read a timing histogram: the middle, the tail, and why the tail
+>   is the number that matters
+> - why "sleep for a period" drifts and "sleep until a deadline" does not
+> - why a second, independent clock is what makes a measurement believable
+>
+> **You need:** [Two computers on one board](two-computers.md) for the claim
+> this chapter tests, and [Two clocks, one record](two-clocks-one-record.md)
+> for why the MCU's clock is the trustworthy one. The Try it borrows the
+> serial line from the demo; the optional last step needs one jumper wire.
+
 ## Why Linux cannot promise, and the microcontroller can
 
 When a Linux program asks to be woken in 20 ms, the kernel puts it on a list.
@@ -37,8 +51,11 @@ it was meant to.
 
 ## Three views of one schedule
 
-`unoq-jitter` prints three histograms side by side, in the same bins (±50 µs
-out to ±5000 µs and beyond). Each column answers a different question.
+`unoq-jitter` prints three **histograms** side by side: for each of a set of
+ranges, called **bins**, how many measurements fell into it. The bins run
+from ±50 µs out to ±5000 µs and beyond, the same for all three columns, so
+they can be read against each other. Each column answers a different
+question.
 
 - **Linux, late.** Linux's own view of itself. For each tick, the tool reads
   `CLOCK_MONOTONIC` just before writing the line and records how long after
@@ -128,7 +145,9 @@ three times as far. Twelve ticks under load were more than 5 ms late; idle,
 none were. This is the shape to remember about a general-purpose operating
 system: the average is fine, and the average is not what breaks things. A
 motor step or an audio sample that is 14.8 ms late is a fault, however many
-others were on time.
+others were on time. (Web services report their slowest one percent of
+requests, the *p99*, for the same reason: the median hides exactly the
+cases that hurt.)
 
 **Nothing was missed.** A miss means a whole 20 ms period late, and even the
 worst tick, at 14.8 ms, did not get that far. Absolute deadlines also meant
@@ -266,6 +285,25 @@ and the timers are in the [MCU reference](../reference/mcu.md#jitter).
    nothing scheduled in between, so nothing on the Linux side can delay it.
 
 </details>
+
+## What to remember
+
+- **Jitter** is how far each event lands from where it was meant to be.
+  Linux's comes from the scheduler: a wake-up is never early, usually a
+  little late, and now and then a lot late.
+- **Read a timing histogram in two parts.** Load barely moves the middle
+  (most ticks within 100 µs either way) and stretches the tail (worst case
+  4.4 ms idle, 14.8 ms loaded). The tail is what a real-time job cares
+  about.
+- **Sleep until a deadline, not for a period.** `start + k × period` means a
+  late tick is one late tick; `sleep(period)` in a loop adds every delay to
+  every tick after it. Use a monotonic clock so the deadline cannot move.
+- **An independent clock makes the measurement honest.** The MCU's TIM5
+  saw the same outliers Linux reported, so they are real and they happen
+  where Linux says.
+- **Hardware timing has no tail.** Thirty thousand PWM periods, every one
+  within 0.05 µs, with four cores flat out. Nothing in that path is
+  scheduled.
 
 Next: [Updating safely](updating-safely.md) — replacing the firmware on a
 running board without being able to visit it.
