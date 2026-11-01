@@ -303,7 +303,7 @@ fi
 [ "$WITH_BOOT_COUNTING" = 1 ] &&
   echo "  - boot every new kernel on trial, falling back to the previous one by itself (--with-boot-counting)"
 [ "$WITH_RESCUE_ENTRY" = 1 ] &&
-  echo "  - add a rescue boot entry to the EFI partition, below every kernel; the default is not changed (--with-rescue-entry; never booted on a board yet)"
+  echo "  - add a rescue boot entry to the EFI partition, below every kernel; the default is not changed (--with-rescue-entry)"
 [ "$WITH_ROOT_SLOTS" = 1 ] &&
   echo "  - install root's copy of unoq-root, which plans two root filesystems; nothing on the disk is changed, and the split is a separate step by hand (--with-root-slots)"
 echo
