@@ -147,20 +147,22 @@ valuable than anything else here.
 6. [From source to chip](from-source-to-chip.md)
 7. [How the build knows your hardware](how-the-build-knows-your-hardware.md)
 8. [The LED matrix](the-led-matrix.md)
+9. [Two clocks, one record](two-clocks-one-record.md)
+10. [Jitter, measured](jitter-measured.md)
 
 **Living with real hardware**
 
-9. [Updating safely](updating-safely.md)
-10. [One cable, many devices](one-cable-many-devices.md)
-11. [Four lights that tell the truth](four-lights.md)
-12. [Trial, confirm, roll back](trial-confirm-roll-back.md)
-13. [Debugging without a screen](debugging-without-a-screen.md)
+11. [Updating safely](updating-safely.md)
+12. [One cable, many devices](one-cable-many-devices.md)
+13. [Four lights that tell the truth](four-lights.md)
+14. [Trial, confirm, roll back](trial-confirm-roll-back.md)
+15. [Debugging without a screen](debugging-without-a-screen.md)
 
 **Making it yours**
 
-14. [Knowing it works](knowing-it-works.md)
-15. [From factory to this](from-factory-to-this.md)
-16. [Make it yours](make-it-yours.md)
+16. [Knowing it works](knowing-it-works.md)
+17. [From factory to this](from-factory-to-this.md)
+18. [Make it yours](make-it-yours.md)
 
 Ready? The board has two computers on it, and they are more different than they
 look.
