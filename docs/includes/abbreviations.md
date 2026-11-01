@@ -51,3 +51,21 @@ This file is NOT in the nav and renders as nothing on its own.
 *[UEFI]: Unified Extensible Firmware Interface — the standard firmware interface a modern OS boots through
 *[USB]: Universal Serial Bus
 *[XBL]: eXtensible Boot Loader — the Qualcomm stage that configures the memory controller
+*[ACM]: Abstract Control Model — the USB serial-port profile, as in CDC-ACM
+*[ADC]: Analog-to-Digital Converter — hardware that turns a voltage into a number
+*[ANSI]: American National Standards Institute — here, the escape codes a terminal reads as color and cursor commands
+*[CSV]: Comma-Separated Values — a plain-text table, one row per line
+*[DDR]: Double Data Rate — the kind of RAM on the Linux side, which an early boot stage has to train before it can be used
+*[DNS]: Domain Name System — how a name becomes a network address
+*[EFI]: Extensible Firmware Interface — the firmware interface the board boots Linux through, and the small partition it reads boot entries from
+*[ELF]: Executable and Linkable Format — the file a compiler produces for a finished program
+*[eMMC]: embedded MultiMediaCard — the storage chip soldered to the board, which holds Linux
+*[GPU]: Graphics Processing Unit — the MPU's graphics core
+*[JSON]: JavaScript Object Notation — a text format for structured data
+*[mDNS]: multicast DNS — resolving `.local` names on the local network with no server to ask
+*[NTP]: Network Time Protocol — how Linux sets its wall clock from the network
+*[PWM]: Pulse-Width Modulation — a level expressed as a fraction of time switched on, too fast to see
+*[RGB]: Red, Green, Blue — the three elements inside one color LED
+*[SDK]: Software Development Kit — here the Zephyr SDK: the cross-compiler and the tools around it
+*[SSH]: Secure Shell — a terminal on another machine over the network, encrypted
+*[TLS]: Transport Layer Security — the encryption underneath HTTPS
