@@ -107,6 +107,17 @@ bootstrap() {
   [[ "$output" != *"FAILED"* ]]
 }
 
+@test "a VENTUNO Q stops at the preflight, before anything is built or flashed" {
+  export UNOQ_ROOT="$BATS_TEST_TMPDIR/sysroot"
+  mkdir -p "$UNOQ_ROOT/sys/firmware/devicetree/base"
+  printf 'arduino,monza\0' >"$UNOQ_ROOT/sys/firmware/devicetree/base/compatible"
+  bootstrap
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAILED"*"VENTUNO Q"*"UNO Q only"* ]]
+  refute ran_like 'mcu/zbuild\.sh'
+  refute ran_like 'mcu/flash-all\.sh'
+}
+
 @test "the build gets the BOARD env.sh exported, not the devicetree's name" {
   # Every board bootstrapped once has a login shell that sourced env.sh. The
   # preflight's board check used to assign to BOARD, which overwrote this.
