@@ -637,22 +637,23 @@ The rescue boot also never runs `qbootctl`, so the Qualcomm slot is not marked g
 
 **Before you start**, check that your computer can talk link-local on the cable. Windows and macOS give the adapter a `169.254.x.y` address by themselves about a minute after no DHCP server answers. On Linux with NetworkManager, set that connection's IPv4 method to *Link-Local Only*, or add an address by hand: `sudo ip addr add 169.254.77.2/16 dev <the adapter>`. Log in with the key that logs you in to the board now: the rescue system has a copy of your `~/.ssh/authorized_keys` and takes no passwords.
 
-**The test.** `bootctl set-oneshot` cannot be used, because Linux cannot write U-Boot's EFI variables, so as in the boot-counting test above, `loader.conf`'s `default` is pointed at the test entry for one boot:
+**The test.** `bootctl set-oneshot` cannot be used, because Linux cannot write U-Boot's EFI variables. Nor can `loader.conf`'s `default` be pointed at the test entry: this systemd-boot leaves the try counter out of an entry's id, so a `default` that names `…-rescue-test+1.conf` matches nothing and the kernel boots, and one that names `…-rescue-test.conf` goes on matching the entry after its try is spent, booting the rescue system every time. The one-shot is made by **order** instead, with `loader.conf` left as it is:
 
 ```bash
 sudo bash ~/two-computers-one-board/provision/84-rescue-entry.sh   # if it is not installed yet
 cd /boot/efi/loader
 M="$(cat /etc/machine-id)"
 sudo sh -c "sed -e 's/^title .*/title rescue test/' \
+  -e 's/^sort-key .*/sort-key   aa-unoq-rescue-test/' \
   -e 's/^options .*/& panic=10 unoq.rescue_timeout=600/' \
   entries/$M-rescue.conf > entries/$M-rescue-test+1.conf"
-sudo cp loader.conf loader.conf.unoq-rescue-test.bak
-sudo sed -i "s/^default .*/default $M-rescue-test+1.conf/" loader.conf
-sudo bootctl list | grep -B1 -A3 'rescue test'   # it should say (default)
+sudo bootctl list | grep -B1 -A3 'rescue test'   # it should say (default), tries: 1 left
 sudo reboot
 ```
 
-The `default` line names the file **exactly, counter and all**, and that is what makes it a one-shot. systemd-boot matches `default` against each entry's file name, and at boot it renames the test entry to `…-rescue-test+0-1.conf` before starting it. On the boot after, `default` matches nothing, so systemd-boot takes the first entry in its own order, which is the kernel (`config_select_default_entry` in systemd's `src/boot/boot.c`). A pattern such as `…-rescue-test*` would go on matching the spent entry and boot the rescue system every time.
+The stock `default <machine-id>-*` picks the **first** entry in systemd-boot's order that matches it. With one try left and a sort key before the kernel's `debian`, the test entry is that first entry. systemd-boot spends the try before it starts the kernel, renaming the file to `…-rescue-test+0-1.conf`, and an entry with no tries left sorts after every other (`boot_entry_compare` in systemd's `src/boot/boot.c`). So on the boot after, the kernel is first again, whatever happened in between. Nothing names the test entry, so nothing can keep choosing it.
+
+Until the spent entry is removed, LED 2 blinks slow blue ([A new kernel that did not come up](#a-new-kernel-that-did-not-come-up)), which is what it is for.
 
 Then, from the computer, with the cable in the board's USB-C port:
 
@@ -676,12 +677,12 @@ A few minutes later, back on the board as usual:
 | No SSH, and the board came back on its own about ten minutes later | The rescue system booted, but the cable never worked. The likeliest causes are the unknowns it was built with: the USB controller not coming up as a device without the running system's help, or the Type-C controller's driver not loading early enough. Only the MPU's serial console (`/dev/ttyMSM0`) would show its messages. |
 | No SSH, and the board did not come back | A hang before the rescue system could time out. Power-cycle it; it boots the ordinary kernel. |
 
-`sudo ls /boot/efi/loader/entries` shows the test entry as `…-rescue-test+0-1.conf` in every case where the rescue system was started. Put things back as they were:
+`sudo ls /boot/efi/loader/entries` shows the test entry as `…-rescue-test+0-1.conf` in every case where the rescue system was started. Remove it, which also ends LED 2's slow blue:
 
 ```bash
-cd /boot/efi/loader
-sudo mv loader.conf.unoq-rescue-test.bak loader.conf
-sudo rm entries/*-rescue-test*.conf
+sudo rm /boot/efi/loader/entries/*-rescue-test*.conf
 ```
+
+Tried on 2026-11-01: SSH answered 5.5 s after power-on, from a Windows host, and the board came back on its kernel by itself.
 
 If you need to do that from inside the rescue system itself, the EFI partition is `mmcblk0p67`: `mkdir -p /mnt && mount -t vfat /dev/mmcblk0p67 /mnt`, then the same two commands in `/mnt/loader`, then `umount /mnt`.
