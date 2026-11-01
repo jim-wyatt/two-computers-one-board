@@ -8,6 +8,20 @@ Two computers, no shared memory. To cooperate they must send bytes down a wire.
 This page is about that wire, the two extra wires that make it usable, and why
 "just send the data" is harder than it sounds.
 
+> [!NOTE]
+> **In this chapter**
+>
+> - what a UART is, what a baud rate is, and what a mismatch looks like
+> - the two GPIO lines that make the link work, and the two silent failures
+>   you get when they are wrong
+> - why bytes are not messages, and the three ways every protocol turns one
+>   into the other
+> - when a message needs a reply, and when waiting for one is the wrong design
+>
+> **You need:** [The microcontroller side](the-microcontroller-side.md) —
+> you will type at the same shell again, in `tio`. Both Try it blocks borrow
+> the serial line from the demo.
+
 ## Serial, from the bottom
 
 The connection is a **UART** — a universal asynchronous receiver/transmitter.
@@ -30,8 +44,14 @@ On Linux the wire appears as a file:
 ls -l /dev/ttyHS1
 ```
 
-Reading that file gives you bytes the microcontroller sent. Writing to it sends
-bytes back. That really is the whole interface.
+```
+crw-rw---- 1 root dialout 237, 1 Nov  1 23:04 /dev/ttyHS1
+```
+
+The `c` at the front says it is a *character device*: a stream of bytes with
+no size, rather than a file with contents. `dialout` is the group allowed to
+use it. Reading that file gives you bytes the microcontroller sent. Writing
+to it sends bytes back. That really is the whole interface.
 
 ## The two wires nobody documents
 
@@ -64,6 +84,15 @@ eternally empty file. Both sides are working. No error is available anywhere.
 ```bash
 systemctl status unoq-link
 ```
+
+```
+● unoq-link.service - Arduino UNO Q MPU<->MCU link (BOOT0 + UART enable GPIOs)
+     Loaded: loaded (/etc/systemd/system/unoq-link.service; enabled; preset: enabled)
+     Active: active (exited) since Sun 2026-11-01 17:40:22 UTC; 5h 23min ago
+```
+
+`active (exited)` is the healthy answer: the unit set the two pins at boot
+and had nothing more to do.
 
 > **This is the single most useful thing on this page.** If the board ever looks
 > dead — flashed fine, running nothing; or connected fine, saying nothing —
@@ -98,6 +127,10 @@ Every serial protocol solves this somehow:
   many.
 - **Fixed size**: agree every message is exactly 8 bytes.
 
+If you have written a network program you have met this already. TCP hands
+you a stream of bytes with no message boundaries either, which is why HTTP
+puts a `Content-Length` header on a reply: the length prefix, one layer up.
+
 This project uses the first. The microcontroller runs a **shell**, the same one
 you typed at in [The microcontroller side](the-microcontroller-side.md), and the "protocol" is: send a command line,
 read text back until the prompt returns.
@@ -118,7 +151,9 @@ Reading a reply sounds like `read()` and done. In practice
 
 - **The shell echoes your command back**, so the first thing you read is what you
   just sent, not the answer.
-- **Output is wrapped in ANSI escape codes** for color, which must be stripped.
+- **Output is wrapped in ANSI escape codes** for color — the byte sequences a
+  terminal reads as "switch to green" rather than as text — which must be
+  stripped.
 - **Bytes dribble in.** One `read()` rarely returns a whole reply; you must keep
   reading until you see the prompt.
 - **The reply might never come.** If the MCU is reset, or held in the wrong boot
@@ -244,6 +279,27 @@ the reply tells you that you could not learn otherwise.
    wire and where a lost frame is replaced almost at once anyway.
 
 </details>
+
+## What to remember
+
+- The link is a **UART**: one wire each way, bytes one bit at a time, and no
+  clock wire, so both ends must agree on the **baud rate** (115200). A
+  mismatch gives garbage, not an error.
+- Two GPIO lines decide whether the link works at all: **BOOT0** (line 37)
+  chooses what the MCU runs at reset, and the **link enable** (line 70) opens
+  the path. Both fail *silently*. When the board looks dead, suspect them
+  first.
+- **Bytes are not messages.** Something has to say where a message ends — a
+  terminator, a length prefix or a fixed size. This project uses a newline
+  and the shell's prompt.
+- Reading a reply means coping with **echo, color codes, bytes that dribble
+  in, and replies that never come**. A fake serial port used in tests should
+  be just as awkward.
+- **Only one program can hold the wire.** The library refuses a second
+  opener on purpose, because two readers each getting fragments is worse.
+- Whether a message needs a reply is a **design decision**: at two frames a
+  second the reply is cheap and proves the other end is alive; at a thousand
+  it would cap the rate.
 
 Next: [From source to a running chip](from-source-to-chip.md) — turning source
 code into something the chip can run, and getting it there.

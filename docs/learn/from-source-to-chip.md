@@ -8,6 +8,21 @@ You have written C for the microcontroller. It is a text file on the Linux side.
 Getting it running on the other chip involves two steps that do not exist in
 ordinary programming: **cross-compiling** it, and **flashing** it.
 
+> [!NOTE]
+> **In this chapter**
+>
+> - what a cross-compiler is, and how to read the name of one
+> - why Zephyr is built with `west` rather than `make`, and the one error
+>   that trips everybody
+> - the two ways a program gets into the chip's flash, and which one works
+>   when the firmware is broken
+> - why the very first flash has to write two programs, not one
+>
+> **You need:** [The microcontroller side](the-microcontroller-side.md) and
+> [How they talk](how-they-talk.md). The Try it block builds and flashes
+> real firmware — about a minute to build — and needs two terminals on the
+> board.
+
 ## Cross-compiling
 
 When you run `gcc hello.c` on this board, you get a program for *this* chip:
@@ -19,11 +34,17 @@ function call even looks like. A program compiled for the Linux side is not
 merely slow on it — it is meaningless.
 
 So you need a second compiler: one that *runs* on this machine but *produces
-code for* the other. That is a **cross-compiler**, and by convention it is named
-after its target:
+code for* the other. That is a **cross-compiler**. Any time the machine you
+build on is not the kind of machine the program will run on — a phone app
+built on a laptop, say — this is what is happening. By convention a
+cross-compiler is named after its target:
 
 ```bash
 ~/zephyr-sdk-1.0.1/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc --version
+```
+
+```
+arm-zephyr-eabi-gcc (Zephyr SDK 1.0.1) 14.3.0
 ```
 
 Every part of the name describes the code it *produces*, not the machine it
@@ -69,7 +90,15 @@ cd ~/zephyrproject
 ./.venv/bin/west list | head
 ```
 
-The thing worth knowing: `west build` only works **from inside the workspace**.
+```
+manifest     zephyr                       HEAD                                     N/A
+cmsis        modules/hal/cmsis            512cc7e895e8491696b61f7ba8066b4a182569b8 https://github.com/zephyrproject-rtos/cmsis
+hal_st       modules/hal/st               7a792882847223c72944791e0c48eed6101e6569 https://github.com/zephyrproject-rtos/hal_st
+```
+
+Three of the lines, shortened: each is one project, where it lives in the
+workspace, and the exact commit the manifest pins it to. The thing worth
+knowing: `west build` only works **from inside the workspace**.
 It finds the workspace by looking at your current directory and walking upwards.
 Run it from somewhere else and you get
 
@@ -256,6 +285,23 @@ git -C ~/two-computers-one-board checkout mcu/app/src/main.c
    to. The first flash must write both, which is what `flash-all.sh` does.
 
 </details>
+
+## What to remember
+
+- A **cross-compiler** runs on one kind of machine and produces code for
+  another. Its name says what it produces: `arm-zephyr-eabi-gcc`.
+- `file` reads an ELF header and tells you which machine a program is for.
+  Two different machines' programs can sit in one directory.
+- **`west`** manages the many repositories Zephyr is made of, and `west build`
+  only works from inside the workspace. "Unknown command build" means "I
+  cannot see a workspace from here", not that west is broken. `zbuild`
+  wraps all of it.
+- Two routes into flash: **SWD** (Linux bit-bangs the debug wires; works
+  even when the firmware is broken) and **over the serial line** (needs a
+  working bootloader and firmware; convenient). `zflash` is the first.
+- The first flash must write **the bootloader and the application**
+  (`flash-all.sh`). An application alone on a blank chip sits at an address
+  nothing jumps to.
 
 Next: [How the build knows your hardware](how-the-build-knows-your-hardware.md)
 — how that build knew this board has an LED panel, a TIM17 and a console on

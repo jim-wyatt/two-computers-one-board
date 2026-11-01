@@ -14,14 +14,33 @@ Not by detecting any of it. A microcontroller cannot enumerate its own
 circuit board. It was **told**, at build time, by two separate systems that
 beginners constantly confuse with each other.
 
+> [!NOTE]
+> **In this chapter**
+>
+> - the two questions a build has to answer — what hardware exists, and
+>   what software to compile — and the separate system that answers each
+> - how to change what the board description says without editing the
+>   board's file
+> - why a feature you enabled can silently not be there
+> - where to look to see what the build actually decided
+>
+> **You need:** [From source to a running chip](from-source-to-chip.md): the
+> build directory it made is what you will read here. The Try it rebuilds
+> the firmware but flashes nothing, so the demo can keep running.
+>
+> If you have used feature flags or `#ifdef`, Kconfig will feel familiar: it
+> is compile-time flags with a dependency system. Devicetree has no everyday
+> equivalent; it is closer to a configuration file describing the circuit
+> board, turned into constants before the program is compiled.
+
 ## Two questions, two answers
 
 ```mermaid
 flowchart TD
   Q1["What hardware EXISTS,<br/>and how is it wired?"] --> DT["Devicetree<br/><small>.dts / .dtsi / .overlay</small>"]
   Q2["Which SOFTWARE should<br/>be compiled in?"] --> KC["Kconfig<br/><small>prj.conf</small>"]
-  DT --> GEN["devicetree_generated.h<br/><small>32,062 lines of macros</small>"]
-  KC --> AC["autoconf.h<br/><small>521 CONFIG_ symbols</small>"]
+  DT --> GEN["devicetree_generated.h<br/><small>~32,000 lines of macros</small>"]
+  KC --> AC["autoconf.h<br/><small>~550 CONFIG_ symbols</small>"]
   GEN --> BIN["zephyr.elf"]
   AC --> BIN
 ```
@@ -53,9 +72,14 @@ Zephyr already ships a description of the UNO Q. Inside the Zephyr workspace,
 do not change it — it is
 upstream's, it will be updated, and your board is not special enough to fork it.
 
-Instead you write an **overlay**: a small file that is layered on top. This
-project's is under sixty lines, and it is worth reading in full. It does three
-things, and at the very end switches one converter back off; its comment says why.
+Instead you write an **overlay**: a file that is layered on top. This
+project's is
+[`mcu/app/boards/arduino_uno_q.overlay`](https://github.com/jim-wyatt/two-computers-one-board/blob/main/mcu/app/boards/arduino_uno_q.overlay),
+about two hundred lines of which two-thirds are comments, and it is worth
+reading in full. The first three things it does are below. After them it
+switches one converter back off (its comment says why), and then declares
+what later chapters need: the SPI link, the three timers behind
+[Jitter, measured](jitter-measured.md), and an I²C sensor.
 
 ### 1. Pick which device plays which role
 
@@ -83,8 +107,8 @@ board which looks completely silent while working perfectly.
 ```
 
 Three words, and they matter more than they look. Devices in the SoC
-description exist but are **disabled** by default — on this build, 78 of them
-are, against 26 enabled. A disabled node is not compiled into the image, gets no
+description exist but are **disabled** by default — on one build of this
+firmware, 72 of them were, against 32 enabled. A disabled node is not compiled into the image, gets no
 driver instance, and its clock is never switched on.
 
 `status = "okay"` enables port F, which is what makes its clock run. After that
@@ -125,8 +149,9 @@ job:
 CONFIG_COUNTER=y
 ```
 
-Forty-three lines like that produce the 521 symbols in the final configuration.
-The gap between 43 and 521 is Kconfig's other half: **dependencies**. Ask for
+About fifty lines like that produce about 550 symbols in the final
+configuration; both numbers move as the code does. The gap between them is
+Kconfig's other half: **dependencies**. Ask for
 `CONFIG_SHELL=y` and you get the shell, its backends, its history buffer and a
 dozen things it needs, without listing them.
 
@@ -153,7 +178,8 @@ zbuild                            # if it is not already built
 cd ~/zephyrproject/build/zephyr
 ```
 
-**The final devicetree**, all layers merged into one 1,943-line file:
+**The final devicetree**, all layers merged into one file of about two
+thousand lines:
 
 ```bash
 grep -E 'zephyr,(code-partition|console|shell-uart)' zephyr.dts
@@ -172,7 +198,7 @@ layer won, which is a question that is otherwise genuinely hard to answer.
 **The final configuration**, all defaults and dependencies resolved:
 
 ```bash
-grep -c "^CONFIG" .config          # 521, from your 43
+grep -c "^CONFIG" .config          # about 550, from the ~50 in prj.conf
 grep "^CONFIG_COUNTER" .config
 ```
 
@@ -256,6 +282,24 @@ more before moving on. It should succeed.
    which layer won.
 
 </details>
+
+## What to remember
+
+- **Devicetree says what hardware exists** and how it is wired. **Kconfig
+  says what software is compiled in.** The board *has* a device; your
+  program *uses* one; both must agree, and "device not ready" is usually
+  them disagreeing.
+- You never edit the board's `.dts`. You write an **overlay** on top of it:
+  pick roles with `chosen`, turn a node on with `status = "okay"`, override
+  a property, add a child.
+- A node that exists is **not** a node that is enabled. Disabled nodes get no
+  driver and no clock.
+- A Kconfig option with an unmet dependency **silently becomes `n`**. If a
+  feature you enabled is missing, check `.config` before checking your code.
+- The build directory tells you what was decided: `zephyr.dts` with the
+  **file and line every property came from**, `.config` with every symbol
+  resolved, and `devicetree_generated.h` — the whole tree as constants, with
+  no parser on the chip.
 
 Next: [The LED matrix](the-led-matrix.md) — 104 LEDs, 11 pins, and a chip that
 has to lie to your eyes to make it work.
