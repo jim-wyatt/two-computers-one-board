@@ -159,22 +159,33 @@ The MCU column holds more than the scheduler: the serial driver, the
 it twice. Even so, 61% of intervals idle and 56% under load were within
 ±50 µs of 20 ms.
 
-## The column still to come
+## The third column
 
-The PWM column has not been measured yet. It needs one jumper wire from
-**D3 to D2**, and the first run had none. With the jumper on, the command is:
+The PWM column needs one jumper wire from **D3 to D2**: the MCU's own PWM out
+on one pin, its own timer capturing it on the other. Measured on 2026-11-01,
+same board, kernel and governor, with `unoq-jitter --seconds 30 --pwm 1000`:
 
-```bash
-unoq-jitter --seconds 30 --pwm 1000
-```
+| | idle | spin on 4 cores |
+|---|---|---|
+| PWM periods captured | 31284 | 31390 |
+| within ±50 µs of 1000 µs | **all of them** | **all of them** |
+| worst deviation | under 0.05 µs | under 0.05 µs |
+| Linux late, max (same run) | 7.5 ms | 19.8 ms |
+| Linux ticks over 5 ms late | 3 | 104 |
+| deadlines missed | 0 | 1 |
 
-**A prediction, not a measurement:** the PWM column should hold about 30000
-periods (1000 a second for 30 seconds), nearly all of them in the middle bin,
-within ±50 µs, idle or under load. Nothing in that path is scheduled; it is
-two timers on one clock, and four busy Linux cores cannot reach it. If the
-board agrees, the three columns side by side are the whole argument of this
-course in one table. If it does not, that is worth knowing too. Either way,
-this page will carry the real numbers once they exist.
+This is the whole argument of the course in one table. Nothing in the PWM's
+path is scheduled: it is two timers on one clock, and four busy Linux cores
+cannot reach it. The prediction this section used to carry said "nearly all
+in the middle bin"; the board did better than that, with not one period
+outside it and the worst a twentieth of a microsecond off.
+
+The Linux columns are worth a second look too. This load run was much worse
+than the one in [What the board said](#what-the-board-said): 104 ticks more
+than 5 ms late, not 12, a worst case of 19.8 ms, not 14.8, and for the first
+time a deadline missed outright. Same board, same command, a day apart. That
+is not the measurement failing; it is what "no promise" means. A scheduler
+under load has a distribution, and one run is one sample of its tail.
 
 ## Try it
 
@@ -200,7 +211,8 @@ the one above:
    is busy: a build, or `yes > /dev/null &` on two cores (`kill %1 %2`
    after). Is the tail more like idle or like spin?
 4. **Add the jumper,** if you have a wire, and run
-   `unoq-jitter --seconds 30 --pwm 1000`. Check the prediction above.
+   `unoq-jitter --seconds 30 --pwm 1000`. Compare your PWM column with
+   [the third column](#the-third-column).
 
 To get the demo back:
 
@@ -246,8 +258,8 @@ and the timers are in the [MCU reference](../reference/mcu.md#jitter).
    number stops at the moment before the write. The MCU's TIM5 is an
    independent clock that only sees when the line really arrived. When the
    two agree, the lateness is real and it happened in Linux's scheduler.
-5. **About 30000 periods, nearly all in the middle bin, idle or loaded** — a
-   prediction, until the board has been run with the jumper. The wave is
+5. **About 30000 periods, every one in the middle bin, idle or loaded**: on
+   this board 31284 and 31390, the worst under 0.05 µs off. The wave is
    made and measured by two timers on one 160 MHz clock, with no software and
    nothing scheduled in between, so nothing on the Linux side can delay it.
 
