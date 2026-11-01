@@ -10,6 +10,22 @@ has crashed. It either does the thing or it does not.
 This page is the most useful one in the course, because the habits here apply
 long after you have forgotten which GPIO does what.
 
+> [!NOTE]
+> **In this chapter**
+>
+> - the one question to ask before changing any code
+> - a ladder of five checks, cheapest first, from "is it running" to a real
+>   debugger
+> - the silent failures this board actually produces, and how many are
+>   configuration rather than code
+> - why a check that has never failed proves nothing — and two ways to make
+>   one fail on purpose: a locked serial port, and a watchdog
+>
+> **You need:** [How they talk](how-they-talk.md) for the two control lines
+> and [The Linux side](the-linux-side.md) for systemd and the journal. Both
+> Try it blocks borrow the serial line from the demo; the second one
+> deliberately hangs the microcontroller and lets it reset itself.
+
 ## The only question that matters
 
 When something does not work, the instinct is to change the code and try again.
@@ -26,7 +42,7 @@ Most tools below exist purely to answer that question.
 ## The ladder
 
 Work up it. Each rung costs more effort than the one before, so do not start at
-the top.
+the top. Check the plug before opening the case.
 
 ### 1. Is it running at all?
 
@@ -34,7 +50,15 @@ the top.
 systemctl status unoq-cpu-bars       # Linux side
 ```
 
-Then ask the microcontroller itself. The service above holds the serial port,
+```
+● unoq-cpu-bars.service - Arduino UNO Q host CPU load on the LED matrix
+     Loaded: loaded (/etc/systemd/system/unoq-cpu-bars.service; enabled; preset: enabled)
+     Active: active (running) since Sun 2026-11-01 17:40:22 UTC; 5h 32min ago
+```
+
+`active (running)` and a start time hours ago is a healthy answer. `failed`,
+or a start time seconds ago on a service that should have been up for hours,
+is the first clue. Then ask the microcontroller itself. The service above holds the serial port,
 so stop it first and start it again afterwards:
 
 ```bash
@@ -53,6 +77,17 @@ chip reset recently — which is itself a large clue.
 journalctl -u unoq-cpu-bars -n 50 --no-pager
 journalctl -b -1 -u unoq-usb-bind          # the PREVIOUS boot
 ```
+
+```
+-- Boot 5b66a06da4f94d949a83273ffa7285f9 --
+Nov 01 17:40:22 uno-q systemd[1]: Started unoq-cpu-bars.service - Arduino UNO Q host CPU load on the LED matrix.
+Nov 01 17:40:26 uno-q unoq-cpu-bars[457]: MCU last reset: brownout,pin
+```
+
+The last lines of the first command, on this board. The demo's first line
+after it starts says why the microcontroller last reset — here `brownout`,
+which is what power being applied looks like to the chip. You will see that
+line again at the end of this chapter, saying something else.
 
 That second one matters more than it looks. If something reset the board, the
 evidence is in the boot *before* the one you are in. `journalctl --list-boots`
@@ -119,6 +154,9 @@ the pattern is worth carrying with you:
 > **A check that cannot fail is indistinguishable from a check that always
 > passes.** You only find out by running it somewhere it should have failed.
 
+A unit test with no assertion in it is the same thing: it goes green, and it
+has checked nothing.
+
 The practical version, for your own code:
 
 - If a check has never failed, you do not know it works. Break something on
@@ -135,8 +173,9 @@ a trace.
 - **Counters.** The `sweeps` counter exists so Linux can prove the panel is being
   refreshed without seeing it. Counters cost almost nothing and answer "is this
   loop running?" definitively.
-- **A pin and a scope.** Toggle a spare GPIO at the start and end of a routine and
-  you can measure its duration exactly, without changing its timing much.
+- **A pin and a scope.** Toggle a spare GPIO at the start and end of a routine
+  and an oscilloscope — an instrument that draws voltage against time — shows
+  its duration exactly, without changing its timing much.
 - **An LED.** Crude, always available, needs no host.
 - **One status command.** `usb/status.sh` prints everything about the USB stack in
   a fixed order. When you cannot watch a failure happen, a consistent snapshot
@@ -210,8 +249,9 @@ flag takes an *advisory* lock (`flock`), which stops another program only if
 that program asks for the same lock. `tio`, `screen` and `cat` do not ask, and
 walk straight through it.
 
-The second is the `TIOCEXCL` ioctl, set on the port straight after opening it.
-That one the kernel enforces: any later `open()` of the port by an ordinary
+The second is an `ioctl` — a catch-all system call for device settings that
+`read` and `write` cannot express — called `TIOCEXCL`, set on the port
+straight after opening it. That one the kernel enforces: any later `open()` of the port by an ordinary
 user fails with "device busy". `open_port()` in `python/unoq/mcu.py` takes
 both, and turns either refusal into the `PortBusy` message you saw, naming the
 process that has the port open.
@@ -290,7 +330,8 @@ from the wrong place looks exactly like a good one, right up to the day it
 does not reset a hung board. If the panel had a frame on it when you hung the
 MCU, notice that it stayed lit: the refresh interrupt kept running, and a
 watchdog fed from the refresh alone would never have fired. That is why it is
-fed from the workqueue, and only when the refresh is moving too.
+fed from the workqueue — the thread that runs queued work items, which a
+locked scheduler stops — and only when the refresh is moving too.
 
 **The watchdog and firmware updates.** An update is uploaded with the watchdog
 armed, so the upload must keep feeding it: every flash erase it does is a few
@@ -325,6 +366,24 @@ walks through one. The reasoning is in
    what is available.
 
 </details>
+
+## What to remember
+
+- Before changing code, ask **how would I know if this were working?** If
+  you cannot answer, a change is a guess.
+- **Climb the ladder from the bottom**: is it running (`systemctl status`,
+  `uptime_ms`); what did it say (`journalctl`, and `-b -1` for the boot
+  before); talk to the chip (`tio`); `printk`; a real debugger over SWD.
+- Most silent failures on this board are **configuration, not code**: BOOT0,
+  the link enable, the baud rate, a port someone else holds, a missing
+  bootloader.
+- **A check that cannot fail is indistinguishable from one that always
+  passes.** Break something on purpose and watch it complain — the port
+  lock, the watchdog, your own tests.
+- **Make the invisible visible**: a counter, a spare pin, an LED, one status
+  command that always prints the same things in the same order.
+- Printing changes timing. A bug that vanishes when you add a print is a
+  **timing bug**, and the print is hiding it.
 
 Next: [catching all of that before the wire, so the board is not where you find
 out you were wrong](knowing-it-works.md).

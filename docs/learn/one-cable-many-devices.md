@@ -12,6 +12,21 @@ This is the part of the board that most surprises people, so it is worth
 understanding rather than just using.
 
 > [!NOTE]
+> **In this chapter**
+>
+> - host and device: the two roles in every USB connection, and why this
+>   board's port cannot be both at once
+> - how Linux pretends to be a USB device by making directories
+> - why you reach the board by name, and what goes wrong when two computers
+>   both insist on being the DHCP server
+> - why a cable change is a power cut, and the guard that keeps a brown-out
+>   from becoming a loop
+>
+> **You need:** [Updating safely](updating-safely.md) for the pattern the
+> bind guard repeats, and the USB link installed — the next note says how.
+> Nothing here touches the serial line.
+
+> [!NOTE]
 > **You need** the USB link for the commands on this page. A plain
 > `./bootstrap.sh` sets it up. If you set up with `--no-usb-gadget` or
 > `--minimal`, add it and nothing else with
@@ -33,6 +48,8 @@ addresses, and starts every transfer. Your laptop is a host. USB devices never
 speak unless spoken to.
 
 The **device** (or peripheral) answers. A mouse, a webcam, a memory stick.
+It is client and server, if you like — except that which end is which is
+fixed by the cable, not chosen by the software.
 
 Most chips can only be one or the other. This board's USB-C port can be
 **either** — and that is why plugging it into a computer changes what the board
@@ -58,7 +75,9 @@ ls /sys/kernel/config/usb_gadget/unoq/
 
 This is **configfs**: a filesystem where creating a directory creates an object
 in the kernel. Making a directory called `functions/ncm.usb0` does not create a
-folder — it creates a USB network function.
+folder — it creates a USB network function. If a directory is an object,
+`mkdir` is its constructor, and writing to the files inside it sets its
+fields.
 
 A gadget is assembled from:
 
@@ -141,8 +160,9 @@ plugged in, because it is rebooting as you do it. No session survives it. That
 is why `status.sh` exists: whatever went wrong has always already finished by the
 time you can look, so the post-mortem needs to be one command.
 
-**Binding can brown out the board.** Binding re-enumerates the port, which can
-draw enough current to drop the voltage and reset the board. Then it boots, the
+**Binding can brown out the board.** Binding makes the host **enumerate** the
+port again — notice a new device, ask it what it is, give it an address —
+which can draw enough current to drop the voltage and reset the board. Then it boots, the
 cable is still there, it binds again, and it browns out again — a loop with no
 window in which to log in and stop it.
 
@@ -162,10 +182,17 @@ new thing, fall back automatically if it does not confirm itself.**
 journalctl -b -u unoq-usb-bind -t unoq-bind-guard
 ```
 
+```
+attempts: 0/3  (/var/lib/unoq/usb-bind-attempts)
+Nov 01 17:40:43 uno-q unoq-bind-guard[688]: bind attempt 1/3
+```
+
 On a board that has never been plugged into a computer the first prints
 `attempts: 0/3` and the second prints nothing, because nothing has tried to
-bind. What to do when the guard has tripped is in
-[usb.md](../reference/usb.md#the-bind-guard).
+bind. The output above is from a board that *was* plugged in at boot and
+stayed up: the journal shows the attempt being counted, and the count is
+back at zero because the boot proved itself. What to do when the guard has
+tripped is in [usb.md](../reference/usb.md#the-bind-guard).
 
 ## The drive
 
@@ -219,6 +246,26 @@ Two details that took experimentation to get right:
    to fix it.
 
 </details>
+
+## What to remember
+
+- Every USB link has a **host** (powers, asks, assigns) and a **device**
+  (answers). This board's port can be either, **never both at once**, and
+  the cable decides — not software.
+- A **USB gadget** is Linux pretending to be a device, built in **configfs**
+  by making directories: functions, grouped into configurations, bound to a
+  controller by writing its name to `UDC`.
+- The board **asks for an address rather than handing them out**, because
+  Windows and macOS with sharing on will not take one. Different address
+  every time, so you reach it by **name** over mDNS; with no DHCP at all,
+  both ends fall back to **link-local**.
+- **The cable is the power.** Every cable change is a reboot, so the
+  post-mortem is one command: `usb/status.sh`.
+- Binding can **brown out** the board in a loop. The **bind guard** counts
+  boots that never proved healthy and gives up the gadget after three,
+  keeping the network — the same *try, confirm, roll back* as the firmware.
+- The drive is **one file**, exported read-only to the host and mounted
+  read-only for the web server, so the two cannot disagree.
 
 Next: [four LEDs, and the surprisingly hard question of what an indicator should
 actually say](four-lights.md).

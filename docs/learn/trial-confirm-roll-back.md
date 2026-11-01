@@ -19,6 +19,27 @@ The last part is the one that matters. Nothing has to *detect* a failure. A
 board that hangs, crashes or loses power before confirming simply does not
 confirm, and that is enough.
 
+If you have used a database, these are a transaction's three verbs — begin,
+commit, roll back — with one difference that is the whole design: **the
+default outcome is roll back.** A commit has to be earned.
+
+> [!NOTE]
+> **In this chapter**
+>
+> - the same three words at four layers: the MCU's firmware, the Linux
+>   kernel, the USB gadget and the boot entries
+> - how systemd-boot counts a new kernel's tries, and the trap the stock
+>   image fell into
+> - a rescue entry that needs no root filesystem, and the test of it that
+>   passed without running
+> - what each layer cannot catch
+>
+> **You need:** [Updating safely](updating-safely.md) for the first layer,
+> [One cable, many devices](one-cable-many-devices.md) for the bind guard,
+> and [Four lights that tell the truth](four-lights.md) for LED 2. The Try it
+> starts with commands that only read; booting the rescue entry is optional
+> and needs a hand free to unplug the board.
+
 ## Four layers, one idea
 
 | Layer | On trial | Confirmed when | If it never confirms | Shown on |
@@ -36,7 +57,8 @@ is the other three, and then the honest part: what each one cannot catch.
 ## The kernel: three tries, then the previous one
 
 Linux on this board starts from systemd-boot, which reads small text files on
-the EFI partition, one per kernel. With boot counting on, a new kernel's file
+the EFI partition — the small partition the firmware reads boot entries
+from — one per kernel. With boot counting on, a new kernel's file
 is named with a counter: `…-7.0.1+3.conf` has three tries. Before it starts
 the kernel, systemd-boot renames the file to spend one (`+2-1`: two left, one
 used). If the boot is later marked good, the counter is dropped from the name
@@ -110,8 +132,9 @@ Windows host to `root@169.254.77.1` answered 5.5 s after power-on, and its
 [    5.514508] unoq-rescue: usb0 has 169.254.77.1
 ```
 
-`reboot -f` from the rescue shell, and the board came back on its ordinary
-kernel by itself. The test entry's one try had been spent before the rescue
+(`dropbear` is the small SSH server the rescue system runs.) `reboot -f`
+from the rescue shell, and the board came back on its ordinary kernel by
+itself. The test entry's one try had been spent before the rescue
 system started, so the kernel was first in line again.
 
 ### The test that passed without running
@@ -287,6 +310,26 @@ board is back.
    unit, and a failed unit is what red is for.
 
 </details>
+
+## What to remember
+
+- **Trial, confirm, roll back by default.** Nothing has to detect a failure;
+  a thing that never confirms is undone by the next boot.
+- The same pattern at four layers: **MCUboot** for the firmware, **boot
+  counting** for a new kernel, the **bind guard** for the USB gadget, and the
+  **rescue entry** for when every kernel has run out of tries.
+- **Confirming too early is the same mistake everywhere.** The stock image
+  marked a boot good in its first second; the project waits for a finished
+  boot with `sshd` up — the thing you would have to visit the board to
+  restore.
+- **A safety test whose failure looks like its success has told you
+  nothing.** Check that the thing on trial actually ran.
+- A rolled-back board looks exactly like one that took its update, so
+  **LED 2 shows it**: slow yellow on trial, slow blue set aside, red when a
+  human must act.
+- Know the edges: a bad bootloader, a self-confirming bad image, a kernel
+  that breaks something the health check does not look at, and the closed
+  Qualcomm chain beneath it all — *look, do not touch*.
 
 Next: [when none of the lights help, and you have to find out what a program
 with no screen is actually doing](debugging-without-a-screen.md).

@@ -12,6 +12,29 @@ That is **FOTA**: firmware over the air, or in our case over a wire, but the
 principle is the same. It introduces a problem that does not exist when you have
 a debugger attached.
 
+> [!NOTE]
+> **In this chapter**
+>
+> - the failure a remote update can cause, and why it is different from a
+>   crash
+> - two slots and a probation period: how a bad update undoes itself with
+>   nobody watching
+> - what a bootloader does, in order, and what a signature check does and
+>   does not prove here
+> - who should confirm an update, and when — the question the rest of the
+>   course keeps returning to
+>
+> **You need:** [From source to a running chip](from-source-to-chip.md),
+> where `flash-all.sh` wrote the bootloader this chapter is about. The Try
+> it borrows the serial line from the demo for the whole exercise and
+> reboots the microcontroller several times; the LED matrix freezes while it
+> does.
+>
+> If you have deployed a web service, this is **blue/green deployment with
+> an automatic health check**: two copies, switch to the new one, switch
+> back unless it proves itself. The difference is that here the health check
+> and the switch-back have to run on a chip with no one watching.
+
 ## The problem
 
 You send new firmware. The device writes it and reboots into it. The new
@@ -178,6 +201,9 @@ print('confirmed')
 sudo systemctl start unoq-cpu-bars
 ```
 
+(`staged['hash']` is the image's fingerprint, the name MCUboot knows it by;
+`fota.test()` takes it to say *which* image to put on trial.)
+
 Now a reset leaves it in place. The probation has been passed.
 
 ## Who confirms, and when
@@ -244,6 +270,24 @@ keeps those wires available even though you rarely need them.
    this way; corrupt it and SWD is your only way back, which means a visit.
 
 </details>
+
+## What to remember
+
+- A remote update that breaks the thing it arrived over **bricks** the
+  device: it cannot boot far enough to be told anything.
+- **Two slots.** The running image is never overwritten by a download, so a
+  transfer that fails halfway loses nothing.
+- **Probation.** A new image boots as *pending*. If nothing confirms it, the
+  next reset — including the one its own crash causes — puts the old image
+  back. Nothing has to detect the failure.
+- **MCUboot** runs first, decides which slot to boot, finishes any swap a
+  power cut interrupted, and refuses unsigned images. On this board the
+  signature proves the image is intact, **not whose it is**.
+- **Confirm only after the device has proved it can do the job you would
+  have to visit it to restore.** Confirming in the first line of `main`
+  protects you from nothing.
+- MCUboot cannot save you from a bad bootloader or a bad image that
+  confirmed itself. **SWD is the way back** from those.
 
 Next: [how one USB cable becomes a network, a disk, and a power supply at
 once](one-cable-many-devices.md).
