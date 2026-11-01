@@ -306,15 +306,17 @@ Measured during the same run, on the 4 GB board:
 ### The 2 GB model
 
 The UNO Q is also sold with 2 GB of memory and 16 GB of storage. **Nobody has
-run this on one**, so here is what the numbers above say and do not say.
+run this on one**, so here is what the numbers above say and do not say. (The
+16 GB here is storage. The Arduino VENTUNO Q, which has 16 GB of memory, is a
+different board, and this project does not target it.)
 
 Memory is probably not the obstacle: the peak was 1.4 GB, for the few minutes
 the firmware compiles, and the board has compressed swap behind that. Expect
 that stage to be slower.
 
 Storage is the unknown. The setup needs 3.3 GB in the home directory, and on
-the 32 GB model that directory has an 8 GB partition to itself. How the 16 GB
-model is divided has not been looked at. Before you start, check:
+the 32 GB model that directory has an 8 GB partition to itself. How the 2 GB
+model divides its 16 GB has not been looked at. Before you start, check:
 
 ```bash
 df -h /home/arduino
