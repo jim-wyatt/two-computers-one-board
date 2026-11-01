@@ -44,6 +44,13 @@ StartLimitBurst=5
 Type=simple
 User=arduino
 Group=arduino
+# A login on ttyGS0 leaves it root:tty 0600: login takes the tty, and nothing
+# gives it back when the getty stops. Seen on the board: this unit, which runs
+# as arduino, then failed with "Permission denied" and restarted until its
+# limit. Put back what udev gives it (root:dialout 0660) before opening it.
+# The + runs these two as root; the relay itself still runs as arduino.
+ExecStartPre=+/bin/chgrp dialout /dev/ttyGS0
+ExecStartPre=+/bin/chmod 0660 /dev/ttyGS0
 ExecStart=/home/arduino/two-computers-one-board/.venv/bin/python -m unoq.mcuserial
 Restart=on-failure
 RestartSec=2

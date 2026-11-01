@@ -519,3 +519,19 @@ router_path() { # enabled|disabled - Arduino's watcher of /dev/ttyGS0 is there
   # The rest of the step still ran.
   [ -e "$FLAGS/handover-ran" ]
 }
+
+@test "the relay gives ttyGS0 back to dialout before it opens it" {
+  # A login on the port leaves it root:tty 0600, and the relay runs as the
+  # owner. Seen on the board: Permission denied, restarting to its limit.
+  acm_in_file
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  unit="$UNOQ_UNIT_DIR/unoq-mcu-serial.service"
+  grep -qx 'ExecStartPre=+/bin/chgrp dialout /dev/ttyGS0' "$unit"
+  grep -qx 'ExecStartPre=+/bin/chmod 0660 /dev/ttyGS0' "$unit"
+  # Before the relay itself, which still runs as the owner.
+  pre="$(grep -n '^ExecStartPre=+/bin/chmod' "$unit" | cut -d: -f1)"
+  start="$(grep -n '^ExecStart=' "$unit" | cut -d: -f1)"
+  [ "$pre" -lt "$start" ]
+  grep -qE "^User=$(id -un)\$" "$unit"
+}
