@@ -261,8 +261,17 @@ else
   if [ -L "$WANTS/$GETTY" ]; then
     skip "$GETTY already wanted by dev-ttyGS0.device"
   else
-    systemctl add-wants dev-ttyGS0.device "$GETTY" >/dev/null 2>&1 ||
+    # The link by hand, not `systemctl add-wants`. That refuses with "Unit
+    # dev-ttyGS0.device does not exist" until /dev/ttyGS0 does, and it only
+    # exists once a gadget with the port is bound: the first run on a board,
+    # the very run that has to add it, always failed. Seen on the board; the
+    # tests had stubbed systemctl and never knew.
+    TEMPLATE=/usr/lib/systemd/system/serial-getty@.service
+    [ -e "$SYSROOT$TEMPLATE" ] || fail "no $TEMPLATE on this board - cannot add a login on ttyGS0"
+    if ! mkdir -p "$WANTS" || ! ln -sfn "$TEMPLATE" "$WANTS/$GETTY"; then
       fail "could not make dev-ttyGS0.device want $GETTY"
+    fi
+    systemctl daemon-reload
     did "$GETTY starts whenever /dev/ttyGS0 appears"
   fi
   # Arduino's factory image watches the same device. arduino-router-serial.path
