@@ -6,9 +6,10 @@
 #   sudo bash ~/two-computers-one-board/provision/95-usb-gadget.sh
 #
 # Idempotent, and safe to run over SSH or from `adb shell` - see the last step
-# for what the second one takes. It does NOT change the USB role. On
-# this board it cannot - dwc3 is dr_mode="otg" with no writable role switch,
-# and the Type-C controller picks host or device from the CC lines. Installing
+# for what the second one takes. It does NOT change the USB role. dwc3 is
+# dr_mode="otg" and the Type-C controller picks host or device from the CC
+# lines; kernel 7.0.0 does expose a root-writable role switch, but nothing here
+# writes it, and doing so on a live cable would drop the link. Installing
 # this only arranges for a gadget to be bound IF a USB Device Controller shows
 # up, which happens when you plug the USB-C port into a computer.
 #

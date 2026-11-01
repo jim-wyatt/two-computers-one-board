@@ -284,20 +284,25 @@ from the new host becomes the sticky one.
 
 ---
 
-## You cannot switch the role from software
+## Do not switch the role from software
 
 This catches people who have done USB gadgets on a Raspberry Pi, where you
 write `dr_mode` or `echo device > .../role`. Here:
 
 | | |
 |---|---|
-| `/sys/class/usb_role/4e00000.usb-role-switch/role` | **does not exist** |
+| `/sys/class/usb_role/4e00000.usb-role-switch/role` | exists on kernel 7.0.0 (root-writable, reads `device` on a cable); absent on earlier kernels |
 | `/sys/class/typec/port0/data_role` | read-only |
 | dwc3 `mode` attribute | not exposed |
 
-The role switch registers without its `role` attribute because the driver does
-not set `allow_userspace_control`. The **Type-C controller** (`anx7625`) picks
-host or device from the CC lines when a cable is plugged in.
+On the kernels this page was first written against, the role switch registered
+without its `role` attribute, because the driver did not set
+`allow_userspace_control`. Kernel 7.0.0 has it, seen on 2026-11-01. Nothing in
+this project writes it, and writing it has not been tried here. The **Type-C
+controller** (`anx7625`) still picks host or device from the CC lines when a
+cable is plugged in, and the design below depends on that, not on the file.
+Writing `host` to it while the board is a device on the cable would drop that
+link.
 
 So the design here is event-driven, not boot-time:
 
