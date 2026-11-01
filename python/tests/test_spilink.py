@@ -33,6 +33,7 @@ from unoq.spilink import (
     MAX_PAYLOAD,
     NOP,
     RESPONSE,
+    SCOPE,
     STAT,
     TEMPLOG,
     XFER_LEN,
@@ -98,6 +99,12 @@ def firmware() -> dict[str, int]:
         "ERR_REQUEST",
         "ERR_RANGE",
         "ERR_UNAVAILABLE",
+        "ERR_STALE",
+        "SCOPE",
+        "SCOPE_REQ_LEN",
+        "SCOPE_HDR_LEN",
+        "SCOPE_SAMPLE_LEN",
+        "SCOPE_MAX",
         "TEMPLOG_REQ_LEN",
         "TEMPLOG_SINCE",
         "TEMPLOG_HDR_LEN",
@@ -121,6 +128,9 @@ def test_the_struct_formats_are_the_documented_sizes() -> None:
     assert struct.calcsize("<IQiB") == spilink.TEMPLOG_SAMPLE_LEN
     assert struct.calcsize("<BI") == spilink.TEMPLOG_REQ_LEN
     assert struct.calcsize("<BBI") == spilink.ERROR_LEN
+    assert struct.calcsize("<IIHHH") == spilink.SCOPE_HDR_LEN
+    assert struct.calcsize("<IH") == spilink.SCOPE_REQ_LEN
+    assert struct.calcsize("<H") == spilink.SCOPE_SAMPLE_LEN
 
 
 # --- frames -----------------------------------------------------------------
@@ -258,6 +268,31 @@ class FakeMCU:
         self.stat = [0, 0, 0, 0]
         self.closed = False
         self.templog_payload = b""
+        # SCOPE: (id, rate_mhz, samples), or None for no capture; and after
+        # how many SCOPE answers a new capture replaces it, if ever.
+        self.scope: tuple[int, int, tuple[int, ...]] | None = None
+        self.scope_replace_after: int | None = None
+        self.scope_answers = 0
+        self.scope_short = False  # answer with no samples, whatever is asked
+
+    def answer_scope(self, req: Frame) -> bytes:
+        def error(code: int, detail: int) -> bytes:
+            return encode(ERROR, req.seq, struct.pack("<BBI", code, SCOPE, detail))
+
+        if self.scope_answers == self.scope_replace_after and self.scope is not None:
+            self.scope = (self.scope[0] + 1, *self.scope[1:])
+        self.scope_answers += 1
+        if self.scope is None:
+            return error(spilink.ERR_UNAVAILABLE, 0)
+        id_, rate_mhz, samples = self.scope
+        want, offset = struct.unpack("<IH", req.payload)
+        if want not in (0, id_):
+            return error(spilink.ERR_STALE, id_)
+        if offset > len(samples):
+            return error(spilink.ERR_RANGE, len(samples))
+        part = () if self.scope_short else samples[offset : offset + spilink.SCOPE_MAX]
+        head = struct.pack("<IIHHH", id_, rate_mhz, len(samples), offset, len(part))
+        return encode(SCOPE | RESPONSE, req.seq, head + struct.pack(f"<{len(part)}H", *part))
 
     def answer(self, rx: bytes) -> bytes:
         try:
@@ -272,6 +307,8 @@ class FakeMCU:
             return encode(STAT | RESPONSE, req.seq, struct.pack("<IIII", *self.stat))
         if req.type == TEMPLOG:
             return encode(TEMPLOG | RESPONSE, req.seq, self.templog_payload)
+        if req.type == SCOPE:
+            return self.answer_scope(req)
         payload = req.payload[::-1] if self.echo_wrong and req.type == ECHO else req.payload
         return encode(req.type | RESPONSE, req.seq, payload)
 
@@ -571,3 +608,90 @@ def test_cli_reports_a_link_error(capsys: pytest.CaptureFixture[str]) -> None:
     rc, out = run(["templog", "--since", "9"], FakeMCU(refuse={TEMPLOG: spilink.ERR_RANGE}), capsys)
     assert rc == 1
     assert "spilink: MCU refused" in out
+
+
+# --- SCOPE ------------------------------------------------------------------
+
+BURST = tuple((i * 37) % 16384 for i in range(4096))
+
+
+def scope_mcu(samples: tuple[int, ...] = BURST, id_: int = 7) -> FakeMCU:
+    mcu = FakeMCU()
+    mcu.scope = (id_, 100_000_000, samples)
+    return mcu
+
+
+def test_scope_answer_decodes() -> None:
+    payload = struct.pack("<IIHHH", 3, 250_000_000, 100, 98, 2) + struct.pack("<HH", 5, 16383)
+    assert spilink.decode_scope(payload) == spilink.ScopeChunk(3, 250_000_000, 100, 98, (5, 16383))
+
+
+@pytest.mark.parametrize(
+    ("payload", "why"),
+    [
+        (b"\x00" * 13, "shorter than its header"),
+        (struct.pack("<IIHHH", 1, 1, 10, 0, 2) + b"\x00\x00", "for 2 samples"),
+    ],
+)
+def test_scope_answer_of_the_wrong_size_is_refused(payload: bytes, why: str) -> None:
+    with pytest.raises(FrameError, match=why):
+        spilink.decode_scope(payload)
+
+
+def test_scope_request_is_id_then_offset() -> None:
+    assert spilink.scope_request(0x01020304, 0x0506) == bytes.fromhex("040302010605")
+
+
+def test_a_whole_burst_reads_back_in_pieces_and_asks_for_its_id() -> None:
+    mcu = scope_mcu()
+    burst = link(mcu).scope_read()
+    assert burst == spilink.Burst(7, 100_000.0, BURST)
+    assert mcu.scope_answers == -(-len(BURST) // spilink.SCOPE_MAX)
+
+
+def test_a_burst_replaced_during_the_read_is_a_stale_error_not_a_stitch() -> None:
+    mcu = scope_mcu()
+    mcu.scope_replace_after = 2
+    with pytest.raises(RemoteError) as exc:
+        link(mcu).scope_read()
+    assert (exc.value.code, exc.value.detail) == (spilink.ERR_STALE, 8)
+    assert "newer capture" in str(exc.value)
+
+
+def test_asking_for_a_capture_that_is_not_held_is_stale() -> None:
+    with pytest.raises(RemoteError, match="newer capture"):
+        link(scope_mcu()).scope_read(3)
+
+
+def test_no_capture_is_unavailable() -> None:
+    with pytest.raises(RemoteError, match="unavailable"):
+        link(FakeMCU()).scope_read()
+
+
+def test_an_answer_that_makes_no_progress_is_refused() -> None:
+    mcu = scope_mcu()
+    mcu.scope_short = True
+    with pytest.raises(FrameError, match="offset 0 of 4096"):
+        link(mcu).scope_read()
+
+
+def test_an_offset_past_the_end_is_out_of_range() -> None:
+    with pytest.raises(RemoteError, match="offset past n"):
+        link(scope_mcu()).scope_chunk(7, 5000)
+
+
+def test_cli_scope(capsys: pytest.CaptureFixture[str]) -> None:
+    rc, out = run(["scope"], scope_mcu(BURST[:20]), capsys)
+    assert rc == 0
+    assert out.splitlines() == [
+        "id=7 n=20 rate_hz=100000.000",
+        " ".join(map(str, BURST[:20])),
+    ]
+
+
+def test_cli_scope_reports_a_frame_error(capsys: pytest.CaptureFixture[str]) -> None:
+    mcu = scope_mcu()
+    mcu.scope_short = True
+    rc, out = run(["scope", "--id", "7"], mcu, capsys)
+    assert rc == 1
+    assert out.startswith("spilink: SCOPE at offset 0")

@@ -132,3 +132,25 @@
 &tim2_ch2_pb3 {
 	bias-pull-down;
 };
+
+/*
+ * `app scope` (scope.h, scope_hw.c): a wave out of A0 and sampled back in.
+ * Nothing here changes for it; this says what it takes, and why the board
+ * file already has it.
+ *
+ *   PA4   header A0, and both dac1_out1_pa4 (&dac1's pinctrl) and
+ *         adc1_in9_pa4 (&adc1's). The ADC driver puts it in analog mode at
+ *         boot, which is also what the DAC needs. Not in the panel's
+ *         PF0..PF10, spi3's PG9/PG10/PB5/PG12, lpuart1's PG5..PG8, usart1's
+ *         PB6/PB7, i2c2's PB10/PB11, spi2's PB13/PB14/PB15/PB9, the status
+ *         LEDs' PH10..PH15, or jitter's PB0/PB3.
+ *   dac1  "okay" in the board file. CONFIG_DAC is off, so no driver binds
+ *         it, and scope_hw.c drives it with LL.
+ *   adc1  shared with the die temperature, which the ADC driver reads; a
+ *         capture borrows it under adc1_lock (see scope_hw.c).
+ *   TIM6  the ADC's trigger; TIM7 the DAC's. Basic timers, left "disabled"
+ *         here because no Zephyr driver is to have them: scope_hw.c turns on
+ *         their clocks from their nodes' `clocks` and programs them with LL.
+ *         Not TIM2, TIM3 or TIM5 (jitter) or TIM17 (the panel).
+ *   gpdma1  "okay" in the board file; channels 14 (ADC) and 15 (DAC).
+ */

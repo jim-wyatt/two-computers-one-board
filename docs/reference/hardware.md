@@ -162,7 +162,7 @@ and `python/tests/test_spilink.py` checks that the two agree on every number.
 | Mode | SPI mode 0, 8 bits, MSB first, chip select active low for the whole transaction |
 | Transaction | exactly 1024 bytes, both ways at once |
 | Frame | magic `U` `Q`, type, seq, length (16-bit), payload, CRC-16/CCITT-FALSE; the rest of the transaction is padding |
-| Services | `NOP`, `ECHO`, `TEMPLOG since` (the temperature log), `STAT` (the link's own counters) |
+| Services | `NOP`, `ECHO`, `TEMPLOG since` (the temperature log), `STAT` (the link's own counters), `SCOPE id offset` (the samples of [the scope](mcu.md#the-scope)'s last capture) |
 
 The slave cannot speak first, so each request is answered **one transaction
 later**: while Linux clocks request *k* down, the MCU's answer to *k − 1* comes
@@ -209,9 +209,10 @@ The UART, for comparison, is 115200 baud: 11.5 KB/s, one way at a time.
 was good, and none at 4 MHz. One interrupt per byte is what caps it: past that
 rate the MCU cannot keep its FIFO fed. The link recovers at once. An `echo`
 straight after the 16 MHz run came back intact; the link's own `stat` then
-counted 2741 `spi_errors` from the fast rates and no bad frames. DMA, which
-would lift the cap, is the second half of
-[#159](https://github.com/jim-wyatt/two-computers-one-board/issues/159).
+counted 2741 `spi_errors` from the fast rates and no bad frames. DMA would
+lift the cap. The scope ([#159](https://github.com/jim-wyatt/two-computers-one-board/issues/159))
+is the first part of the firmware to use the GPDMA, for its DAC and ADC; the
+link itself still moves its bytes by interrupt.
 
 `TEMPLOG` over SPI returns the same samples as `app temp log` on the shell:
 `main.c` hands the link its log through the `spi_link_templog()` hook in

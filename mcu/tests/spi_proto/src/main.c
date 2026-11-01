@@ -441,4 +441,149 @@ ZTEST(spi_proto, test_templog_never_writes_past_a_small_buffer)
 	zassert_equal(tx[0], 0xEE);
 }
 
+/* --- SCOPE --------------------------------------------------------------- */
+
+static uint16_t scope_buf[APP_SCOPE_N_MAX];
+static struct scope_burst sb;
+
+static void scope_request(uint8_t seq, uint32_t id, uint16_t offset)
+{
+	uint8_t p[SPI_PROTO_SCOPE_REQ_LEN];
+
+	sys_put_le32(id, &p[0]);
+	sys_put_le16(offset, &p[4]);
+	spi_proto_encode(buf, sizeof(buf), SPI_PROTO_SCOPE, seq, p, sizeof(p));
+}
+
+/* A capture of n samples whose value is 3 * index + 1, as the DMA would have
+ * left it, at 50 kHz. */
+static uint32_t scope_capture(uint16_t n)
+{
+	scope_burst_init(&sb, scope_buf, ARRAY_SIZE(scope_buf));
+	zassert_ok(scope_burst_begin(&sb, n, 50000000));
+	for (uint16_t i = 0; i < n; i++) {
+		scope_buf[i] = (uint16_t)(3U * i + 1U);
+	}
+	return scope_burst_end(&sb, true);
+}
+
+ZTEST(spi_proto, test_scope_without_a_burst_is_unavailable)
+{
+	const struct spi_proto_services svc = {0};
+
+	scope_request(40, 0, 0);
+	zassert_true(handle(&svc));
+	assert_error(40, SPI_PROTO_ERR_UNAVAILABLE, SPI_PROTO_SCOPE, 0);
+}
+
+ZTEST(spi_proto, test_scope_wants_exactly_its_request_payload)
+{
+	const struct spi_proto_services svc = {.scope = &sb};
+
+	spi_proto_encode(buf, sizeof(buf), SPI_PROTO_SCOPE, 41, payload, 5);
+	handle(&svc);
+	assert_error(41, SPI_PROTO_ERR_REQUEST, SPI_PROTO_SCOPE, 5);
+}
+
+ZTEST(spi_proto, test_scope_before_any_capture_and_during_one_is_unavailable)
+{
+	const struct spi_proto_services svc = {.scope = &sb};
+
+	scope_burst_init(&sb, scope_buf, ARRAY_SIZE(scope_buf));
+	scope_request(42, 0, 0);
+	handle(&svc);
+	assert_error(42, SPI_PROTO_ERR_UNAVAILABLE, SPI_PROTO_SCOPE, 0);
+
+	zassert_ok(scope_burst_begin(&sb, 100, 1000000));
+	scope_request(43, 0, 0);
+	handle(&svc);
+	assert_error(43, SPI_PROTO_ERR_UNAVAILABLE, SPI_PROTO_SCOPE, 1);
+}
+
+ZTEST(spi_proto, test_scope_reads_a_whole_burst_in_pieces)
+{
+	const struct spi_proto_services svc = {.scope = &sb};
+	const uint16_t n = APP_SCOPE_N_MAX;
+	uint32_t id = scope_capture(n);
+	uint16_t offset = 0;
+	uint8_t seq = 44;
+	int answers = 0;
+
+	zassert_equal(id, 1);
+	do {
+		struct spi_proto_frame f;
+		uint16_t count;
+
+		scope_request(seq, answers == 0 ? 0 : id, offset);
+		zassert_true(handle(&svc));
+		f = answer(SPI_PROTO_SCOPE | SPI_PROTO_RESPONSE, seq);
+		zassert_equal(sys_get_le32(&f.payload[0]), id, "id");
+		zassert_equal(sys_get_le32(&f.payload[4]), 50000000, "rate_mhz");
+		zassert_equal(sys_get_le16(&f.payload[8]), n, "n");
+		zassert_equal(sys_get_le16(&f.payload[10]), offset, "offset");
+		count = sys_get_le16(&f.payload[12]);
+		zassert_equal(count, MIN(SPI_PROTO_SCOPE_MAX, n - offset));
+		zassert_equal(f.len, SPI_PROTO_SCOPE_HDR_LEN + count * SPI_PROTO_SCOPE_SAMPLE_LEN);
+		for (uint16_t i = 0; i < count; i++) {
+			zassert_equal(sys_get_le16(&f.payload[SPI_PROTO_SCOPE_HDR_LEN + 2 * i]),
+				      3U * (offset + i) + 1U, "sample %u", offset + i);
+		}
+		offset += count;
+		seq++;
+		answers++;
+	} while (offset < n);
+	zassert_equal(answers, DIV_ROUND_UP(n, SPI_PROTO_SCOPE_MAX));
+
+	/* At the end: an empty answer, not an error. */
+	scope_request(seq, id, n);
+	handle(&svc);
+	zassert_equal(sys_get_le16(&answer(SPI_PROTO_SCOPE | SPI_PROTO_RESPONSE, seq).payload[12]),
+		      0);
+}
+
+ZTEST(spi_proto, test_scope_past_the_end_is_a_range_error_naming_n)
+{
+	const struct spi_proto_services svc = {.scope = &sb};
+
+	scope_capture(100);
+	scope_request(50, 0, 101);
+	handle(&svc);
+	assert_error(50, SPI_PROTO_ERR_RANGE, SPI_PROTO_SCOPE, 100);
+}
+
+ZTEST(spi_proto, test_scope_names_the_capture_held_when_asked_for_another)
+{
+	const struct spi_proto_services svc = {.scope = &sb};
+
+	scope_capture(100);
+	zassert_ok(scope_burst_begin(&sb, 100, 50000000));
+	zassert_equal(scope_burst_end(&sb, true), 2);
+	scope_request(51, 1, 0);
+	handle(&svc);
+	assert_error(51, SPI_PROTO_ERR_STALE, SPI_PROTO_SCOPE, 2);
+}
+
+ZTEST(spi_proto, test_scope_never_writes_past_a_small_buffer)
+{
+	const struct spi_proto_services svc = {.scope = &sb};
+	const size_t cap = SPI_PROTO_OVERHEAD + SPI_PROTO_SCOPE_HDR_LEN + 3 * 2;
+	struct spi_proto_frame f;
+	bool decoded;
+
+	scope_capture(100);
+	scope_request(52, 0, 0);
+	memset(tx, 0xEE, sizeof(tx));
+	zassert_equal(spi_proto_handle(buf, sizeof(buf), tx, cap, &svc, &decoded), (int)cap);
+	zassert_equal(tx[cap], 0xEE, "wrote past cap");
+	zassert_ok(spi_proto_decode(tx, cap, &f));
+	zassert_equal(sys_get_le16(&f.payload[12]), 3);
+
+	memset(tx, 0xEE, sizeof(tx));
+	zassert_equal(spi_proto_handle(buf, sizeof(buf), tx,
+				       SPI_PROTO_OVERHEAD + SPI_PROTO_SCOPE_HDR_LEN - 1, &svc,
+				       &decoded),
+		      -ENOSPC);
+	zassert_equal(tx[0], 0xEE);
+}
+
 ZTEST_SUITE(spi_proto, NULL, NULL, reset, NULL, NULL);
