@@ -875,3 +875,32 @@ def test_a_whole_run_reads_the_stat_after_the_ticks(mcu_factory: Any) -> None:
         mcu.jitter_tick()
     assert mcu.jitter_stat().tick.n == 2
     mcu.jitter_off()
+
+
+def test_a_command_longer_than_a_terminal_line_still_finds_its_echo(mcu_factory: Any) -> None:
+    # Seen on the board: the shell wraps the echo of `app matrix frame` (about
+    # 130 characters) at 80 columns, and the wrap took a space with it.
+    rows = ["0000000000770", "0000000007700"] + ["0" * 13] * 6
+    command = "app matrix frame " + " ".join(rows)
+    mcu = mcu_factory({command: ["ok frame lit=4"]})
+    assert mcu.cmd(command) == ["ok frame lit=4"]
+
+
+def test_a_wrapped_echo_after_send_is_found_too(mcu_factory: Any) -> None:
+    command = "app matrix frame " + " ".join(["1" * 13] * 8)
+    mcu = mcu_factory({command: ["ok frame lit=104"]})
+    mcu._unread = True
+    assert mcu.cmd(command) == ["ok frame lit=104"]
+
+
+def test_a_line_that_only_starts_like_the_echo_is_not_taken_for_it(mcu_factory: Any) -> None:
+    mcu = mcu_factory({"app status": ["app stat", "uptime_ms=1 flip=0"]}, echo=False)
+    assert mcu.cmd("app status") == ["app stat", "uptime_ms=1 flip=0"]
+
+
+def test_an_echo_cut_short_is_not_an_echo() -> None:
+    # Only part of a long echo has arrived: the reply cannot start yet.
+    from unoq.mcu import _echo_span
+
+    assert _echo_span(["app matrix frame 0000"], 0, "app matrix frame 0000 1111") is None
+    assert _echo_span(["app matrix frame 0000", "1111"], 0, "app matrix frame 0000 1111") == 2

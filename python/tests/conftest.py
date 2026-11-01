@@ -29,6 +29,25 @@ PROMPT = "unoq:~$ "
 _DEV_NULL = os.open(os.devnull, os.O_RDWR)
 
 
+# The shell's terminal width (CONFIG_SHELL_DEFAULT_TERMINAL_WIDTH) and the
+# prompt the echo follows on the same line.
+_TERMINAL_WIDTH = 80
+_PROMPT_TEXT = "unoq:~$ "
+
+
+def _wrapped_echo(command: str) -> str:
+    """The echo of `command` as the Zephyr shell sends it: wrapped at 80 columns.
+
+    The prompt counts toward the first line, so a command longer than 72
+    characters comes back over two lines. `app matrix frame` is one, and a fake
+    that echoed it on one line hid that MCU.cmd() could not find its echo on
+    the board.
+    """
+    text = _PROMPT_TEXT + command
+    rows = [text[i : i + _TERMINAL_WIDTH] for i in range(0, len(text), _TERMINAL_WIDTH)]
+    return "\r\n".join(rows)[len(_PROMPT_TEXT) :]
+
+
 class FakeSerial:
     """Stand-in for `serial.Serial` covering exactly what MCU uses.
 
@@ -112,7 +131,7 @@ class FakeSerial:
         body = "".join(f"{line}\r\n" for line in lines)
         if self.ansi:
             body = "".join(f"\x1b[1;32m{line}\x1b[0m\r\n" for line in lines)
-        prefix = f"{command}\r\n" if self.echo else ""
+        prefix = f"{_wrapped_echo(command)}\r\n" if self.echo else ""
         return f"{prefix}{body}{PROMPT}"
 
 
