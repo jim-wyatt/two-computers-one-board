@@ -428,15 +428,17 @@ export RUNTIME_DIR
 #   - a script that nothing starts costs nothing. The USB scripts sitting in
 #     /usr/local/lib/unoq on a board that never enabled the gadget are inert.
 #
-# usb/ and net/ are globs on purpose. A new helper there is called by a sibling as
-# "$HERE/new.sh", and a hand-kept list that missed it would produce a copy of
-# the caller with nothing to call - found at the next cable plug, by root, on a
-# board that may be reachable only over that cable.
+# usb/, net/ and recovery/ are globs on purpose. A new helper there is called
+# by a sibling as "$HERE/new.sh", and a hand-kept list that missed it would
+# produce a copy of the caller with nothing to call - found at the next cable
+# plug, by root, on a board that may be reachable only over that cable.
+# recovery/ holds what root runs by hand (unoq-root.sh, issue #169), which is
+# root's copy for the same reason as the rest: it reads the disk as root.
 runtime_files() {
   local f
   echo mcu/link-up.sh
   echo status/leds.sh
-  for f in "$PROJECT"/usb/*.sh "$PROJECT"/net/*.sh; do
+  for f in "$PROJECT"/usb/*.sh "$PROJECT"/net/*.sh "$PROJECT"/recovery/*.sh; do
     [ -f "$f" ] && echo "$(basename "$(dirname "$f")")/$(basename "$f")"
   done
   # Not the status of that last test: a glob that matched nothing is an empty

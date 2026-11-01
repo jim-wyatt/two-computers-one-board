@@ -450,14 +450,19 @@ stamps() { find "$RT" -exec stat -c '%n %i %y' {} + | sort; }
 
 # --- the set the steps really install ---------------------------------------
 
-@test "the project's own set is every usb script, the LEDs and the link" {
+@test "the project's own set is every usb and recovery script, the LEDs and the link" {
   load_lib
   : >"$SRC/usb/notes.txt"
+  # recovery/ is what root runs by hand (unoq-root.sh, #169): a glob, as usb/ is.
+  mkdir -p "$SRC/recovery"
+  printf '#!/bin/bash\necho plan\n' >"$SRC/recovery/unoq-root.sh"
+  : >"$SRC/recovery/notes.txt"
   run runtime_files
   [ "$output" = "mcu/link-up.sh
 status/leds.sh
 usb/usb-dhcp.sh
-usb/usb-net-up.sh" ]
+usb/usb-net-up.sh
+recovery/unoq-root.sh" ]
 }
 
 @test "everything a root unit starts is in the set the steps install" {

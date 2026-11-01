@@ -184,7 +184,7 @@ else
   val "copied from" "${FROM:-<not recorded>}"
   # WHAT IS COMPARED, AND WHAT COUNTS AS A COPY
   #
-  # The set is worked out from the checkout - the same four places
+  # The set is worked out from the checkout - the same five places
   # runtime_files (provision/lib.sh) names - and each of root's entries then
   # has to be a regular file of its own before its bytes are even looked at.
   #
@@ -203,7 +203,7 @@ else
   differ=""
   notfile=""
   expected="mcu/link-up.sh status/leds.sh"
-  for f in "$SRC"/usb/*.sh "$SRC"/net/*.sh; do
+  for f in "$SRC"/usb/*.sh "$SRC"/net/*.sh "$SRC"/recovery/*.sh; do
     [ -e "$f" ] || continue
     expected="$expected $(basename "$(dirname "$f")")/$(basename "$f")"
   done

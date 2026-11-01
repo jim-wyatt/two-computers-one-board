@@ -53,6 +53,9 @@
 #   - add a rescue boot entry (--with-rescue-entry, or --with-recovery for it
 #     and boot counting together). It is built and tested as code and has not
 #     been booted on a board yet
+#   - install the tool that plans two root filesystems (--with-root-slots).
+#     It writes nothing to the disk: `unoq-root plan` is a dry run, and the
+#     split itself is a separate step, by hand, not in this release (#169)
 #
 # TIME AND SPACE: 18 minutes 59 seconds on a factory-restored board over home
 # broadband, with no options, timed on 2026-10-11. The Zephyr workspace (~2 GB) and SDK (~0.8 GB) are most of the
@@ -73,6 +76,7 @@ WITH_WATCHDOG=0
 WITH_ESP_LOCKDOWN=0
 WITH_BOOT_COUNTING=0
 WITH_RESCUE_ENTRY=0
+WITH_ROOT_SLOTS=0
 WITH_TEMP_LOG=0
 WITH_BUILDLIGHT=0
 WITH_BLE_SENSOR=0
@@ -123,6 +127,11 @@ Add something that is not:
                       only by fallback or on purpose. Never booted by this
                       run; needs your SSH key in ~/.ssh/authorized_keys.
   --with-recovery     --with-boot-counting and --with-rescue-entry together
+  --with-root-slots   also install root's copy of unoq-root (86), whose
+                      `plan` shows how this board's root would be split into
+                      two 10 GiB roots, and the exact sfdisk script. It only
+                      reads; the split is a separate step, by hand, not in
+                      this release (issue #169).
 
   --skip-mcu          do not build or flash the MCU firmware
   -h, --help          this
@@ -153,6 +162,9 @@ for arg in "$@"; do
     --with-esp-lockdown) WITH_ESP_LOCKDOWN=1 ;;
     --with-boot-counting) WITH_BOOT_COUNTING=1 ;;
     --with-rescue-entry) WITH_RESCUE_ENTRY=1 ;;
+    # Not in --everything either: it leads to a step that rewrites the
+    # partition table, and that is asked for by name or not at all.
+    --with-root-slots) WITH_ROOT_SLOTS=1 ;;
     # The "one command" of #170, as far as it exists: both halves of the
     # recovery path that are built. The rescue entry is not in --everything:
     # it has yet to be booted on any board.
@@ -292,6 +304,8 @@ fi
   echo "  - boot every new kernel on trial, falling back to the previous one by itself (--with-boot-counting)"
 [ "$WITH_RESCUE_ENTRY" = 1 ] &&
   echo "  - add a rescue boot entry to the EFI partition, below every kernel; the default is not changed (--with-rescue-entry; never booted on a board yet)"
+[ "$WITH_ROOT_SLOTS" = 1 ] &&
+  echo "  - install root's copy of unoq-root, which plans two root filesystems; nothing on the disk is changed, and the split is a separate step by hand (--with-root-slots)"
 echo
 echo "Every change is listed, with how to undo it, in docs/setup.md."
 if [ -t 0 ]; then
@@ -614,6 +628,8 @@ fi
   run_step "84  rescue boot entry (root)" sudo "$PROJECT/provision/84-rescue-entry.sh"
 [ "$WITH_ESP_LOCKDOWN" = 1 ] &&
   run_step "85  EFI partition permissions (root)" sudo "$PROJECT/provision/85-esp-permissions.sh"
+[ "$WITH_ROOT_SLOTS" = 1 ] &&
+  run_step "86  two roots: the planning tool, nothing on the disk (root)" sudo "$PROJECT/provision/86-root-slots.sh"
 # Always, and after everything that downloads or installs: what the run
 # fetched in order to build things is not needed once they are built.
 run_step "90  disk space back (root)" sudo "$PROJECT/provision/90-cleanup.sh"

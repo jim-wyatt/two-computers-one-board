@@ -688,3 +688,22 @@ Tried on 2026-11-01: SSH answered 5.5 s after power-on, from a Windows host, and
 Why the board has this entry at all, and how it fits with boot counting, MCUboot and the bind guard, is the course chapter [Trial, confirm, roll back](../learn/trial-confirm-roll-back.md).
 
 If you need to do that from inside the rescue system itself, the EFI partition is `mmcblk0p67`: `mkdir -p /mnt && mount -t vfat /dev/mmcblk0p67 /mnt`, then the same two commands in `/mnt/loader`, then `umount /mnt`.
+
+### Two roots (planned)
+
+Issue #169 plans a second root filesystem, `rootfs-b`, so that an upgrade can be tried in one root while the other stays as it was, and the board falls back to it by itself. **The split is not in this release.** What is: `--with-root-slots` ([provisioning.md](provisioning.md)) installs root's copy of `recovery/unoq-root.sh`, and its `plan` is a dry run that only reads:
+
+```bash
+sudo bash ~/two-computers-one-board/provision/86-root-slots.sh
+sudo /usr/local/lib/unoq/recovery/unoq-root.sh plan
+```
+
+It prints:
+
+- **The disk**, found from what `findmnt /` says is mounted, never by name, and today's `efi`, `rootfs` and `userdata` partitions from `sfdisk --dump`, with what `df /` says the root holds. Then `no rootfs-b: nothing to split yet`, or, once there is one, its size and filesystem, and nothing else.
+- **The proposed layout.** `rootfs` keeps its start and shrinks to 10 GiB, rounded up to the next 1 MiB boundary; `rootfs-b` takes the rest, up to `userdata`, which does not move. On this board that is `rootfs` at 20973248 sectors, ending at 23007231, and `rootfs-b` (`mmcblk0p70`) from 23007232 for 20969792 sectors. `userdata` ends on the eMMC's last sector, so the second root can only come out of the first.
+- **Whether the root fits a slot**: `resize2fs -P`'s estimate of the smallest the filesystem can be, against the smaller of the two slots, since B has to hold all of A. It refuses, and says why, unless that leaves at least 1 GiB: ext4 keeps about 5% of a 10 GiB filesystem for root alone, and a kernel upgrade holds two kernels' modules, two initrds and the downloads at once. On this board, with `/srv/arduino-home` staying on the root: 8.61 GiB of 10.00 GiB, 1.39 GiB of headroom.
+- **The EFI partition's budget**: free space against two of the largest kernel-and-initrd pair, for B's kernel in `/<machine-id>-b/` and the next one staged beside it. It refuses if they would not fit.
+- **The exact `sfdisk` script** phase 2 would hand to the rescue shell: today's table with `rootfs`'s size changed and `rootfs-b` added, every other line byte for byte, then the `e2fsck`, `resize2fs` and `sfdisk` commands in order. None of it is run.
+
+`unoq-root.sh status` says which root is running, by its UUID, and lists the boot entries by the slot their kernel is in, with their tries. `split`, `init`, `sync`, `stage` and `commit` answer `not in this release; see #169`. The split rewrites the partition table, from the rescue shell with nothing mounted; it is the one planned exception to [never writing it](hardware.md#what-this-project-writes-and-what-it-never-writes), and comes back for its own approval first.
