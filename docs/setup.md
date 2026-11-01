@@ -308,7 +308,8 @@ Measured during the same run, on the 4 GB board:
 The UNO Q is also sold with 2 GB of memory and 16 GB of storage. **Nobody has
 run this on one**, so here is what the numbers above say and do not say. (The
 16 GB here is storage. The Arduino VENTUNO Q, which has 16 GB of memory, is a
-different board, and this project does not target it.)
+different board, which this project does not target: `bootstrap.sh` stops on
+one before changing anything.)
 
 Memory is probably not the obstacle: the peak was 1.4 GB, for the few minutes
 the firmware compiles, and the board has compressed swap behind that. Expect

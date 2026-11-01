@@ -329,10 +329,14 @@ step "preflight"
 # assigning to BOARD here changed the EXPORTED value, and zbuild.sh asked west
 # to build for "arduino,imola". The first run on a fresh board, with nothing
 # exported yet, built fine; every re-run failed the build and skipped the flash.
-COMPATIBLE="$(tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | head -1)"
+#
+# The VENTUNO Q is a different board, which this project does not target.
+# Nothing here was written for it or tried on it, so it stops here, before
+# changing anything, rather than half-provisioning a board it does not know.
+COMPATIBLE="$(tr '\0' '\n' <"$SYSROOT/sys/firmware/devicetree/base/compatible" 2>/dev/null | head -1)"
 case "$COMPATIBLE" in
   arduino,imola) skip "board: Arduino UNO Q ($COMPATIBLE)" ;;
-  arduino,monza) skip "board: Arduino VENTUNO Q ($COMPATIBLE)" ;;
+  arduino,monza) fail "this is an Arduino VENTUNO Q ($COMPATIBLE). This project is for the UNO Q only, and nothing was changed." ;;
   "") warn "cannot read the devicetree - this may not be an UNO Q. Continuing." ;;
   *) warn "unrecognized board '$COMPATIBLE' - written for arduino,imola. Continuing." ;;
 esac
