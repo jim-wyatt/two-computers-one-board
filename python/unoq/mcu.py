@@ -369,11 +369,30 @@ def _predates_temp_log(line: str) -> bool:
     return line == "Subcommands:" or bool(_TEMP.match(line))
 
 
+def _echo_span(lines: list[str], start: int, command: str) -> int | None:
+    """How many lines from `start` the echo of `command` takes, or None.
+
+    The shell wraps its echo at the terminal width (80 columns), so a long
+    command such as `app matrix frame` comes back over two lines. A wrap that
+    falls on a space loses it when the lines are stripped, so the pieces are
+    compared with all whitespace removed.
+    """
+    want = re.sub(r"\s+", "", command)
+    got = ""
+    for n, line in enumerate(lines[start:], 1):
+        got += re.sub(r"\s+", "", _PROMPT_PREFIX.sub("", line) if n == 1 else line)
+        if got == want:
+            return n
+        if not want.startswith(got):
+            return None
+    return None
+
+
 def _after_echo(lines: list[str], command: str) -> list[str] | None:
     """The lines after the last echo of `command`, or None if it is not there."""
     for i in range(len(lines) - 1, -1, -1):
-        if _PROMPT_PREFIX.sub("", lines[i]) == command:
-            return lines[i + 1 :]
+        if (n := _echo_span(lines, i, command)) is not None:
+            return lines[i + n :]
     return None
 
 
@@ -479,9 +498,9 @@ class MCU:
         if unread:
             lines = _after_echo(lines, command) or []
             self._unread = False
-        # Drop the echoed command itself.
-        elif lines and lines[0] == command:
-            lines = lines[1:]
+        # Drop the echoed command itself, however many lines it was wrapped over.
+        elif lines and (n := _echo_span(lines, 0, command)) is not None:
+            lines = lines[n:]
         for line in lines:
             if line.startswith(ERROR_PREFIX) or any(said in line for said in _SHELL_REFUSALS):
                 raise MCUError(f"{command!r}: {line}")
