@@ -139,6 +139,38 @@ unit() {
   [[ "$output" != *"$RT"* ]]
 }
 
+@test "a checkout nested under the placeholder path is not substituted twice" {
+  # A worktree lives in .claude/worktrees/<id>/ inside the default checkout,
+  # so its path starts with the placeholder. Exec lines were rewritten once to
+  # the checkout and then again by the expression meant for every other line,
+  # which found the placeholder at the front of the result and doubled it
+  # (#215). Both kinds of unit: a User= unit's Exec lines go to the checkout,
+  # a root unit's to root's copy, here nested as well.
+  nested="$PLACEHOLDER/.claude/worktrees/abc"
+  load_lib "$nested"
+  RUNTIME_DIR="$PLACEHOLDER/.claude/worktrees/abc-runtime"
+  src="$(unit nested-user "[Unit]" \
+    "Documentation=file:/home/arduino/two-computers-one-board/README.md" \
+    "[Service]" "User=arduino" \
+    "ExecStart=/home/arduino/two-computers-one-board/bin/thing" \
+    "ExecStopPost=/home/arduino/two-computers-one-board/bin/thing post")"
+  run render_unit "$src"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Documentation=file:$nested/README.md"* ]]
+  [[ "$output" == *"ExecStart=$nested/bin/thing"$'\n'* ]]
+  [[ "$output" == *"ExecStopPost=$nested/bin/thing post"* ]]
+  [[ "$output" != *"abc$PLACEHOLDER"* ]]
+  src="$(unit nested-root "[Unit]" \
+    "Documentation=file:/home/arduino/two-computers-one-board/README.md" \
+    "[Service]" "ExecStart=/home/arduino/two-computers-one-board/bin/thing")"
+  run render_unit "$src"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Documentation=file:$nested/README.md"* ]]
+  [[ "$output" == *"ExecStart=$RUNTIME_DIR/bin/thing"* ]]
+  [[ "$output" != *"abc$PLACEHOLDER"* ]]
+  [[ "$output" != *"abc-runtime$PLACEHOLDER"* ]]
+}
+
 # --- who runs it decides where it runs from --------------------------------
 #
 # A unit with no User= runs as root, and root must not execute a directory the
