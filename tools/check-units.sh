@@ -73,6 +73,19 @@ if ! (
   exit 1
 fi
 
+# A unit of someone else's that ours Requires= has to exist for verify to
+# load ours, and on a CI runner some do not: unoq-ble-sensor needs BlueZ's
+# bluetooth.service, which a runner has no reason to install. Where the host
+# has no such unit, a stand-in with nothing in it is put beside ours. It is
+# only something to resolve the name against; ours are still checked whole.
+for req in $(sed -n 's/^Requires=//p' "$WORK"/*.service | tr ' ' '\n' | sort -u); do
+  case "$req" in *.service) ;; *) continue ;; esac
+  [ -e "$WORK/$req" ] && continue
+  systemctl cat "$req" >/dev/null 2>&1 && continue
+  printf '[Unit]\nDescription=stand-in for %s, which this host does not have\n[Service]\nExecStart=/bin/true\n' \
+    "$req" >"$WORK/$req"
+done
+
 rc=0
 
 # All of them in one call, from one directory, so that a unit's After= and
