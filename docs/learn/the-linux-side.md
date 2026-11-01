@@ -12,6 +12,22 @@ This is the half of the board that will feel familiar, so this page is short.
 Its real job is to point out the three places where Linux differs from what you
 are used to on a laptop, because those are where the embedded work happens.
 
+> [!NOTE]
+> **In this chapter**
+>
+> - how Linux exposes hardware as files, and why that makes the Linux half of
+>   embedded work easy
+> - what `/proc/stat` actually contains, and the one calculation the demo does
+>   with it
+> - what systemd is, and why `systemctl stop unoq-cpu-bars` comes up on nearly
+>   every page of this course
+> - the three ways this board is not a laptop
+>
+> **You need:** [Two computers on one board](two-computers.md), and a terminal
+> on the board. The Try it blocks run commands you may not have met —
+> `cat`, `echo`, `tee`, `systemctl`, `journalctl` — and each is explained the
+> first time it appears.
+
 ## Everything is a file
 
 Linux exposes hardware as files. Not "like files" — actual paths you can `cat`,
@@ -35,6 +51,20 @@ cat /sys/class/thermal/thermal_zone3/temp   # CPU temperature, in millidegrees
 ls /dev/ttyHS1                         # the wire to the microcontroller
 ls /sys/class/leds/                    # LEDs you can turn on by writing a 1
 ```
+
+```
+19067.43 66957.01
+41100
+/dev/ttyHS1
+mmc0::  unoq:bt-blue2  unoq:panic-red2  unoq:user-blue1  unoq:user-green1  unoq:user-red1  unoq:wlan-green2
+```
+
+Your numbers will differ. The first line is two counts of seconds: since boot,
+and how long the cores have spent idle, added up across all four. The second is
+a temperature in thousandths of a degree — 41.1 °C here. A **thermal zone** is
+one temperature sensor the kernel knows about; `zone3` is the one named
+`cpuss0-thermal`, and `cat /sys/class/thermal/thermal_zone*/type` lists the
+rest.
 
 That last one is worth pausing on. Reading whether an LED is lit is a `cat`,
 and turning one on is an `echo`:
@@ -78,8 +108,10 @@ on.
 Two things about this that trip people up:
 
 1. **They are totals, not rates.** The file cannot tell you "this core is 40%
-   busy". It tells you how many ticks it has *ever* spent busy. To get a
-   percentage you must read it twice and compare:
+   busy". It tells you how many ticks it has *ever* spent busy. It is an
+   odometer, not a speedometer: one reading says how far the car has gone,
+   and only two readings and a clock say how fast. To get a percentage you
+   must read it twice and compare:
 
    ```
    busy_now - busy_before
@@ -99,7 +131,9 @@ Two things about this that trip people up:
 
 On a laptop you start programs by clicking them. On a board with no screen,
 something must start them at boot and restart them when they die. On Debian that
-is **systemd**, and a thing it manages is called a **unit**.
+is **systemd**, and a thing it manages is called a **unit**. A program that
+runs this way — in the background, with no terminal, for as long as the board
+is up — is a **daemon**, and the demo is one.
 
 This project installs several:
 
@@ -260,6 +294,21 @@ cat /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
    is what Linux cannot promise.
 
 </details>
+
+## What to remember
+
+- On Linux, **hardware is files**. `/proc` is the kernel describing itself,
+  `/sys` is devices and their knobs, `/dev` is the devices themselves. Read
+  a sensor with `cat`; turn on an LED with `echo`.
+- `/proc/stat` holds **totals, not rates**. A percentage needs two readings
+  and a subtraction, which is why the demo waits before its first frame.
+- **systemd** starts things at boot and restarts them when they die. `status`,
+  `journalctl -u`, `stop` and `start` are the four commands you will type most.
+- **Only one program can hold `/dev/ttyHS1` at a time.** The demo holds it;
+  stop the demo before you talk to the microcontroller yourself.
+- This board has about 3.6 GB of memory, slow storage, and **no screen**, so
+  every diagnostic has to be something you can read: a log line, a file, a
+  light.
 
 Next: [The microcontroller side](the-microcontroller-side.md) — the other chip,
 where none of this exists.

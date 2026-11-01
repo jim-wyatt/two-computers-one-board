@@ -69,8 +69,10 @@ no network to reach.
 
 ## The course
 
-Fifteen short chapters and an introduction, meant in order. Each one introduces an idea, then puts
-you in front of the real board to watch it happen.
+Eighteen chapters and an introduction, in four parts, meant in order. Each one
+says what you will learn, introduces an idea, puts you in front of the real
+board to watch it happen, asks you a few questions, and ends with what to
+remember.
 
 <div class="grid cards" markdown>
 
@@ -87,8 +89,9 @@ you in front of the real board to watch it happen.
 
     ---
 
-    A serial line, a framing protocol, a cross-compiler, and a panel of LEDs
-    that only exists because of persistence of vision.
+    A serial line, a framing protocol, a cross-compiler, a panel of LEDs
+    that only exists because of persistence of vision, and a measurement of
+    how late Linux really is — timed by the other chip.
 
     [:octicons-arrow-right-24: How they talk](learn/how-they-talk.md)
 
@@ -97,7 +100,8 @@ you in front of the real board to watch it happen.
     ---
 
     Firmware updates that undo themselves when they go wrong, one USB cable
-    pretending to be three devices, and debugging a program that cannot print.
+    pretending to be three devices, four LEDs that tell the truth, and
+    debugging a program that cannot print.
 
     [:octicons-arrow-right-24: Updating safely](learn/updating-safely.md)
 

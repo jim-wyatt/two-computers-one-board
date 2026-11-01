@@ -19,7 +19,7 @@ This repository does two things about that.
   stock upstream tooling (Zephyr, west, OpenOCD, libgpiod) rather than the
   Arduino App framework. One script, safe to re-run.
 - **It teaches the whole stack**, in a
-  [course of fifteen chapters](https://jim-wyatt.github.io/two-computers-one-board/)
+  [course of eighteen chapters](https://jim-wyatt.github.io/two-computers-one-board/)
   written for someone who can program and has never done embedded work.
 
 The worked example is a CPU monitor: Linux reads how busy its four cores are,
