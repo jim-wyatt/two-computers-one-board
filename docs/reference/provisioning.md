@@ -43,7 +43,7 @@ they install into your home directory. The others need root.
 
 | Step | Run as | Does |
 |---|---|---|
-| `10-optimize-board.sh` | root | Switches off the X11 desktop (~218 MB of memory; nothing is uninstalled) and deletes the ~2 GB of Arduino container images. Disables ModemManager, fwupd and unattended apt. Pins Arduino's `alsa-ucm-conf` above Debian backports, whose build breaks the board's audio, then runs the one `apt-get upgrade` a restored board needs. Adds the `i2c`, `spi` and `gpiod` group memberships and a spidev udev rule. Disables Bluetooth and udisks2. |
+| `10-optimize-board.sh` | root | Switches off the X11 desktop (~218 MB of memory; nothing is uninstalled) and deletes the ~2 GB of Arduino container images. Disables ModemManager, fwupd and unattended apt. Pins Arduino's `alsa-ucm-conf` above Debian backports, whose build breaks the board's audio, then runs the one `apt-get upgrade` a restored board needs. Adds the `i2c`, `spi` and `gpiod` group memberships and a spidev udev rule. Sets the CPU governor to `ondemand` (`UNOQ_CPU_GOVERNOR`), now and at every boot, through a tmpfiles.d rule. Disables Bluetooth and udisks2. |
 | `15-dev-tools.sh` | root | Installs a host C compiler, `wget` and `clangd`. Disables the Arduino services and Docker (~210 MB), and checks `/dev/ttyHS1` has been released. |
 | `user/20-host-tools.sh` | you | `uv`, then `cmake`, `ninja` and `west` as uv tools, in `~/.local/bin`. |
 | `user/25-zephyr-sdk.sh` | you | The Zephyr SDK, `arm-zephyr-eabi` toolchain only. ~0.8 GB. |

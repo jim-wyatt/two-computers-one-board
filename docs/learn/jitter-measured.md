@@ -97,8 +97,10 @@ If a tick is a whole period late, its deadline is skipped and counted as
 
 These are the first measurements, taken on this board on **2026-11-01**:
 `unoq-jitter --seconds 30`, a 20 ms period, kernel 7.0.0, CPU governor
-`schedutil`. "Spin" is `--load spin`, one busy process on each of the four
-cores. There was no jumper on D3 to D2, so the PWM column was off.
+`schedutil`, the kernel's default. (A provisioned board now runs `ondemand`,
+which these numbers do not cover.) "Spin" is `--load spin`, one busy process
+on each of the four cores. There was no jumper on D3 to D2, so the PWM column
+was off.
 
 | | idle | spin on 4 cores |
 |---|---|---|
