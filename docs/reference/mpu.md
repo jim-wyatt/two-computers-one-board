@@ -809,6 +809,4 @@ names who has it), if the firmware predates `app jitter`, or if the MCU stops
 answering. 2 for a bad option. 130 or 143 for Ctrl-C or SIGTERM. However it
 ends, the ticks and the PWM are stopped and the load is gone.
 
-**The numbers** come from the owner's run on this board. This page has none
-yet, and the course chapter on jitter will be written once the board has
-supplied them.
+**The numbers** from the first run on this board, and what they mean, are in the course chapter [Jitter, measured](../learn/jitter-measured.md).

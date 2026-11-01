@@ -213,5 +213,5 @@ what it costs.
 
 </details>
 
-Next: [Updating safely](updating-safely.md) — replacing the firmware on a
-running board without being able to visit it.
+Next: [Jitter, measured](jitter-measured.md) — how late Linux really is,
+timed by the microcontroller.
