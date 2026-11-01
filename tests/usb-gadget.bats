@@ -37,6 +37,9 @@ setup() {
   export FLAGS
 
   export UNOQ_ROOT="$BATS_TEST_TMPDIR/root"
+  # The getty template Debian ships, which the login on ttyGS0 is made from.
+  mkdir -p "$UNOQ_ROOT/usr/lib/systemd/system"
+  : >"$UNOQ_ROOT/usr/lib/systemd/system/serial-getty@.service"
   export UNOQ_UNIT_DIR="$BATS_TEST_TMPDIR/etc/systemd/system"
   RELAY="$UNOQ_UNIT_DIR/unoq-mcu-serial.service"
   export UNOQ_RUNTIME_DIR="$BATS_TEST_TMPDIR/usr/local/lib/unoq"
@@ -122,8 +125,10 @@ case "$1" in
     [ "$2" = --now ] && rm -f "$FLAGS/active-$u"
     ;;
   add-wants)
-    mkdir -p "$UNOQ_UNIT_DIR/$2.wants"
-    ln -sf /usr/lib/systemd/system/serial-getty@.service "$UNOQ_UNIT_DIR/$2.wants/$3"
+    # As the real one does while /dev/ttyGS0 is absent, which on a board is
+    # every time this step needs it.
+    echo "Failed to add dependency: Unit $2 does not exist" >&2
+    exit 1
     ;;
 esac
 exit 0
@@ -402,7 +407,8 @@ router_path() { # enabled|disabled - Arduino's watcher of /dev/ttyGS0 is there
   acm_in_file
   run "$STEP"
   [ "$status" -eq 0 ]
-  ran "systemctl add-wants dev-ttyGS0.device serial-getty@ttyGS0.service"
+  [ "$(readlink "$UNOQ_UNIT_DIR/$GETTY_LINK_REL")" = /usr/lib/systemd/system/serial-getty@.service ]
+  ran "systemctl daemon-reload"
   ran "modprobe usb_f_acm"
   # Not wanted by getty.target: a boot would wait for a device that may not come.
   refute ran_like '^systemctl enable.*serial-getty'
@@ -423,7 +429,7 @@ router_path() { # enabled|disabled - Arduino's watcher of /dev/ttyGS0 is there
 @test "UNOQ_GADGET_ACM=1 on the command line only is warned about: the units read the file" {
   UNOQ_GADGET_ACM=1 run "$STEP"
   [ "$status" -eq 0 ]
-  ran "systemctl add-wants dev-ttyGS0.device serial-getty@ttyGS0.service"
+  [ -L "$UNOQ_UNIT_DIR/$GETTY_LINK_REL" ]
   grep -qE "warn +UNOQ_GADGET_ACM=1 is set here but not in $DEFAULTS" <<<"$output"
 }
 
@@ -518,4 +524,23 @@ router_path() { # enabled|disabled - Arduino's watcher of /dev/ttyGS0 is there
   grep -qE 'warn +no venv at .*, so no unoq-mcu-serial.service' <<<"$output"
   # The rest of the step still ran.
   [ -e "$FLAGS/handover-ran" ]
+}
+
+@test "the login is wanted by a device that does not exist yet" {
+  # systemctl add-wants refuses a device unit until /dev/ttyGS0 exists, and
+  # it only exists once this very run has given the gadget a serial port.
+  acm_in_file
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  refute ran_like '^systemctl add-wants'
+  [ -L "$UNOQ_UNIT_DIR/$GETTY_LINK_REL" ]
+}
+
+@test "no getty template is a clear failure, not a broken link" {
+  acm_in_file
+  rm "$UNOQ_ROOT/usr/lib/systemd/system/serial-getty@.service"
+  run "$STEP"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no /usr/lib/systemd/system/serial-getty@.service on this board"* ]]
+  [ ! -e "$UNOQ_UNIT_DIR/$GETTY_LINK_REL" ]
 }
