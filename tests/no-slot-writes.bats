@@ -18,6 +18,11 @@
 # there. A determined write can get past a grep; an absent-minded one, which
 # is the likely kind, cannot.
 #
+# The partition table is the boot chain's too, and the one change to it this
+# project plans - splitting `rootfs` in two, by hand, from the rescue shell
+# (#169, phase 2) - finds its disk at run time. So no partition, filesystem or
+# resize tool may name /dev/mmcblk0 literally on its line, even to read.
+#
 # Each pattern is tried against a planted write in a scratch repository, so
 # that "the repository passes" means something.
 
@@ -36,6 +41,7 @@ setup() {
 # The firmware partitions that come as an _a/_b pair on this board.
 FIRMWARE='(xbl|xbl_config|tz|rpm|hyp|boot|uefi|uefi_dtb|abl|ddr|keymaster|mdtp|mdtpsecapp|imagefv|uefisecapp|devcfg|featenabler|qupfw|multiimgoem)_[ab]'
 RAW='/dev/(mmcblk|disk/by-)'
+DISK_TOOLS='sfdisk|sgdisk|parted|mkfs[.a-z0-9]*|resize2fs'
 
 PATTERNS=(
   # dd, or anything else that takes of=, aimed at the raw eMMC
@@ -53,6 +59,12 @@ PATTERNS=(
   "\\bfastboot\\b.*(set_active|--set-active|\\bflash\\b|\\berase\\b)"
   # Python opening the raw eMMC for writing
   "open\\( *[rbf]?[\"']${RAW}[^\"']*[\"'] *, *[\"'][^\"']*[wa+]"
+  # a partition-table, filesystem or resize tool on the same line as the eMMC
+  # by its kernel name, either way round. The root disk is found at run time
+  # (findmnt /, then sysfs: recovery/unoq-root.sh), never written in: a
+  # literal is right on one board and a different disk on the next (#169).
+  "\\b($DISK_TOOLS)\\b.*/dev/mmcblk0"
+  "/dev/mmcblk0.*\\b($DISK_TOOLS)\\b"
 )
 
 # scan <repo> - print every tracked, non-Markdown, non-comment line that
@@ -135,6 +147,32 @@ plant() {
   plant python/bad.py 'with open("/dev/disk/by-partlabel/xbl_a", "r+b") as f:'
   run scan "$SCRATCH"
   [[ "$output" == "python/bad.py:1:"* ]]
+}
+
+@test "a partition or filesystem tool naming the eMMC literally is caught" {
+  # Even to read: the disk is found at run time, so a literal is a mistake
+  # whatever the flags. tests/root-slots.bats feeds the tool a second disk.
+  plant a.sh 'sfdisk --dump /dev/mmcblk0'
+  plant b.sh 'sudo resize2fs /dev/mmcblk0p68 2621656'
+  plant c.sh 'mkfs.ext4 -L rootfs-b /dev/mmcblk0p70'
+  plant d.sh 'parted -s /dev/mmcblk0 resizepart 68 11GiB'
+  plant e.sh 'sgdisk -n 70:0:0 /dev/mmcblk0'
+  plant f.sh 'echo "/dev/mmcblk0p70 : start=23007232" | sfdisk --append'
+  run scan "$SCRATCH"
+  for f in a b c d e f; do
+    [[ "$output" == *"$f.sh:1:"* ]]
+  done
+}
+
+@test "the eMMC named without a disk tool, or a disk tool without it, is not flagged" {
+  # status/leds.sh reads the eMMC's sysfs name; the root tool hands sfdisk a
+  # disk it worked out.
+  plant a.sh 'cat /sys/block/mmcblk0/stat'
+  # shellcheck disable=SC2016 # planted text, not code to expand
+  plant b.sh 'DUMP="$(sfdisk --dump "$1")"'
+  plant c.sh 'findmnt -no SOURCE / # /dev/mmcblk0p68 here'
+  run scan "$SCRATCH"
+  [ -z "$output" ]
 }
 
 @test "reading the boot chain, and writing the EFI partition's files, are not flagged" {

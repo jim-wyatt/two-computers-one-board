@@ -164,6 +164,7 @@ bootstrap() {
   [[ "$output" == *"--with-temp-log"* ]]
   [[ "$output" == *"--with-buildlight"* ]]
   [[ "$output" == *"--with-ble-sensor"* ]]
+  [[ "$output" == *"--with-root-slots"*"It only"*"reads"* ]]
   [[ "$output" == *"TIME AND SPACE"* ]]
   [[ "$output" != *"set -uo pipefail"* ]]
   [[ "$output" != *"PROJECT="* ]]
@@ -378,6 +379,7 @@ line_of() { grep -nE "$1" "$STUB_LOG" | head -1 | cut -d: -f1; }
   refute ran_step provision/85-esp-permissions.sh
   refute ran_step provision/82-boot-counting.sh
   refute ran_step provision/84-rescue-entry.sh
+  refute ran_step provision/86-root-slots.sh
   refute ran_step provision/66-temp-log.sh
   refute ran_step provision/67-buildlight.sh
   refute ran_step provision/68-ble-sensor.sh
@@ -408,6 +410,30 @@ line_of() { grep -nE "$1" "$STUB_LOG" | head -1 | cut -d: -f1; }
   ran_step provision/84-rescue-entry.sh
   refute ran_step provision/82-boot-counting.sh
   [[ "$output" == *"--with-rescue-entry"* ]]
+}
+
+@test "the root-slots tool runs by name only, before the clean-up, and is not in --everything or --with-recovery" {
+  # It leads to a step that rewrites the partition table (#169): asked for by
+  # name or not at all.
+  mkdir -p "$HOME/.ssh"
+  echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample someone@laptop" >"$HOME/.ssh/authorized_keys"
+  bootstrap --everything
+  [ "$status" -eq 0 ]
+  refute ran_step provision/86-root-slots.sh
+  : >"$STUB_LOG"
+  bootstrap --with-recovery
+  [ "$status" -eq 0 ]
+  refute ran_step provision/86-root-slots.sh
+  : >"$STUB_LOG"
+  bootstrap --with-root-slots
+  [ "$status" -eq 0 ]
+  ran_step provision/86-root-slots.sh
+  refute ran_step provision/84-rescue-entry.sh
+  slots="$(line_of "^sudo -E bash $PROJECT/provision/86-root-slots\.sh\$")"
+  clean="$(line_of "^sudo -E bash $PROJECT/provision/90-cleanup\.sh\$")"
+  [ "$slots" -lt "$clean" ]
+  [[ "$output" == *"--with-root-slots"* ]]
+  [[ "$output" == *"nothing on the disk is changed"* ]]
 }
 
 @test "--with-recovery is boot counting and then the rescue entry, both before the clean-up and the USB link" {

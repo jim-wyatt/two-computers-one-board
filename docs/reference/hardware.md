@@ -619,6 +619,18 @@ partition table, or the partition table itself. No `qbootctl -s`, `-m` or
 tracked file for those writes on every CI run, and plants one of each in a
 scratch repository to prove it would notice.
 
+**The one planned exception, not yet done.** Splitting `rootfs` into two
+roots ([issue #169](https://github.com/jim-wyatt/two-computers-one-board/issues/169),
+phase 2) rewrites the partition table once: `rootfs` shrinks to 10 GiB and a
+new `rootfs-b` takes the rest, up to `userdata`. Every other partition, the
+firmware slots and their attributes among them, keeps its line byte for byte.
+It is done by hand, from the rescue shell with nothing mounted, and not by
+any provisioning step. It is not in this release: what is, is the dry run,
+`unoq-root.sh plan` ([troubleshooting.md](troubleshooting.md#two-roots-planned)),
+which prints the exact `sfdisk` script and writes nothing. The same test
+refuses any partition, filesystem or resize tool that names `/dev/mmcblk0`
+literally: the disk is found at run time from `findmnt /`.
+
 The reason is that this layer is the floor under every other way back. A bad
 kernel falls back to the previous entry; a bad entry can be fixed from a rescue
 system; a bad write to `xbl` or `boot` is a board that never reaches U-Boot,

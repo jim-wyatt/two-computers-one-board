@@ -29,9 +29,10 @@ setup() {
   # real lib.sh - which works out where the checkout is from where IT is, so
   # the copies below are made from this directory and not from the repository.
   SRC="$BATS_TEST_TMPDIR/checkout"
-  mkdir -p "$SRC/usb" "$SRC/net" "$SRC/status" "$SRC/mcu" "$SRC/provision"
+  mkdir -p "$SRC/usb" "$SRC/net" "$SRC/recovery" "$SRC/status" "$SRC/mcu" "$SRC/provision"
   cp "$REAL"/usb/*.sh "$SRC/usb/"
   cp "$REAL"/net/*.sh "$SRC/net/"
+  cp "$REAL"/recovery/*.sh "$SRC/recovery/"
   cp "$REAL/status/leds.sh" "$SRC/status/"
   cp "$REAL/mcu/link-up.sh" "$SRC/mcu/"
   cp "$REAL/provision/lib.sh" "$SRC/provision/"
