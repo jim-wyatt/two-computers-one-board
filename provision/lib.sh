@@ -791,8 +791,12 @@ render_unit() {
   # It has to be rewritten separately: the first expressions only match the
   # checkout path, so under any account but arduino those units went on
   # waiting for a /home/arduino that was never going to appear.
+  #
+  # The second expression skips the Exec lines the first has already done.
+  # Run over them again, it found the placeholder at the front of a checkout
+  # nested under it - a worktree in .claude/worktrees/ - and doubled it (#215).
   sed -e "/^Exec[A-Za-z]*=/s#/home/arduino/two-computers-one-board#$exec_root#g" \
-    -e "s#/home/arduino/two-computers-one-board#$PROJECT#g" \
+    -e "/^Exec[A-Za-z]*=/!s#/home/arduino/two-computers-one-board#$PROJECT#g" \
     -e "s#^RequiresMountsFor=/home/arduino\$#RequiresMountsFor=$TARGET_HOME#" \
     -e "s#^User=arduino\$#User=$TARGET_USER#" \
     -e "s#^Group=arduino\$#Group=$TARGET_USER#" \
