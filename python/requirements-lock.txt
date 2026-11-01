@@ -22,7 +22,7 @@ deepmerge==4.0.0
     # via zensical
 gpiod==2.5.0
     # via unoq (pyproject.toml)
-hatchling==1.32.4
+hatchling==1.33.0
     # via -r build-tools.in
 iniconfig==2.3.1
     # via pytest
@@ -38,7 +38,7 @@ markdown==3.11.2
     #   zensical
 markupsafe==3.0.4
     # via jinja2
-mypy==2.4.0
+mypy==2.4.1
     # via unoq (pyproject.toml)
 mypy-extensions==1.1.0
     # via mypy
@@ -69,7 +69,7 @@ pymdown-extensions==12.3
     # via zensical
 pyserial==3.5
     # via unoq (pyproject.toml)
-pytest==9.1.1
+pytest==9.2.0
     # via
     #   unoq (pyproject.toml)
     #   pytest-cov
@@ -79,7 +79,7 @@ pyyaml==6.0.3
     # via
     #   pymdown-extensions
     #   zensical
-ruff==0.17.2
+ruff==0.17.3
     # via unoq (pyproject.toml)
 setuptools==84.2.1
     # via -r build-tools.in
@@ -97,7 +97,7 @@ tomlkit==0.15.2
     # via hatchling
 trove-classifiers==2026.9.21.13
     # via hatchling
-types-markdown==3.10.2.20261007
+types-markdown==3.11.2.20261029
     # via unoq (pyproject.toml)
 typing-extensions==4.16.0
     # via
