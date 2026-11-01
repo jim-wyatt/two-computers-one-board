@@ -685,4 +685,6 @@ sudo rm /boot/efi/loader/entries/*-rescue-test*.conf
 
 Tried on 2026-11-01: SSH answered 5.5 s after power-on, from a Windows host, and the board came back on its kernel by itself.
 
+Why the board has this entry at all, and how it fits with boot counting, MCUboot and the bind guard, is the course chapter [Trial, confirm, roll back](../learn/trial-confirm-roll-back.md).
+
 If you need to do that from inside the rescue system itself, the EFI partition is `mmcblk0p67`: `mkdir -p /mnt && mount -t vfat /dev/mmcblk0p67 /mnt`, then the same two commands in `/mnt/loader`, then `umount /mnt`.

@@ -153,13 +153,14 @@ valuable than anything else here.
 9. [Updating safely](updating-safely.md)
 10. [One cable, many devices](one-cable-many-devices.md)
 11. [Four lights that tell the truth](four-lights.md)
-12. [Debugging without a screen](debugging-without-a-screen.md)
+12. [Trial, confirm, roll back](trial-confirm-roll-back.md)
+13. [Debugging without a screen](debugging-without-a-screen.md)
 
 **Making it yours**
 
-13. [Knowing it works](knowing-it-works.md)
-14. [From factory to this](from-factory-to-this.md)
-15. [Make it yours](make-it-yours.md)
+14. [Knowing it works](knowing-it-works.md)
+15. [From factory to this](from-factory-to-this.md)
+16. [Make it yours](make-it-yours.md)
 
 Ready? The board has two computers on it, and they are more different than they
 look.

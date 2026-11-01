@@ -289,6 +289,7 @@ nav:
           - learn/updating-safely.md
           - One cable, many devices: learn/one-cable-many-devices.md
           - learn/four-lights.md
+          - Trial, confirm, roll back: learn/trial-confirm-roll-back.md
           - learn/debugging-without-a-screen.md
       - Making it yours:
           - learn/knowing-it-works.md
