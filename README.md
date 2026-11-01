@@ -64,8 +64,9 @@ cd ~/two-computers-one-board && ./bootstrap.sh
 
 That is the whole setup. It took 19 minutes on a factory-restored board over
 home broadband. Most of the download is the Zephyr workspace (~2 GB) and SDK
-(~0.8 GB), and it needs about 6 GB free. It has been run on the 4 GB / 32 GB
-board; the 2 GB / 16 GB one is untested.
+(~0.8 GB), and it needs about 6 GB free. It has been run on the UNO Q with 4 GB of memory and
+32 GB of storage; the one with 2 GB and 16 GB is untested. The VENTUNO Q is a
+different board, and this project does not target it.
 Run it as yourself; it asks for `sudo` where it needs it.
 
 **If it stops, run it again.** Every step reports `changed` or `ok`, and a
