@@ -255,7 +255,7 @@ the board to use it: see [What root runs](provisioning.md#what-root-runs).
 The four that run as you run from the Python environment in the checkout.
 
 The four USB units are explained in
-[usb.md](usb.md#you-cannot-switch-the-role-from-software) and
+[usb.md](usb.md#do-not-switch-the-role-from-software) and
 [The bind guard](usb.md#the-bind-guard).
 
 ```bash
