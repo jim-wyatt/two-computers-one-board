@@ -45,6 +45,8 @@ link_state()                   # {'boot0': 'OUTPUT', 'link_enable': 'OUTPUT'}
 with MCU() as mcu:
     mcu.status()               # {'uptime_ms': 12216, 'flip': 0, 'sweeps': 1043712}
     mcu.die_temp()             # 31.25 - the STM32's own temperature, degrees C
+    mcu.env()                  # EnvReading(temp_mc=21530, humidity_mpct=45123, ...)
+                               # - a BME680 on the header's I2C, see below
 
     mcu.bars([12, 3, 0, 47])   # LED matrix: one bar per value, 0..100
     mcu.matrix_px(7, 0)        # light one LED - finds the panel's orientation
@@ -296,11 +298,12 @@ See [mcu.md](mcu.md#update-over-serial-no-swd).
 
 ## What runs at boot
 
-Ten systemd units. A plain `./bootstrap.sh` installs eight of them; `--no-cpu-bars`,
+Eleven systemd units. A plain `./bootstrap.sh` installs eight of them; `--no-cpu-bars`,
 `--no-learning` and `--no-usb-gadget` (or `--minimal`, for all three) leave out
 the ones named. `--with-temp-log` installs the ninth, `unoq-temp-log`, in place
-of `unoq-cpu-bars`, and `--with-buildlight` the tenth, `unoq-buildlight`, in
-place of either: all three hold the serial port.
+of `unoq-cpu-bars`, `--with-buildlight` the tenth, `unoq-buildlight`, in
+place of either, and `--with-ble-sensor` the eleventh, `unoq-ble-sensor`, in
+place of any of them: all four hold the serial port.
 
 | Unit | What it does | Installed by | Runs as | Kind |
 |---|---|---|---|---|
@@ -309,6 +312,7 @@ place of either: all three hold the serial port.
 | `unoq-cpu-bars` | Draws CPU load on the LED matrix. Holds `/dev/ttyHS1` | default; not with `--no-cpu-bars` (`provision/65-cpu-bars.sh`) | you | long-running |
 | `unoq-temp-log` | Keeps the MCU's temperature log in `/var/lib/unoq/templog`. Holds `/dev/ttyHS1`, and conflicts with `unoq-cpu-bars` | with `--with-temp-log`, instead of `unoq-cpu-bars` (`provision/66-temp-log.sh`) | you | long-running |
 | `unoq-buildlight` | Shows a GitHub Actions workflow's latest run on the LED matrix. Holds `/dev/ttyHS1`, and conflicts with `unoq-cpu-bars` and `unoq-temp-log` | with `--with-buildlight`, instead of either (`provision/67-buildlight.sh`) | you | long-running |
+| `unoq-ble-sensor` | Serves a BME680's readings over Bluetooth LE, as the Environmental Sensing service. Holds `/dev/ttyHS1`, conflicts with the three above and `unoq-mcu-serial`, and `Requires=` `bluetooth.service` | with `--with-ble-sensor`, instead of any of them (`provision/68-ble-sensor.sh`) | you | long-running |
 | `unoq-learn` | Serves the documentation and installers over HTTP on port 8080, and the temperature log at `/data/` | default; not with `--no-learning` (`provision/75-learning-web.sh`) | you | long-running |
 | `unoq-usb-gadget` | Builds the USB gadget definition and prepares the `br-usb` bridge. Never binds | default; not with `--no-usb-gadget` (`provision/95-usb-gadget.sh`) | root | one-shot, stays active |
 | `unoq-usb-bind` | Asks the bind guard, then binds the gadget and brings the USB network up. Not enabled at boot: udev starts it when a USB device controller or the gadget's network interface appears | default; not with `--no-usb-gadget` | root | one-shot, re-run on every plug-in |
@@ -809,6 +813,146 @@ a dead build light is dark rather than a check mark nobody is updating.
 | `UNOQ_BUILDLIGHT_BRANCH` | `main` | The branch. `--branch` overrides it |
 | `UNOQ_BUILDLIGHT_INTERVAL` | `60` | Seconds between polls. `--interval` overrides it |
 | `UNOQ_BUILDLIGHT_TOKEN` | none | Read from the environment only |
+
+---
+
+## Bluetooth sensor
+
+`unoq-ble-sensor` makes the board a Bluetooth thermometer, hygrometer and
+barometer. Every ten seconds it asks the MCU for `app env`, a reading from a
+BME680 breakout on the header's I2C ([mcu.md](mcu.md#the-bme680-app-env) has
+the firmware half), and serves it over Bluetooth Low Energy as the standard
+GATT **Environmental Sensing** service, which phone apps already understand.
+The MCU does the bus and the timing; Linux does a radio stack and a phone.
+
+> **None of this has run on hardware yet.** The part is on order. Everything
+> below is built and tested against fakes: the firmware's formatting by ztest
+> on `native_sim`, the parser, the GATT encodings and the D-Bus conversation
+> by pytest, and the step by bats. Whether the driver finds the part, BlueZ
+> takes the service and a phone shows the values is the first thing to try
+> when it arrives.
+
+### Wiring
+
+Four wires, from the breakout to the UNO Q's header. The I2C pins are the two
+past AREF on the digital side, also labeled SDA and SCL on the board; on the
+MCU they are `i2c2`, PB11 and PB10, Zephyr's `arduino_i2c`.
+
+| Breakout | UNO Q header | MCU |
+|---|---|---|
+| VIN, VCC or 3V3 | 3.3V | — |
+| GND | GND | — |
+| SDA (SDI on some) | SDA | PB11 |
+| SCL (SCK on some) | SCL | PB10 |
+
+Use 3.3 V: the MCU's pins are 3.3 V, and most breakouts have their own
+pull-ups to whatever they are powered from. Leave SDO and CS unconnected
+unless the breakout says otherwise; on most boards CS is pulled up (I2C) and
+SDO chooses the address. The firmware looks at **0x77**, where Adafruit's and
+SparkFun's boards answer. Pimoroni's, and many unbranded ones, answer at
+**0x76**; for those, build with `mcu/zbuild.sh -- -DUNOQ_BME680_ADDR=0x76`.
+The MCU's shell says which you have, with the sensor wired and the board
+powered up afterwards:
+
+```
+unoq:~$ i2c scan i2c@40005800
+```
+
+The part is found at boot: one wired up later is not seen until the MCU
+restarts. The boot console says which it was:
+`env: BME680 at 0x77 on i2c2`, or `env: no BME680 at 0x77 on i2c2`.
+
+### The commands
+
+```bash
+sudo bash ~/two-computers-one-board/provision/68-ble-sensor.sh   # install + enable
+journalctl -u unoq-ble-sensor -f       # "reading: 21.53 °C, 45.12 %RH, ..." once, then changes of state
+sudo systemctl stop unoq-ble-sensor    # give the serial port back, for a moment
+```
+
+> **It replaces the CPU-bars demo, the logger or the build light, and it
+> switches Bluetooth back on.** All four hold `/dev/ttyHS1`, so the unit says
+> `Conflicts=` on each and the step disables whichever is enabled. TIER 2 of
+> `10-optimize-board.sh` disables `bluetooth.service`; this is the deliberate
+> exception, and while `unoq-ble-sensor` is enabled, `10` leaves Bluetooth on.
+> To go back:
+>
+> ```bash
+> sudo systemctl disable --now unoq-ble-sensor
+> sudo bash ~/two-computers-one-board/provision/65-cpu-bars.sh
+> sudo systemctl disable --now bluetooth   # or let the next bootstrap run do it
+> ```
+>
+> A plain `./bootstrap.sh` re-run on a board with the sensor keeps the sensor.
+
+By hand, with the service stopped (the serial port is free), the reading
+itself, and a three-reading run of the daemon:
+
+```bash
+hpy -c "from unoq import MCU; r = MCU().env(); print(r, r.temp_c, r.humidity_pct, r.pressure_hpa)"
+unoq-ble-sensor --count 3 --interval 5
+```
+
+### What a phone sees
+
+In nRF Connect (Nordic's free app, for Android and iOS), or any BLE scanner:
+
+1. **SCANNER**: the board advertises as **UNO Q** (`UNOQ_BLE_SENSOR_NAME`),
+   with the Environmental Sensing service's UUID, `0x181A`, in the
+   advertisement. **CONNECT**. No pairing is asked for.
+2. Under **Environmental Sensing**, three characteristics. nRF Connect knows
+   all three, and shows each in its units when you tap the read arrow:
+
+   | Characteristic | UUID | Format | Example: 21.53 °C, 45.123 %, 101325 Pa |
+   |---|---|---|---|
+   | Temperature | `0x2A6E` | sint16, 0.01 °C | `69 08` (2153), 21.53 °C |
+   | Humidity | `0x2A6F` | uint16, 0.01 % | `A0 11` (4512), 45.12 % |
+   | Pressure | `0x2A6D` | uint32, 0.1 Pa | `02 76 0F 00` (1013250), 101325.0 Pa |
+
+   Little-endian, as everything in Bluetooth is. The firmware's figures are
+   finer (millidegrees, thousandths of a percent); they are rounded to the
+   format's, halves away from zero.
+3. The triple arrow subscribes: the value comes at once, then again whenever
+   it changes, which with a reading every ten seconds is about that often.
+
+With no BME680, the board still advertises and the service is still there:
+a read fails, with the reason (`no BME680 answered on the header's I2C ...`)
+in the daemon's journal and in the error BlueZ gets. The gas resistance, the
+part's fourth figure, has no characteristic in the service, so it is in
+`app env` and `MCU.env()` only.
+
+### How it is built
+
+**BlueZ over D-Bus, with jeepney.** The daemon exports four objects on the
+system bus (the service, its three characteristics) and an advertisement, then
+asks BlueZ to take them: `GattManager1.RegisterApplication` and
+`LEAdvertisingManager1.RegisterAdvertisement`, after setting the adapter's
+`Powered`. From then on BlueZ calls into it when a phone reads or subscribes.
+The binding is [jeepney](https://jeepney.readthedocs.io/), the `[ble]` extra:
+pure Python with no dependencies of its own. `dbus-python`, the usual choice,
+is a C extension that needs a GLib main loop to export objects, and the system
+copy cannot be seen from the project's venv. The whole daemon is one thread:
+a receive with a timeout, between readings.
+
+**Which half does what.** The encoders (`encode_temperature` and friends) are
+pure, and refuse a value their format cannot hold rather than wrap it. The
+D-Bus side is tested against jeepney's own messages, serialized and parsed
+back, so a reply that does not match its signature fails a test rather than
+the bus. Waiting for `RegisterApplication` answers BlueZ's
+`GetManagedObjects` meanwhile, since BlueZ reads the application before it
+replies.
+
+**What it does not do.** No pairing, bonding or encryption: anything in range
+can read the values, as with any shop-bought BLE thermometer. Nothing can be
+written. One central at a time is BlueZ's business, not this daemon's.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `UNOQ_BLE_SENSOR_NAME` | `UNO Q` | The advertised name, 1 to 20 bytes. `--name` overrides it |
+| `UNOQ_BLE_SENSOR_INTERVAL` | `10` | Seconds between readings. `--interval` overrides it |
+| `UNOQ_BLE_SENSOR_ADAPTER` | `hci0` | The adapter. `--adapter` overrides it |
+
+The unit reads them from `/etc/unoq/ble-sensor.env` if you create it.
 
 ---
 

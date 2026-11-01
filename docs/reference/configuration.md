@@ -167,6 +167,27 @@ again. Edit it, then `sudo systemctl restart unoq-buildlight`. The file is mode
 | `UNOQ_BUILDLIGHT_INTERVAL` | `60` | `unoq-buildlight` | Seconds between polls. Failures in a row double it, up to 15 minutes, and GitHub's rate-limit headers can make it longer. |
 | `UNOQ_BUILDLIGHT_TOKEN` | none | `unoq-buildlight` | Optional for a public repository, needed for a private one: a fine-grained token with read-only access to Actions on that one repository. Sent as `Authorization: Bearer`, never printed, and only ever read from the environment: there is no command-line flag, because `ps` would show it to every user. Without one GitHub allows 60 requests an hour from an address, which a 60-second interval would use up; the daemon's requests are conditional, and GitHub does not count an unchanged answer (a `304`) against that limit. |
 
+## The Bluetooth sensor
+
+Read by `unoq-ble-sensor` ([`python/unoq/blesensor.py`](../../python/unoq/blesensor.py)),
+the daemon `--with-ble-sensor` installs. Its unit passes no arguments and
+reads these from `/etc/unoq/ble-sensor.env` if that file exists
+(`EnvironmentFile=-` in
+[`python/unoq-ble-sensor.service`](../../python/unoq-ble-sensor.service)).
+Nothing writes the file: create it with the lines you want, then
+`sudo systemctl restart unoq-ble-sensor`. Each also has a flag, which wins.
+
+It is also the one exception to `UNOQ_TIER2` (below): `provision/68-ble-sensor.sh`
+enables `bluetooth.service`, and while `unoq-ble-sensor` is enabled,
+`10-optimize-board.sh` leaves Bluetooth on whatever `UNOQ_TIER2` says.
+
+| Variable | Default | Read by | What it does |
+|---|---|---|---|
+| `UNOQ_BLE_SENSOR_NAME` | `UNO Q` | `unoq-ble-sensor` | The name a phone lists the board under, in the advertisement. 1 to 20 bytes, so that it fits a legacy advertisement beside the service's UUID. `--name` overrides it. |
+| `UNOQ_BLE_SENSOR_INTERVAL` | `10` | `unoq-ble-sensor` | Seconds between readings, each one a forced measurement on the BME680 (the gas sensor's hot plate runs for about 200 ms of it, which warms the part a little; much faster and the temperature reads high). A subscribed phone is notified when a value changes. `--interval` overrides it. |
+| `UNOQ_BLE_SENSOR_ADAPTER` | `hci0` | `unoq-ble-sensor` | The Bluetooth adapter, as BlueZ names it under `/org/bluez/`. The board has one. `--adapter` overrides it. |
+| `UNOQ_BME680_ADDR` | `0x77` | the firmware build (`mcu/app/CMakeLists.txt`, into the overlay) | The BME680's I2C address: `0x77`, as Adafruit's and SparkFun's breakouts ship, or `0x76`, as Pimoroni's and many unbranded ones do (the part's SDO pin low). A CMake variable, not an environment one: `mcu/zbuild.sh -- -DUNOQ_BME680_ADDR=0x76`. It holds for that build directory until a pristine build (`-p always`). Anything else stops the build. |
+
 ## Provisioning switches
 
 Set on the command line, for one run of `bootstrap.sh` or of the script named.

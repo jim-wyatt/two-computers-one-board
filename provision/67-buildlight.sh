@@ -9,8 +9,8 @@
 # Idempotent. Like 65 and 66 it is a convenience, not a prerequisite, and like
 # them it holds /dev/ttyHS1 while it runs. The port has one owner, so the
 # three are alternatives: THIS STEP TAKES THE PANEL FROM THE DEMO - IT STOPS
-# AND DISABLES THE CPU-BARS DEMO, AND THE TEMPERATURE LOGGER IF THAT IS WHAT
-# THE BOARD RUNS. The units say Conflicts= as well, but two enabled units that
+# AND DISABLES THE CPU-BARS DEMO, AND THE TEMPERATURE LOGGER OR THE BLUETOOTH
+# SENSOR (68) IF THAT IS WHAT THE BOARD RUNS. The units say Conflicts= as well, but two enabled units that
 # conflict leave which one runs at boot to chance, so they are disabled rather
 # than only stopped. To go back to the demo:
 #
@@ -109,13 +109,14 @@ fi
 step "the panel"
 # The port has one owner. Off before this is started, so it is not the
 # build light that loses the port.
-for other in unoq-cpu-bars.service unoq-temp-log.service; do
+for other in unoq-cpu-bars.service unoq-temp-log.service unoq-ble-sensor.service; do
   if systemctl is-enabled --quiet "$other" 2>/dev/null; then
     systemctl disable --now "$other" >/dev/null 2>&1 ||
       fail "could not stop ${other%.service}, which holds the serial port"
     case "$other" in
       unoq-cpu-bars.service) did "stopped and disabled the CPU-bars demo: the panel is the build light's now" ;;
-      *) did "stopped and disabled the temperature logger (its record is kept): the port to the MCU has one owner" ;;
+      unoq-temp-log.service) did "stopped and disabled the temperature logger (its record is kept): the port to the MCU has one owner" ;;
+      *) did "stopped and disabled the Bluetooth sensor: the port to the MCU has one owner" ;;
     esac
   else
     skip "${other%.service} is not enabled"

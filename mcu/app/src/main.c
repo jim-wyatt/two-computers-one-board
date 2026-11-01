@@ -39,6 +39,7 @@
 
 #include "app_proto.h"
 #include "bars.h"
+#include "env.h"
 #include "guard.h"
 #include "jitter.h"
 #include "matrix.h"
@@ -714,6 +715,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
 	app_cmds,
 	SHELL_CMD(status, NULL, "uptime, panel orientation, refresh sweeps", cmd_app_status),
 	SHELL_CMD(temp, &temp_cmds, "die temp in millidegrees C", cmd_app_temp),
+	SHELL_CMD(env, NULL, "BME680 on i2c2: temp, humidity, pressure, gas", cmd_app_env),
 	SHELL_CMD_ARG(bars, NULL, "Draw CPU bars: app bars <pct> [pct ...]", cmd_app_bars, 2,
 		      APP_BARS_MAX - 1),
 	SHELL_CMD(matrix, &matrix_cmds, "LED panel control", NULL),
@@ -786,6 +788,10 @@ int main(void)
 	templog_start(&temp_log, read_die_temp, APP_TEMPLOG_PERIOD_MS);
 	printk("temperature log: %d samples, one every %d ms\n", APP_TEMPLOG_SIZE,
 	       APP_TEMPLOG_PERIOD_MS);
+
+	/* The BME680's driver came up, or not, before main(); this only says
+	 * which. A board with no breakout runs everything else the same. */
+	env_report();
 
 	return 0;
 }

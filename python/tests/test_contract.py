@@ -648,3 +648,56 @@ def test_every_shell_print_format_is_one_constant() -> None:
                 f"{src.name}: shell_* called with format {text[call.end() : call.end() + 60]!r}; "
                 "paste literals and macros, never choose between them"
             )
+
+
+# -- `app env` -------------------------------------------------------------------
+#
+# The BME680's line and its error, pinned like the temp line. env_sensor.c holds
+# the handler, so its refusals are checked here rather than with main.c's.
+
+ENV_SENSOR = MCU_APP / "src" / "env_sensor.c"
+
+
+@pytest.mark.parametrize(
+    ("python_name", "c_name"), [("_ENV", "APP_ENV_FMT"), ("_ENV_ERR", "APP_ENV_ERR_FMT")]
+)
+def test_env_regexes_are_the_ones_the_firmware_formats_imply(python_name: str, c_name: str) -> None:
+    fmt = firmware_format(c_name)
+    assert getattr(mcu, python_name).pattern == implied_regex(fmt), (
+        f"unoq.mcu.{python_name} no longer matches {c_name} ({fmt!r}) - "
+        f"a change to app_proto.h is a protocol change; update python/unoq/mcu.py"
+    )
+
+
+def test_an_env_line_the_firmware_would_print_parses_back(mcu_factory: Any) -> None:
+    """The values mcu/tests/env renders in C, through the header's own format."""
+    line = render(firmware_format("APP_ENV_FMT"), 21530, 45123, 101325, 52345)
+    assert mcu_factory({"app env": [line]}).env() == mcu.EnvReading(21530, 45123, 101325, 52345)
+
+
+def test_an_env_refusal_the_firmware_would_print_is_an_env_error(mcu_factory: Any) -> None:
+    prefix = re.search(r'^#define\s+APP_ERR\s+"([^"]*)"', HEADER.read_text(), re.M)
+    assert prefix
+    line = prefix.group(1) + render(firmware_format("APP_ENV_ERR_FMT"), -19)
+    with pytest.raises(mcu.EnvError) as caught:
+        mcu_factory({"app env": [line]}).env()
+    assert caught.value.errno == -19
+
+
+def test_an_env_line_is_never_read_as_a_temp_reply() -> None:
+    """Both start with temp_mc=. Anchoring keeps either from passing for the other."""
+    line = render(firmware_format("APP_ENV_FMT"), 21530, 45123, 101325, 52345)
+    assert not mcu._TEMP.match(line)
+    assert not mcu._ENV.match(firmware_format("APP_TEMP_FMT") % 21530)
+
+
+def test_every_env_refusal_uses_the_prefix_and_the_error_format() -> None:
+    source = ENV_SENSOR.read_text()
+    calls = re.findall(r"shell_error\(sh,\s*([A-Z_ ]+?)\s*,", source)
+    assert calls == ["APP_ERR APP_ENV_ERR_FMT"], calls
+
+
+def test_the_firmware_registers_env_with_no_arguments() -> None:
+    source = (MCU_APP / "src" / "main.c").read_text()
+    assert re.search(r"SHELL_CMD\(env, NULL, \"[^\"]*\", cmd_app_env\)", source)
+    assert '#include "env.h"' in source

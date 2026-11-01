@@ -73,7 +73,7 @@ BUILD_IN="$PROJECT/python/build-tools.in"
 printf '%s\n' hatchling setuptools wheel >"$BUILD_IN"
 trap 'rm -f "$BUILD_IN"' EXIT
 (cd "$PROJECT/python" && uv pip compile -q --universal --python-version 3.11 "${UPGRADE[@]}" \
-  --extra dev --extra docs --extra board pyproject.toml build-tools.in \
+  --extra dev --extra docs --extra board --extra ble pyproject.toml build-tools.in \
   --custom-compile-command "tools/update-constraints.sh" \
   -o requirements-lock.txt)
 echo "  $(grep -cE '^[a-zA-Z0-9]' "$PROJECT/python/requirements-lock.txt") packages pinned"

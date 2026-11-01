@@ -1,0 +1,63 @@
+# Copyright (c) 2026 Jim Wyatt
+# SPDX-License-Identifier: MIT
+[Unit]
+Description=Arduino UNO Q Bluetooth sensor: the BME680, as Environmental Sensing
+Documentation=file:/home/arduino/two-computers-one-board/docs/reference/mpu.md
+
+# The serial port to the MCU has one owner at a time: MCU() opens it with an
+# exclusive lock. The CPU-bars demo, the temperature logger, the build light
+# and the USB serial relay are the other programs that hold it, so this is an
+# alternative to each. Starting this one stops them, and the other way round.
+# provision/68-ble-sensor.sh also disables the three that start at boot, since
+# two enabled units that conflict leave which one runs to chance.
+Conflicts=unoq-cpu-bars.service unoq-temp-log.service unoq-buildlight.service
+Conflicts=unoq-mcu-serial.service
+# Conflicts= orders nothing: without this the old owner's stop and this start
+# run at once, and the port is still held when this opens it.
+After=unoq-cpu-bars.service unoq-temp-log.service unoq-buildlight.service
+After=unoq-mcu-serial.service
+
+# /dev/ttyHS1 reads nothing until link-up.sh has driven the UART enable GPIO;
+# see unoq-cpu-bars.service, whose reasoning this copies.
+Requires=unoq-link.service
+After=unoq-link.service
+# BlueZ is what this registers with. Requires= as well as After=: a bluetoothd
+# that restarts has forgotten the service and the advertisement, and stopping
+# this with it means it starts again and registers them again.
+# provision/68-ble-sensor.sh enables bluetooth.service, which TIER 2 of
+# 10-optimize-board.sh otherwise disables.
+Requires=bluetooth.service
+After=bluetooth.service
+# The same limit as the CPU-bars demo, for the same reasons: twelve starts in
+# five minutes, and then the unit is failed and LED 2 says so. A firmware
+# without `app env` fails every start the same way, and the journal says how
+# to update it. No BME680 is not a failure: the service stays up, and a read
+# from a phone says there is no sensor.
+# Recover, once the MCU is answering again:
+#   sudo systemctl reset-failed unoq-ble-sensor && sudo systemctl start unoq-ble-sensor
+StartLimitIntervalSec=300
+StartLimitBurst=12
+
+[Service]
+Type=simple
+User=arduino
+Group=arduino
+# UNOQ_BLE_SENSOR_NAME, _INTERVAL and _ADAPTER, if you want other than the
+# defaults ("UNO Q", 10 s, hci0). Nothing writes this file: create it, then
+# `sudo systemctl restart unoq-ble-sensor`. The leading `-` means a missing
+# file is not an error.
+EnvironmentFile=-/etc/unoq/ble-sensor.env
+ExecStart=/home/arduino/two-computers-one-board/.venv/bin/unoq-ble-sensor
+
+# The MCU may still be coming up at boot; the next attempt finds it.
+Restart=on-failure
+RestartSec=5
+
+# SIGTERM reaches Python as a plain kill. SIGINT takes the Ctrl-C path, which
+# closes the port and the bus; BlueZ drops the service and the advertisement
+# when the connection goes.
+KillSignal=SIGINT
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

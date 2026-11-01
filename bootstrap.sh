@@ -42,6 +42,10 @@
 #   - turn the LED matrix into a build light for a GitHub Actions workflow
 #     (--with-buildlight). The panel and the serial port go to it, instead of
 #     to the demo or the temperature log; it is a third alternative
+#   - serve a BME680's readings to a phone over Bluetooth LE
+#     (--with-ble-sensor). Bluetooth comes back on for it, the one exception
+#     to what 10-optimize-board.sh switches off; it is a fourth alternative
+#     for the serial port. Needs the part, which has not been tried yet
 #   - arm the hardware watchdog (--with-watchdog) or tighten the EFI
 #     partition's permissions (--with-esp-lockdown). Each has been run on one
 #     board, through reboots, and that is all: one can reset the board and the
@@ -71,6 +75,7 @@ WITH_BOOT_COUNTING=0
 WITH_RESCUE_ENTRY=0
 WITH_TEMP_LOG=0
 WITH_BUILDLIGHT=0
+WITH_BLE_SENSOR=0
 SKIP_MCU=0
 
 usage() {
@@ -96,6 +101,12 @@ Add something that is not:
                       a token if you want one, in /etc/unoq/buildlight.env.
                       Not with --with-temp-log: they want the same port. A
                       board that has it keeps it on a re-run.
+  --with-ble-sensor   serve a BME680's temperature, humidity and pressure over
+                      Bluetooth LE instead of running the CPU-bars demo (68),
+                      as the Environmental Sensing service a phone app such
+                      as nRF Connect reads. Switches Bluetooth back on. Not
+                      with --with-temp-log or --with-buildlight: the same
+                      port. A board that has it keeps it on a re-run.
   --with-watchdog     also arm the hardware watchdog (80): the board resets if
                       systemd stops for 30s. It came through one firmware build
                       under heavy swap without firing; it has never been made
@@ -151,6 +162,7 @@ for arg in "$@"; do
       ;;
     --with-temp-log) WITH_TEMP_LOG=1 ;;
     --with-buildlight) WITH_BUILDLIGHT=1 ;;
+    --with-ble-sensor) WITH_BLE_SENSOR=1 ;;
     # The watchdog and the EFI lockdown are in neither the default nor
     # --everything, on purpose. For those two the evidence is one board: each
     # ran there and came back from reboots, the watchdog through a firmware
@@ -194,22 +206,34 @@ if [ "$WITH_TEMP_LOG" = 1 ] && [ "$WITH_BUILDLIGHT" = 1 ]; then
   echo "--with-temp-log and --with-buildlight both want the serial port to the MCU: pick one" >&2
   exit 2
 fi
+# The Bluetooth sensor is the fourth, with the same rule.
+if [ "$WITH_BLE_SENSOR" = 1 ] && { [ "$WITH_TEMP_LOG" = 1 ] || [ "$WITH_BUILDLIGHT" = 1 ]; }; then
+  other=--with-buildlight
+  [ "$WITH_TEMP_LOG" = 1 ] && other=--with-temp-log
+  echo "--with-ble-sensor and $other both want the serial port to the MCU: pick one" >&2
+  exit 2
+fi
 unit_enabled() {
   [ "$(systemctl show "$1" -p UnitFileState --value 2>/dev/null)" = enabled ]
 }
 TEMP_LOG_KEPT=0
 BUILDLIGHT_KEPT=0
-if [ "$WITH_TEMP_LOG" = 0 ] && [ "$WITH_BUILDLIGHT" = 0 ]; then
+BLE_SENSOR_KEPT=0
+if [ "$WITH_TEMP_LOG" = 0 ] && [ "$WITH_BUILDLIGHT" = 0 ] && [ "$WITH_BLE_SENSOR" = 0 ]; then
   if unit_enabled unoq-buildlight.service; then
     WITH_BUILDLIGHT=1
     BUILDLIGHT_KEPT=1
   elif unit_enabled unoq-temp-log.service; then
     WITH_TEMP_LOG=1
     TEMP_LOG_KEPT=1
+  elif unit_enabled unoq-ble-sensor.service; then
+    WITH_BLE_SENSOR=1
+    BLE_SENSOR_KEPT=1
   fi
 fi
 [ "$WITH_TEMP_LOG" = 1 ] && WITH_CPU_BARS=0
 [ "$WITH_BUILDLIGHT" = 1 ] && WITH_CPU_BARS=0
+[ "$WITH_BLE_SENSOR" = 1 ] && WITH_CPU_BARS=0
 
 # The user-level steps install cmake, ninja, west and uv into ~/.local/bin. On a
 # board that has been logged into since, the login shell put that on PATH. On a
@@ -250,6 +274,11 @@ if [ "$BUILDLIGHT_KEPT" = 1 ]; then
   echo "  - keep the build light this board already runs, instead of the CPU-bars demo"
 elif [ "$WITH_BUILDLIGHT" = 1 ]; then
   echo "  - show a GitHub Actions workflow on the LED matrix INSTEAD OF the CPU-bars demo, which it stops and disables, polling api.github.com once a minute (--with-buildlight)"
+fi
+if [ "$BLE_SENSOR_KEPT" = 1 ]; then
+  echo "  - keep the Bluetooth sensor this board already runs, instead of the CPU-bars demo"
+elif [ "$WITH_BLE_SENSOR" = 1 ]; then
+  echo "  - switch Bluetooth back on and serve the BME680's readings over it, to anything in range, INSTEAD OF the CPU-bars demo, which it stops and disables (--with-ble-sensor)"
 fi
 [ "$WITH_LEARNING" = 1 ] &&
   echo "  - serve the course on port 8080, with no password, to anything that can reach the board (--no-learning)"
@@ -499,10 +528,11 @@ if [ "$SKIP_MCU" = 0 ]; then
   # "activating" as well as "active": between attempts the unit sits in
   # activating (auto-restart) for RestartSec, and a run that began in that
   # gap would have left it retrying through the whole flash.
-  # The temperature logger and the build light the same way: they hold the
-  # same port, and have the same twelve retries.
+  # The temperature logger, the build light and the Bluetooth sensor the same
+  # way: they hold the same port, and have the same twelve retries.
   PAUSED=""
-  for unit in unoq-cpu-bars.service unoq-temp-log.service unoq-buildlight.service; do
+  for unit in unoq-cpu-bars.service unoq-temp-log.service unoq-buildlight.service \
+    unoq-ble-sensor.service; do
     case "$(systemctl show "$unit" -p ActiveState --value 2>/dev/null)" in
       active | activating)
         sudo systemctl stop "$unit" && PAUSED="$PAUSED $unit"
@@ -525,16 +555,16 @@ if [ "$SKIP_MCU" = 0 ]; then
     warn "the microcontroller may be partly written. Recover with: $PROJECT/mcu/flash-all.sh"
   fi
   for unit in $PAUSED; do
-    # Started again by its own step, 65, 66 or 67, when this run includes it.
-    # Started here when it does not: leaving stopped a service this run did
-    # not install would be a change nobody asked for. 66 and 67 take the port
-    # from the others, so a run with one of them leaves the others stopped.
+    # Started again by its own step, 65, 66, 67 or 68, when this run includes
+    # it. Started here when it does not: leaving stopped a service this run
+    # did not install would be a change nobody asked for. 66, 67 and 68 take
+    # the port from the others, so a run with one of them leaves the others
+    # stopped.
+    TAKER=0
+    [ "$WITH_TEMP_LOG" = 1 ] || [ "$WITH_BUILDLIGHT" = 1 ] || [ "$WITH_BLE_SENSOR" = 1 ] && TAKER=1
     case "$unit" in
-      unoq-cpu-bars.service)
-        [ "$WITH_CPU_BARS" = 1 ] || [ "$WITH_TEMP_LOG" = 1 ] || [ "$WITH_BUILDLIGHT" = 1 ] && continue
-        ;;
-      unoq-temp-log.service) [ "$WITH_TEMP_LOG" = 1 ] || [ "$WITH_BUILDLIGHT" = 1 ] && continue ;;
-      unoq-buildlight.service) [ "$WITH_BUILDLIGHT" = 1 ] || [ "$WITH_TEMP_LOG" = 1 ] && continue ;;
+      unoq-cpu-bars.service) [ "$WITH_CPU_BARS" = 1 ] || [ "$TAKER" = 1 ] && continue ;;
+      *) [ "$TAKER" = 1 ] && continue ;;
     esac
     # The count of recent starts first, for the same reason step 65 clears it:
     # a unit stopped on its last permitted attempt would be refused this start.
@@ -551,6 +581,8 @@ fi
 # In 65's place. It needs nothing that comes after it.
 [ "$WITH_BUILDLIGHT" = 1 ] &&
   run_step "67  build light, instead of the CPU bars (root)" sudo "$PROJECT/provision/67-buildlight.sh"
+[ "$WITH_BLE_SENSOR" = 1 ] &&
+  run_step "68  Bluetooth sensor, instead of the CPU bars (root)" sudo "$PROJECT/provision/68-ble-sensor.sh"
 # Both of the next two hand out the same image: the web server serves from it
 # and the gadget exports it as the drive. Nothing used to build it here, so
 # --with-learning stopped at "has no content. Build the share first" on every
@@ -606,6 +638,9 @@ if [ "$WITH_TEMP_LOG" = 1 ]; then
 elif [ "$WITH_BUILDLIGHT" = 1 ]; then
   echo "  Build light settings:     sudoedit /etc/unoq/buildlight.env && sudo systemctl restart unoq-buildlight"
   echo "  The CPU-bars demo again:  sudo systemctl disable --now unoq-buildlight && sudo bash provision/65-cpu-bars.sh"
+elif [ "$WITH_BLE_SENSOR" = 1 ]; then
+  echo "  Bluetooth sensor:         journalctl -u unoq-ble-sensor -f   (settings: /etc/unoq/ble-sensor.env)"
+  echo "  The CPU-bars demo again:  sudo systemctl disable --now unoq-ble-sensor && sudo bash provision/65-cpu-bars.sh"
 elif [ "$WITH_CPU_BARS" = 0 ]; then
   echo "  LED matrix demo at boot:  sudo bash provision/65-cpu-bars.sh"
 fi
@@ -613,6 +648,8 @@ fi
   echo "  Log the MCU's temperature: sudo bash provision/66-temp-log.sh   (instead of the demo)"
 [ "$WITH_BUILDLIGHT" = 0 ] &&
   echo "  A build light for CI:     sudo bash provision/67-buildlight.sh   (instead of the demo)"
+[ "$WITH_BLE_SENSOR" = 0 ] &&
+  echo "  A Bluetooth sensor:       sudo bash provision/68-ble-sensor.sh   (instead of the demo; needs a BME680)"
 [ "$WITH_PURGE" = 0 ] &&
   echo "  Reclaim the Arduino disk: sudo bash provision/55-purge-arduino.sh"
 [ "$WITH_USB_GADGET" = 0 ] &&

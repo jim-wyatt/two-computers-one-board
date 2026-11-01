@@ -200,6 +200,36 @@ SH
   [ -n "$off" ] && [ "$off" -lt "$on" ]
 }
 
+@test "a Bluetooth sensor is disabled too, before the logger is started" {
+  # 68 holds the same port.
+  with_venv
+  : >"$FLAGS/enabled-unoq-ble-sensor.service"
+  : >"$FLAGS/active-unoq-ble-sensor.service"
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  [ ! -e "$FLAGS/enabled-unoq-ble-sensor.service" ]
+  [ ! -e "$FLAGS/active-unoq-ble-sensor.service" ]
+  [[ "$output" == *"stopped and disabled the Bluetooth sensor"* ]]
+  off="$(grep -n "^systemctl disable --now unoq-ble-sensor.service\$" "$STUB_LOG" | cut -d: -f1)"
+  on="$(grep -n "^systemctl enable --now $U\$" "$STUB_LOG" | cut -d: -f1)"
+  [ -n "$off" ] && [ "$off" -lt "$on" ]
+}
+
+@test "a Bluetooth sensor that will not stop stops the step" {
+  with_venv
+  stub_body systemctl <<'SH'
+case "$1" in
+  is-enabled) [ "${*: -1}" = unoq-ble-sensor.service ] ;;
+  disable) exit 1 ;;
+  *) exit 0 ;;
+esac
+SH
+  run "$STEP"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not stop unoq-ble-sensor"* ]]
+  [ ! -e "$UNIT" ]
+}
+
 @test "a build light that will not stop stops the step" {
   with_venv
   stub_body systemctl <<'SH'
