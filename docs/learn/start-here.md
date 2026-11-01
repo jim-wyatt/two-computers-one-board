@@ -80,16 +80,32 @@ this page.
 
 Any term you do not recognize is in the [glossary](../glossary.md).
 
-Three kinds of thing appear on every page:
+Every chapter has the same shape, so you always know where you are:
+
+**In this chapter**, at the top, says what you will be able to do by the end
+and what you need before you start — which earlier chapters, and whether the
+exercises borrow the serial line from the demo.
 
 **Concepts** explain an idea before you use it. Read these.
 
-**Try it** blocks are commands to run on the board. You learn embedded
-development by watching real hardware do something, and being surprised.
+**Try it** blocks are commands to run on the board, usually with what the
+board printed when the author ran them. You learn embedded development by watching
+real hardware do something, and being surprised.
 
-**No board yet?** Read anyway. Most Try it blocks show what the board printed,
+**Check yourself** is a few questions at the end. Try each one before opening
+the answer — the point is to find out what you would have said, not to read
+what the author said.
+
+**What to remember** is the chapter in five lines. If one of those lines is a
+surprise, go back to its section.
+
+**No board yet?** Read anyway. The Try it blocks show what the board printed,
 so the ideas stand without one, and the first chapters ask for very little.
 Come back and run them when it arrives.
+
+A good way to work: read one chapter in a sitting, run every Try it, answer
+the questions out loud or on paper, and only then read the recap. Nobody
+remembers a page they only read.
 
 > [!TIP]
 > **Go deeper** boxes like this one point at the reference documentation —

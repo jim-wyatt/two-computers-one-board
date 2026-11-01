@@ -12,6 +12,18 @@ read the other's variables. If they want to cooperate, they have to send each
 other messages over a wire, exactly like two machines on a network — and the
 wire is about two centimeters long.
 
+> [!NOTE]
+> **In this chapter**
+>
+> - what a microprocessor and a microcontroller each are, and what each one
+>   is *bad* at
+> - why "no shared memory" changes everything about how the two cooperate
+> - the three wires that join them, and what each is for
+>
+> **You need:** a terminal on the board, and nothing from an earlier chapter —
+> this is the first one. The second Try it borrows the serial line from the
+> demo service and gives it back.
+
 ## MPU and MCU
 
 **MPU** means *microprocessor unit*. It is the kind of chip in your laptop or
@@ -90,7 +102,17 @@ nproc
 free -h
 ```
 
+```
+Linux uno-q 7.0.0-g122c2c22d838 #1 SMP PREEMPT Tue May 19 15:08:13 UTC 2026 aarch64 GNU/Linux
+4
+               total        used        free      shared  buff/cache   available
+Mem:           3.6Gi       811Mi       1.6Gi       9.5Mi       1.4Gi       2.8Gi
+Swap:          1.8Gi          0B       1.8Gi
+```
+
 Four cores, gigabytes of RAM, a Linux kernel. Nothing surprising for a computer.
+(`aarch64` is the 64-bit Arm architecture, and `SMP` says the kernel is built
+to run on more than one core at once.)
 
 Now ask the *other* one. This talks over a wire to the microcontroller and asks
 it how it is doing. Only one program can use that wire at a time, and the demo
@@ -139,7 +161,9 @@ consequences, because it catches every newcomer:
 If you have used threads, this is *not* that. Threads share memory. This is much
 closer to two servers talking over a network — and thinking of it that way will
 serve you well every time you are confused about why the other side "cannot see"
-something.
+something. A function call on one side does not become a function call on the
+other. The nearest thing is a request and a reply: the message says what you
+want, in bytes, and the answer comes back the same way, or does not.
 
 ## How they are actually wired
 
@@ -202,6 +226,22 @@ Before moving on, you should be able to answer these:
 
 If the second one made you pause — the answer is *nothing at all* — then you
 have the main idea.
+
+## What to remember
+
+- The board is **two computers**: an MPU running Debian and an MCU running
+  Zephyr. They boot separately, reset separately, and share no memory.
+- The MPU is bad at **exact timing**, because Linux time-shares the cores and
+  interrupts your program whenever it likes. The MCU is bad at everything
+  big — but it is **deterministic**: the same timing, every time.
+- A job belongs where its hard part is. **Deciding what to show is a data
+  problem (Linux); making it appear on time is a timing problem (MCU).** The
+  message between them should be small.
+- Everything that crosses between the chips has to be **serialized into
+  bytes** and sent down a wire, and the wire can fail. Think "two servers on a
+  network", never "two threads".
+- Three connections join them: the **UART** for the conversation, **BOOT0** and
+  reset for deciding how the MCU starts, and **SWD** for writing its flash.
 
 Next: [The Linux side](the-linux-side.md) — what is actually running there, and
 why it looks so ordinary.

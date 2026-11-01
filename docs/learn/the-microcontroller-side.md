@@ -11,11 +11,25 @@ flash. It is the computer with no screen, no filesystem, no users, and no
 The mental adjustment is bigger than the numbers suggest, so this page is about
 what *goes away* when you cross to this side, and what you get in return.
 
+> [!NOTE]
+> **In this chapter**
+>
+> - what a program on a microcontroller does not have: processes, files,
+>   memory protection, a garbage collector
+> - what it gets instead, and what "real-time" actually promises
+> - what Zephyr is, and the difference between flash and RAM on a chip
+> - how two programs in two languages agree on the size of one LED panel
+>
+> **You need:** [Two computers on one board](two-computers.md) and
+> [The Linux side](the-linux-side.md). The Try it block uses `tio`, a serial
+> terminal, and borrows the serial line from the demo service.
+
 ## What is not there
 
 **No operating system in the sense you know.** Nothing schedules your program
 against other people's programs, because there are no other programs. Your code
-is the only code.
+is the only code. On Linux your program runs *on* the computer; here, for most
+purposes, your program *is* the computer.
 
 **No processes.** You cannot fork. There is nothing to fork into.
 
@@ -42,9 +56,10 @@ failure you want.
 **Timing you can rely on.** Told to wait 100 microseconds, it waits 100
 microseconds. Nothing preempts it, because there is nothing else.
 
-**Direct hardware access.** A pin is a bit in a register at a fixed memory
-address. You write the bit; the voltage changes. There is no driver, no kernel
-call, no permission check — just an assignment.
+**Direct hardware access.** A pin is a bit in a **register** — a small
+location at a fixed memory address, built into the chip, that controls or
+reports one piece of hardware. You write the bit; the voltage changes. There
+is no driver, no kernel call, no permission check — just an assignment.
 
 ## Zephyr: an operating system that admits it is small
 
@@ -97,7 +112,8 @@ never does on Linux:
 | Holds | your program, constants, saved settings | variables, stack |
 | Written | rarely, in blocks, slowly | constantly |
 
-Your program is *executed directly out of flash* — it is not copied into RAM
+Flash plays the part a disk plays on Linux, with one difference that matters:
+your program is *executed directly out of flash* — it is not copied into RAM
 first the way Linux loads an executable. That is why "flashing" the board means
 writing to the chip's permanent storage, and why it takes a few seconds rather
 than being instant.
@@ -224,6 +240,23 @@ sudo systemctl start unoq-cpu-bars
    the copy safe.
 
 </details>
+
+## What to remember
+
+- The MCU has **no processes, no filesystem, no memory protection and no
+  garbage collector**. Your program starts at power-on, runs until power-off,
+  and is the only thing there.
+- **Real-time means predictable, not fast**: an upper bound on how long
+  things take. That is the property the MCU has and Linux does not.
+- **Zephyr** is a small RTOS that compiles *into* your program: one 90 KB
+  binary with threads, drivers, a shell and an update protocol, and no
+  kernel to boot separately.
+- **Flash** (2 MB) keeps the program and survives power off; **RAM** (786 KB)
+  holds the variables and does not. The program runs straight out of flash,
+  which is why loading it is called *flashing*.
+- When two programs on two chips must agree on a number, **write it once**
+  in a shared header and **test that the copy matches**. The MCU shell
+  (`tio /dev/ttyHS1 -b 115200`) is how you talk to the chip by hand.
 
 Next: [From power to prompt](from-power-to-prompt.md) — both chips are awake,
 but nothing you wrote runs for the first several seconds. What is in charge

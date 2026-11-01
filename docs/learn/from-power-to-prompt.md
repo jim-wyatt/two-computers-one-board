@@ -13,6 +13,20 @@ This chapter is about those stages, on both chips. It matters for a practical
 reason: when a board does not come up, the useful question is not "why is my
 program broken" but "how far did it get?"
 
+> [!NOTE]
+> **In this chapter**
+>
+> - why booting is a chain of programs, each loading the next, on both chips
+> - what each stage on the Linux side does, and which ones you can and cannot
+>   read
+> - why every boot partition exists twice — a pattern that comes back in
+>   [Updating safely](updating-safely.md)
+> - how to read `systemd-analyze` without being misled by it
+>
+> **You need:** the three chapters before this one. Nothing here touches the
+> serial line, so the demo can keep running. Two sections are marked optional;
+> skip them on a first read.
+
 ## The chain, and why there is one
 
 A processor coming out of reset can do almost nothing. Its memory controller is
@@ -23,7 +37,10 @@ soldered to the board, which holds Linux — let alone a filesystem.
 So it runs a small program from a place that needs no setup — ROM built into
 the chip — whose only job is to load a slightly larger program that can do
 slightly more. That one loads the next. Each stage exists because the stage
-before it could not yet do what the stage after it needs.
+before it could not yet do what the stage after it needs. The word for this
+is **bootstrapping**, and it is the same idea as a self-extracting archive:
+the small stub at the front knows only how to unpack the bigger thing behind
+it.
 
 ```mermaid
 flowchart TB
@@ -83,7 +100,8 @@ underneath than its parts list suggests.
 
 ## Everything down there exists twice
 
-List the partitions by name and something jumps out:
+A **partition** is a named region of the storage chip, and each boot stage
+lives in one. List them by name and something jumps out:
 
 ```
 xbl_a   xbl_b     tz_a   tz_b     hyp_a   hyp_b
@@ -201,7 +219,15 @@ systemd-analyze blame | head -15
 systemd-analyze critical-chain
 ```
 
-`blame` sorts by duration. `critical-chain` is more useful and less obvious: it
+```
+Startup finished in 4.601s (firmware) + 1.818s (loader) + 5.903s (kernel) + 2min 10.276s (userspace) = 2min 22.599s
+multi-user.target reached after 2min 10.130s in userspace.
+```
+
+That is the first command's answer on a board with the USB link installed.
+The four numbers are how systemd divides the chain: everything before the
+boot loader, the loader (U-Boot), the kernel, and userspace (systemd and
+its units). `blame` sorts by duration. `critical-chain` is more useful and less obvious: it
 shows only the units that actually *delayed* the next thing, which is usually a
 much shorter list.
 
@@ -282,6 +308,23 @@ crude, and it is exactly how the table above was produced.
    firmware and sitting in the chip's own ROM bootloader.
 
 </details>
+
+## What to remember
+
+- Booting is a **chain**: ROM loads a stage that sets up RAM, which loads a
+  stage that sets up the secure world, which loads U-Boot, which loads
+  Linux, which starts systemd. Each stage exists because the one before could
+  not do its job.
+- The MCU has the same chain at a smaller scale: **boot ROM, MCUboot, your
+  firmware** — three stages and a few milliseconds.
+- **The bottom of the Linux-side stack is closed.** You can observe it from
+  partition names, log lines and timings, but you cannot read its source.
+- Every boot stage is stored **twice**, in `_a` and `_b` slots, so an update
+  that fails to boot can be undone by moving a pointer back.
+- `systemd-analyze blame` lists **what took time, not what is at fault**. On
+  this board a two-minute line is a unit that waits on purpose.
+- When a board does not come up, ask **how far did it get**, not why the
+  program is broken.
 
 Next: [How they talk](how-they-talk.md) — both chips are awake. Now they have to
 talk to each other, over a wire that carries bytes and has no idea what a
