@@ -191,16 +191,31 @@ hpy -m unoq.spilink stat
 hpy -m unoq.spilink bench        # bytes per second at 0.5 to 16 MHz
 ```
 
-**No numbers yet.** The benchmark prints payload bytes per second, each way,
-at each clock rate, next to the serial line's roughly 11 KB/s; this page will
-carry its table once it has been run on the board. One interrupt per byte is
-what will cap the clock: past some rate the MCU cannot keep the FIFO fed, and
-the `bad` and `MCU err` columns say where. DMA, which would lift that cap, is
-the second half of [#159](https://github.com/jim-wyatt/two-computers-one-board/issues/159).
+Measured on this board on 2026-10-31, firmware from main after #183, with the
+CPU-bars demo stopped:
 
-`TEMPLOG` answers once `main.c` hands the link its log (the
-`spi_link_templog()` hook in `spi_proto.h`); until then it answers
-"service unavailable".
+| clock | transactions | good | bad | KB/s each way | vs the UART |
+|---|---|---|---|---|---|
+| 500 kHz | 114 | 113 | 0 | 56.9 | 4.9x |
+| 1 MHz | 212 | 211 | 0 | 106.7 | 9.3x |
+| 2 MHz | 375 | 374 | 0 | 189.8 | 16.5x |
+| 4 MHz | 618 | 0 | 617 | 0 | — |
+| 8 MHz | 902 | 0 | 901 | 0 | — |
+| 16 MHz | 1191 | 0 | 1190 | 0 | — |
+
+The UART, for comparison, is 115200 baud: 11.5 KB/s, one way at a time.
+
+**2 MHz is the ceiling, and it is a sharp one.** Every transaction at 2 MHz
+was good, and none at 4 MHz. One interrupt per byte is what caps it: past that
+rate the MCU cannot keep its FIFO fed. The link recovers at once. An `echo`
+straight after the 16 MHz run came back intact; the link's own `stat` then
+counted 2741 `spi_errors` from the fast rates and no bad frames. DMA, which
+would lift the cap, is the second half of
+[#159](https://github.com/jim-wyatt/two-computers-one-board/issues/159).
+
+`TEMPLOG` over SPI returns the same samples as `app temp log` on the shell:
+`main.c` hands the link its log through the `spi_link_templog()` hook in
+`spi_proto.h`.
 
 ### `link-up.sh` is run for you
 

@@ -510,3 +510,20 @@ def test_main_c_hands_the_spi_link_its_temperature_log() -> None:
     assert '#include "spi_proto.h"' in source, (
         "the definition is not checked against the declaration"
     )
+
+
+def test_every_shell_print_format_is_one_constant() -> None:
+    # shell_print adds the newline by pasting "\n" onto its format. Given
+    # `ok ? A : B` the paste lands on B alone, so every reply printed through A
+    # lost its line end. That ran together the whole temperature log on the
+    # board, and no test of the format strings could see it.
+    piece = r'(?:[A-Z][A-Z0-9_]*|"(?:[^"\\]|\\.)*")'
+    formats = re.compile(rf"{piece}(?:\s+{piece})*\s*[,)]")
+    for src in sorted((MCU_APP / "src").glob("*.c")):
+        text = src.read_text()
+        for call in re.finditer(r"\bshell_(?:print|info|warn|error)\(\s*\w+\s*,\s*", text):
+            # Macros and literals pasted together are fine: no "?", no call.
+            assert formats.match(text, call.end()), (
+                f"{src.name}: shell_* called with format {text[call.end() : call.end() + 60]!r}; "
+                "paste literals and macros, never choose between them"
+            )
