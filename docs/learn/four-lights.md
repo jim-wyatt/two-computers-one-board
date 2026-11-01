@@ -384,5 +384,5 @@ should be able to say which state each LED is in from its rhythm alone.
 
 </details>
 
-Next: [when none of the lights help, and you have to find out what a program
-with no screen is actually doing](debugging-without-a-screen.md).
+Next: [Trial, confirm, roll back](trial-confirm-roll-back.md) — the pattern
+behind LED 2's two slow blinks, at every layer of the board.
