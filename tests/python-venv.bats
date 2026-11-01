@@ -140,7 +140,7 @@ SH
   [ "$status" -eq 0 ]
   ran "uv venv $VENV"
   ran "uv pip install --python $VENV/bin/python -q -c $LOCK -b $LOCK $HW"
-  ran "uv pip install --python $VENV/bin/python -q -c $LOCK -b $LOCK -e $PROJECT/python[docs]"
+  ran "uv pip install --python $VENV/bin/python -q -c $LOCK -b $LOCK -e $PROJECT/python[docs,ble]"
   [ -x "$VENV/bin/codespell" ]
   [[ "$output" == *"unoq 1.1.0"* ]]
   # And the record that says so.
@@ -200,7 +200,7 @@ SH
   run "$STEP"
   [ "$status" -eq 0 ]
   ran "uv pip install --python $VENV/bin/python -q -c $LOCK -b $LOCK $HW"
-  ran_like "^uv pip install .* -e $PROJECT/python\[docs\]$"
+  ran_like "^uv pip install .* -e $PROJECT/python\[docs,ble\]$"
   [[ "$output" == *"hardware libraries brought to the locked versions"* ]]
   [[ "$output" == *"dev tooling installed"* ]]
   [ "$(cat "$VENV/.unoq-lock")" = "$(sha256sum "$LOCK" | cut -d' ' -f1)" ]
@@ -254,7 +254,7 @@ SH
   : >"$STUB_LOG"
   run "$STEP"
   [ "$status" -eq 0 ]
-  ran_like "^uv pip install .* -e $PROJECT/python\[docs\]$"
+  ran_like "^uv pip install .* -e $PROJECT/python\[docs,ble\]$"
   [[ "$output" == *"unoq installed editable"* ]]
 }
 
@@ -266,7 +266,7 @@ SH
   : >"$STUB_LOG"
   run "$STEP"
   [ "$status" -eq 0 ]
-  ran_like "^uv pip install .* -e $PROJECT/python\\[docs\\]$"
+  ran_like "^uv pip install .* -e $PROJECT/python\\[docs,ble\\]$"
   [ -x "$VENV/bin/unoq-new" ]
   [[ "$output" == *"unoq reinstalled for the commands it was missing: unoq-new"* ]]
 }

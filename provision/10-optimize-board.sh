@@ -272,7 +272,19 @@ if [ "${UNOQ_TIER2:-1}" = "1" ]; then
   step "TIER 2 (UNOQ_TIER2=0 to keep these)"
   # Bluetooth ~5 MB + blueman-mechanism.
   # REVERT: systemctl enable --now bluetooth blueman-mechanism
-  disable_unit bluetooth.service blueman-mechanism.service
+  #
+  # THE ONE EXCEPTION: the Bluetooth sensor (68-ble-sensor.sh) is this
+  # project's own use of Bluetooth, and 68 enabled bluetooth.service for it.
+  # While unoq-ble-sensor.service is enabled, Bluetooth is left as it is; a
+  # re-run of bootstrap passes through here before 68, and switching it off
+  # would stop the sensor (it Requires= bluetooth) until 68 put it back.
+  # Disable the sensor, and the next run turns Bluetooth off again.
+  if systemctl is-enabled --quiet unoq-ble-sensor.service 2>/dev/null; then
+    skip "bluetooth.service kept: unoq-ble-sensor is enabled (68-ble-sensor.sh)"
+    disable_unit blueman-mechanism.service
+  else
+    disable_unit bluetooth.service blueman-mechanism.service
+  fi
   # udisks2: automounts removable media. ~16 MB.
   # REVERT: systemctl enable --now udisks2
   disable_unit udisks2.service

@@ -154,3 +154,43 @@
  *         Not TIM2, TIM3 or TIM5 (jitter) or TIM17 (the panel).
  *   gpdma1  "okay" in the board file; channels 14 (ADC) and 15 (DAC).
  */
+
+/*
+ * `app env` (env.h, env_sensor.c): a BME680 breakout on the header's I2C,
+ * i2c2, which Zephyr's board file already enables at 400 kHz on SCL PB10 and
+ * SDA PB11 - the two pins past AREF, also labeled SCL and SDA on the board.
+ *
+ * The part answers on 0x76 with its SDO pin low and 0x77 with it high. This
+ * declares 0x77, the address Adafruit's and SparkFun's breakouts ship at and
+ * Bosch's and Adafruit's libraries default to. Pimoroni's, and many of the
+ * unbranded boards, tie SDO low instead and answer on 0x76; several move with
+ * a solder jumper. `i2c scan i2c@40005800` in the MCU's shell says which.
+ *
+ * For 0x76, build with the CMake variable mcu/app/CMakeLists.txt passes in
+ * here, which sticks in that build directory until a pristine build:
+ *
+ *   mcu/zbuild.sh -- -DUNOQ_BME680_ADDR=0x76
+ *
+ * Anything but the two addresses the part has stops the build. With no
+ * breakout fitted the driver's init fails, the device is not ready, and
+ * `app env` says so; nothing else changes.
+ */
+#ifndef UNOQ_BME680_ADDR
+#define UNOQ_BME680_ADDR 0x77
+#endif
+
+&i2c2 {
+#if UNOQ_BME680_ADDR == 0x76
+	env_bme680: bme680@76 {
+		compatible = "bosch,bme680";
+		reg = <0x76>;
+	};
+#elif UNOQ_BME680_ADDR == 0x77
+	env_bme680: bme680@77 {
+		compatible = "bosch,bme680";
+		reg = <0x77>;
+	};
+#else
+#error "UNOQ_BME680_ADDR: a BME680 answers only on 0x76 or 0x77"
+#endif
+};

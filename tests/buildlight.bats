@@ -269,13 +269,27 @@ revert() {
   [ -n "$off" ] && [ "$off" -lt "$on" ]
 }
 
-@test "a board with neither has nothing of them touched" {
+@test "the Bluetooth sensor is disabled too, before the light starts" {
+  with_venv
+  running unoq-ble-sensor.service
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  ran "systemctl disable --now unoq-ble-sensor.service"
+  [ ! -e "$FLAGS/enabled-unoq-ble-sensor.service" ]
+  [[ "$output" == *"stopped and disabled the Bluetooth sensor"* ]]
+  off="$(grep -n "^systemctl disable --now unoq-ble-sensor.service\$" "$STUB_LOG" | cut -d: -f1)"
+  on="$(grep -n "^systemctl enable --now $U\$" "$STUB_LOG" | cut -d: -f1)"
+  [ -n "$off" ] && [ "$off" -lt "$on" ]
+}
+
+@test "a board with none of them has nothing of them touched" {
   with_venv
   run "$STEP"
   [ "$status" -eq 0 ]
   refute ran_like "^systemctl disable"
   [[ "$output" == *"unoq-cpu-bars is not enabled"* ]]
   [[ "$output" == *"unoq-temp-log is not enabled"* ]]
+  [[ "$output" == *"unoq-ble-sensor is not enabled"* ]]
 }
 
 @test "a demo that will not stop stops the step, before the light is installed" {

@@ -63,6 +63,11 @@ _SHELL_REFUSALS = ("command not found", "wrong parameter count")
 # tests/test_contract.py rebuilds both from the header and fails if they drift.
 _TEMP = re.compile(r"^temp_mc=(-?\d+)$")
 _TEMP_ERR = re.compile(r"^temp_err=(-?\d+)$")
+# The two lines `app env` can answer with: APP_ENV_FMT, and APP_ENV_ERR_FMT after
+# the "Error: " every refusal starts with, so cmd() raises on it and env() reads
+# the errno back out. tests/test_contract.py rebuilds both from the header.
+_ENV = re.compile(r"^temp_mc=(-?\d+) humidity_mpct=(\d+) pressure_pa=(\d+) gas_ohm=(\d+)$")
+_ENV_ERR = re.compile(r"^env_err=(-?\d+)$")
 # The lines `app temp log` and `app temp log stat` answer with: APP_TEMPLOG_* in
 # app_proto.h, %u as an unsigned group and %d and %lld as signed ones.
 # tests/test_contract.py rebuilds each from the header and fails if they drift.
@@ -383,6 +388,12 @@ _NO_SCOPE = (
 )
 
 
+_NO_ENV = (
+    "this firmware has no `app env` command - it predates the BME680. "
+    "Rebuild and update it (mcu/zbuild.sh, then unoq.fota)"
+)
+
+
 def scope_capture_valid(n: int, rate_hz: int) -> bool:
     """app_scope_capture_valid(): each in range, and no longer than
     SCOPE_BURST_MS_MAX, which is how long a capture may keep adc1 from the
@@ -430,6 +441,58 @@ class ScopeStat:
     rate_hz: float
     busy: bool
     failed: int
+
+
+class EnvReading(NamedTuple):
+    """One `app env` reading from the BME680 on the header's I2C.
+
+    The integers are what the firmware sends, at the driver's own resolution
+    or finer: millidegrees Celsius, thousandths of a percent of relative
+    humidity, pascals, and the gas sensor's resistance in ohms. The properties
+    are the same numbers in the units people quote.
+
+    All four come from one measurement. The temperature is the air at the
+    breakout, which the board's own heat can warm if it sits close.
+    """
+
+    temp_mc: int
+    humidity_mpct: int
+    pressure_pa: int
+    gas_ohm: int
+
+    @property
+    def temp_c(self) -> float:
+        return self.temp_mc / 1000
+
+    @property
+    def humidity_pct(self) -> float:
+        return self.humidity_mpct / 1000
+
+    @property
+    def pressure_hpa(self) -> float:
+        return self.pressure_pa / 100
+
+
+class EnvError(MCUError):
+    """The firmware has `app env` and could not give a reading.
+
+    `errno` is the negative Zephyr errno it sent: -19 (ENODEV) means no BME680
+    answered when the MCU booted, anything else came from the read itself.
+    """
+
+    def __init__(self, err: int) -> None:
+        self.errno = err
+        if err == -errno.ENODEV:
+            why = (
+                "no BME680 answered on the header's I2C when the MCU booted, at the "
+                "address the firmware was built for (0x77, or 0x76 if built with "
+                "UNOQ_BME680_ADDR=0x76; the boot console says which). Check the wiring - "
+                "VIN or VCC to 3.3 V, GND, SDA, SCL - and restart the MCU: a part "
+                "connected after boot is not seen until the next"
+            )
+        else:
+            why = "the BME680 is there and the read failed (a negative Zephyr errno)"
+        super().__init__(f"app env: env_err={err}: {why}")
 
 
 _NO_TEMP_LOG = (
@@ -669,6 +732,32 @@ class MCU:
         if not m:
             raise MCUError(f"could not parse app temp: {out!r}")
         return int(m.group(1)) / 1000
+
+    def env(self) -> EnvReading:
+        """Temperature, humidity, pressure and gas resistance from the BME680.
+
+        The part is on the header's I2C, read by the MCU's driver. The read is
+        one forced measurement and takes a little under 200 ms.
+
+        Raises EnvError when the firmware has the command and no reading -
+        no sensor, or a failed read - and MCUError when the firmware predates
+        it or the reply is something else.
+        """
+        try:
+            out = self.cmd("app env")
+        except MCUError as exc:
+            # cmd() raises on the "Error: " line. Which error it was is in it.
+            line = str(exc).partition(": ")[2].removeprefix(ERROR_PREFIX).strip()
+            failed = _ENV_ERR.match(line)
+            if failed is None:
+                raise
+            raise EnvError(int(failed[1])) from exc
+        if "Subcommands:" in out:
+            raise MCUError(_NO_ENV)
+        m = _ENV.match(out[0]) if len(out) == 1 else None
+        if not m:
+            raise MCUError(f"could not parse app env: {out!r}")
+        return EnvReading(*(int(g) for g in m.groups()))
 
     def reset_cause(self) -> list[str]:
         """Why the MCU last reset, as the names the firmware gives the causes.

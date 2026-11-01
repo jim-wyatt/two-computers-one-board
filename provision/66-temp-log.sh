@@ -8,7 +8,7 @@
 # Idempotent. Like 65 it is a convenience, not a prerequisite, and like 65 it
 # holds /dev/ttyHS1 while it runs. The port has one owner, so the two are
 # alternatives: THIS STEP STOPS AND DISABLES THE CPU-BARS DEMO (and the build
-# light, 67, if the board runs that instead). The units say
+# light, 67, or the Bluetooth sensor, 68, if the board runs one). The units say
 # Conflicts= on each other as well, but two enabled units that conflict leave
 # which one runs at boot to chance, so the demo is disabled rather than only
 # stopped. To go back to the demo:
@@ -77,6 +77,13 @@ if systemctl is-enabled --quiet unoq-buildlight.service 2>/dev/null; then
   systemctl disable --now unoq-buildlight.service >/dev/null 2>&1 ||
     fail "could not stop unoq-buildlight, which holds the serial port"
   did "stopped and disabled the build light: the port to the MCU has one owner"
+fi
+# And the Bluetooth sensor (68), for the same reason. Bluetooth itself is left
+# on; the next run of 10-optimize-board.sh switches it off.
+if systemctl is-enabled --quiet unoq-ble-sensor.service 2>/dev/null; then
+  systemctl disable --now unoq-ble-sensor.service >/dev/null 2>&1 ||
+    fail "could not stop unoq-ble-sensor, which holds the serial port"
+  did "stopped and disabled the Bluetooth sensor: the port to the MCU has one owner"
 fi
 
 step "$U"

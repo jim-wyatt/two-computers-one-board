@@ -28,6 +28,8 @@ iniconfig==2.3.1
     # via pytest
 intelhex==2.3.0
     # via smpclient
+jeepney==0.9.0
+    # via unoq (pyproject.toml)
 jinja2==3.1.6
     # via zensical
 librt==0.16.0 ; platform_python_implementation != 'PyPy'

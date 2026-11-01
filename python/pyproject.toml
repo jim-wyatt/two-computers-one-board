@@ -12,6 +12,7 @@ dependencies = ["pyserial", "gpiod", "smpclient"]
 # Re-run the editable install after adding a script here, or the command will
 # not appear on PATH: `python -m unoq.cpubars` works either way.
 [project.scripts]
+unoq-ble-sensor = "unoq.blesensor:main"
 unoq-buildlight = "unoq.buildlight:main"
 unoq-cpu-bars = "unoq.cpubars:main"
 unoq-jitter = "unoq.jitter:main"
@@ -52,6 +53,13 @@ docs = ["zensical>=0.0.73,<0.1"]
 # headers. provision/user/35-python-venv.sh installs these by name; they are
 # listed here so that python/requirements-lock.txt pins them with the rest.
 board = ["smbus2", "spidev"]
+# unoq-ble-sensor's D-Bus, to BlueZ (provision/68-ble-sensor.sh). jeepney is
+# pure Python with no dependencies of its own, which is why it and not
+# dbus-python: that is a C extension, wants a GLib main loop to export objects,
+# and the system copy is invisible to a venv built without system packages.
+# Installed on the board by provision/user/35-python-venv.sh and for the tests
+# by tools/install-dev-tools.sh; only unoq.blesensor imports it.
+ble = ["jeepney"]
 
 [build-system]
 requires = ["hatchling"]
@@ -112,11 +120,11 @@ strict = true
 warn_unreachable = true
 pretty = true
 
-# pyserial, gpiod and smpclient ship no type information. Silencing the import
+# pyserial, gpiod, smpclient and jeepney ship no type information. Silencing the import
 # error is scoped to them rather than global, so a typo in a first-party import
 # is still an error.
 [[tool.mypy.overrides]]
-module = ["serial.*", "gpiod.*", "smpclient.*"]
+module = ["serial.*", "gpiod.*", "smpclient.*", "jeepney.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------

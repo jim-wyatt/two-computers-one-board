@@ -24,6 +24,8 @@ from .cpufreq import Policy, read_policies
 from .link import BOOT0_LINE, LINK_ENABLE_LINE, link_state, link_up
 from .mcu import (
     MCU,
+    EnvError,
+    EnvReading,
     JitterHist,
     JitterStat,
     MCUError,
@@ -46,6 +48,8 @@ __all__ = [
     "ShellTimeout",
     "TempSample",
     "TempLogStat",
+    "EnvReading",
+    "EnvError",
     "open_port",
     "port_holders",
     "link_up",

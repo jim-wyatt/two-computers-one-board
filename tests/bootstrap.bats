@@ -163,6 +163,7 @@ bootstrap() {
   [[ "$output" == *"--with-watchdog"* ]]
   [[ "$output" == *"--with-temp-log"* ]]
   [[ "$output" == *"--with-buildlight"* ]]
+  [[ "$output" == *"--with-ble-sensor"* ]]
   [[ "$output" == *"TIME AND SPACE"* ]]
   [[ "$output" != *"set -uo pipefail"* ]]
   [[ "$output" != *"PROJECT="* ]]
@@ -379,6 +380,7 @@ line_of() { grep -nE "$1" "$STUB_LOG" | head -1 | cut -d: -f1; }
   refute ran_step provision/84-rescue-entry.sh
   refute ran_step provision/66-temp-log.sh
   refute ran_step provision/67-buildlight.sh
+  refute ran_step provision/68-ble-sensor.sh
 }
 
 @test "boot counting runs with --everything or by name, and not by default" {
@@ -773,4 +775,109 @@ SH
   start="$(line_of '^sudo systemctl start unoq-buildlight.service$')"
   [ -n "$reset" ] && [ -n "$start" ] && [ "$reset" -lt "$start" ]
   refute ran_step provision/67-buildlight.sh
+}
+
+# --- the Bluetooth sensor -------------------------------------------------------
+
+# The fourth program that holds /dev/ttyHS1, under the same rules as the other
+# two that replace the demo.
+
+@test "--with-ble-sensor sets up the sensor instead of the demo, and says so first" {
+  bootstrap --with-ble-sensor
+  [ "$status" -eq 0 ]
+  ran_step provision/68-ble-sensor.sh
+  refute ran_step provision/65-cpu-bars.sh
+  refute ran_step provision/66-temp-log.sh
+  refute ran_step provision/67-buildlight.sh
+  [[ "$output" == *"switch Bluetooth back on and serve the BME680's readings over it, to anything in range, INSTEAD OF the CPU-bars demo"* ]]
+  [[ "$output" != *"run the CPU-bars demo from boot"* ]]
+  # ...and ends by saying where to watch it, and how to go back.
+  [[ "$output" == *"journalctl -u unoq-ble-sensor -f"* ]]
+  [[ "$output" == *"sudo systemctl disable --now unoq-ble-sensor && sudo bash provision/65-cpu-bars.sh"* ]]
+  [[ "$output" != *"A Bluetooth sensor:"* ]]
+}
+
+@test "the sensor is set up where the demo would have been" {
+  bootstrap --with-ble-sensor
+  sensor="$(line_of "^sudo -E bash $PROJECT/provision/68-ble-sensor\.sh\$")"
+  image="$(line_of "^sudo -E bash $PROJECT/share/build-image\.sh\$")"
+  [ -n "$sensor" ] && [ -n "$image" ]
+  [ "$sensor" -lt "$image" ]
+}
+
+@test "--with-ble-sensor with either other port owner is refused before anything runs" {
+  local other
+  for other in --with-temp-log --with-buildlight; do
+    : >"$STUB_LOG"
+    bootstrap --with-ble-sensor "$other"
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"--with-ble-sensor and $other both want the serial port"* ]]
+    refute ran_like '^sudo'
+    refute ran_like 'zbuild'
+  done
+}
+
+@test "without it, the end of the run says how to get the sensor" {
+  bootstrap
+  [[ "$output" == *"sudo bash provision/68-ble-sensor.sh"* ]]
+}
+
+@test "a board with the sensor keeps it on a plain re-run" {
+  port_units unoq-ble-sensor.service=active/enabled
+  bootstrap
+  [ "$status" -eq 0 ]
+  ran_step provision/68-ble-sensor.sh
+  refute ran_step provision/65-cpu-bars.sh
+  refute ran_step provision/66-temp-log.sh
+  refute ran_step provision/67-buildlight.sh
+  [[ "$output" == *"keep the Bluetooth sensor this board already runs"* ]]
+}
+
+@test "asked for by name, the logger replaces a sensor the board runs" {
+  port_units unoq-ble-sensor.service=active/enabled
+  bootstrap --with-temp-log
+  [ "$status" -eq 0 ]
+  ran_step provision/66-temp-log.sh
+  refute ran_step provision/68-ble-sensor.sh
+  # Stopped for the flash and left stopped: 66 disables it.
+  ran "sudo systemctl stop unoq-ble-sensor.service"
+  refute ran "sudo systemctl start unoq-ble-sensor.service"
+}
+
+@test "asked for by name, the sensor replaces a light the board runs" {
+  port_units unoq-buildlight.service=active/enabled
+  bootstrap --with-ble-sensor
+  [ "$status" -eq 0 ]
+  ran_step provision/68-ble-sensor.sh
+  refute ran_step provision/67-buildlight.sh
+  [[ "$output" != *"keep the build light"* ]]
+  ran "sudo systemctl stop unoq-buildlight.service"
+  refute ran "sudo systemctl start unoq-buildlight.service"
+}
+
+@test "a sensor that is running is stopped before the flash, and left for step 68" {
+  port_units unoq-ble-sensor.service=active/enabled
+  bootstrap
+  stop="$(line_of '^sudo systemctl stop unoq-ble-sensor.service$')"
+  flash="$(line_of 'mcu/flash-all\.sh')"
+  [ -n "$stop" ] && [ "$stop" -lt "$flash" ]
+  refute ran "sudo systemctl start unoq-ble-sensor.service"
+}
+
+@test "the demo stopped for the flash is not started again on a run that installs the sensor" {
+  port_units unoq-cpu-bars.service=active/enabled
+  bootstrap --with-ble-sensor
+  ran "sudo systemctl stop unoq-cpu-bars.service"
+  refute ran "sudo systemctl start unoq-cpu-bars.service"
+  ran_step provision/68-ble-sensor.sh
+}
+
+@test "a sensor started by hand, on a run without it, is started again after the flash" {
+  port_units unoq-ble-sensor.service=active/disabled
+  bootstrap --no-cpu-bars
+  ran "sudo systemctl stop unoq-ble-sensor.service"
+  reset="$(line_of '^sudo systemctl reset-failed unoq-ble-sensor.service$')"
+  start="$(line_of '^sudo systemctl start unoq-ble-sensor.service$')"
+  [ -n "$reset" ] && [ -n "$start" ] && [ "$reset" -lt "$start" ]
+  refute ran_step provision/68-ble-sensor.sh
 }

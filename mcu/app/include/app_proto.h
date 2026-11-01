@@ -10,6 +10,8 @@
  *   - mcu/app/src/templog.c     keeps the temperature log main.c prints
  *   - mcu/app/include/guard.h   names the reset causes APP_RESET_FMT carries
  *   - mcu/tests/templog/        tests the log's sequence, gap and batch rules
+ *   - mcu/app/src/env.c         formats the `app env` line
+ *   - mcu/tests/env/            tests it, with the driver's values faked
  *   - mcu/app/src/jitter.c      keeps the jitter histograms `app jitter` prints
  *   - mcu/tests/jitter/         tests their bins, clamp and tick bookkeeping
  *   - mcu/app/src/scope_hw.c    runs `app scope`, the DAC and ADC on PA4
@@ -160,6 +162,30 @@ static inline bool app_parse_int(const char *s, int *out)
  * head - count is always dropped; it is printed so nobody has to know that.
  */
 #define APP_TEMPLOG_STAT_FMT "head=%u count=%u size=%u dropped=%u period_ms=%u"
+
+/* --- the air around the board: `app env` ----------------------------------
+ *
+ * A BME680 breakout on the header's I2C (i2c2: SDA PB11, SCL PB10), read with
+ * Zephyr's driver - see mcu/app/include/env.h. Parsed by unoq.MCU.env() into
+ * an EnvReading, and served to a phone over Bluetooth by unoq-ble-sensor.
+ *
+ * One line, all four channels from the same measurement, in integers for the
+ * same reasons as APP_TEMP_FMT: millidegrees Celsius, thousandths of a percent
+ * of relative humidity, pascals, and the gas sensor's resistance in ohms. Each
+ * is the driver's own resolution or finer. Humidity is capped by the driver
+ * at APP_ENV_HUMIDITY_MPCT_MAX.
+ *
+ * The keys are not APP_TEMP_FMT's line on its own, and the regexes on both
+ * sides are anchored, so neither reply can pass for the other.
+ *
+ * With no sensor, or a read that fails, the reply is APP_ERR followed by
+ * APP_ENV_ERR_FMT with the negative errno: -19 (ENODEV) when no BME680
+ * answered at its address at boot, anything else from the read itself.
+ * The firmware boots, and every other command works, either way.
+ */
+#define APP_ENV_FMT               "temp_mc=%d humidity_mpct=%u pressure_pa=%u gas_ohm=%u"
+#define APP_ENV_ERR_FMT           "env_err=%d"
+#define APP_ENV_HUMIDITY_MPCT_MAX 100000
 
 /* --- why the MCU last reset ----------------------------------------------
  *

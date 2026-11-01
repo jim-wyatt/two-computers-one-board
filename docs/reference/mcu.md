@@ -810,6 +810,78 @@ link.close()
 print(cap, min(burst.samples), max(burst.samples))
 ```
 
+### The BME680: `app env`
+
+A Bosch BME680 on a breakout, wired to the header's I2C, gives the board the
+air around it: temperature, relative humidity, pressure, and the resistance
+of the part's gas sensor, which falls as volatile organic compounds rise.
+Zephyr's driver (`drivers/sensor/bosch/bme680`) does the reading and Bosch's
+compensation; [`env.c`](../../mcu/app/src/env.c) turns its values into the
+line Linux reads, and [`env_sensor.c`](../../mcu/app/src/env_sensor.c) is the
+device and the command. The wiring, and what Linux makes of it, are in
+[mpu.md](mpu.md#bluetooth-sensor).
+
+> **Untested on hardware.** No BME680 has been fitted yet, and Zephyr has no
+> emulator for it, so `mcu/tests/env` feeds `env.c` the values the driver
+> would build. That the driver finds the part and reads it is still to be
+> seen.
+
+**The bus and the address.** `i2c2`, which the board file already enables at
+400 kHz on PB10 (SCL) and PB11 (SDA), the header pins past AREF. The overlay
+declares one `bosch,bme680` node, `env_bme680`, at **0x77**: the address of
+Adafruit's and SparkFun's breakouts, with the part's SDO pin high. Breakouts
+that tie SDO low answer at 0x76, Pimoroni's and many unbranded ones among
+them; build for those with
+
+```bash
+mcu/zbuild.sh -- -DUNOQ_BME680_ADDR=0x76
+```
+
+a CMake variable that `mcu/app/CMakeLists.txt` passes to the overlay's
+preprocessor. It holds for that build directory until a pristine build, and
+anything but the part's two addresses stops the build.
+
+**With no part.** The driver reads the chip ID at boot. With nothing there,
+or the part on the other address, it fails, the device is not ready
+(`device_is_ready()`), and everything else boots as before; `main()` prints
+`env: no BME680 at 0x77 on i2c2` on the console, and `app env` answers with
+an error. A part wired in afterwards is not seen until the MCU restarts.
+
+**The command.** The line is `APP_ENV_FMT` in
+[`app_proto.h`](../../mcu/app/include/app_proto.h), pinned on both sides:
+by `mcu/tests/env` here and `python/tests/test_contract.py` there.
+
+```
+unoq:~$ app env
+temp_mc=21530 humidity_mpct=45123 pressure_pa=101325 gas_ohm=52345
+unoq:~$ app env
+Error: env_err=-19
+```
+
+(The numbers are an example, not a measurement.)
+
+| Field | Unit | The driver's resolution |
+|---|---|---|
+| `temp_mc` | millidegrees Celsius | 0.01 °C |
+| `humidity_mpct` | thousandths of a percent of relative humidity, 0 to 100000 | 0.001 % |
+| `pressure_pa` | pascals | 1 Pa |
+| `gas_ohm` | ohms | 1 ohm |
+
+All four come from one forced measurement: the driver starts it, waits up to
+250 ms for it (about 200 ms of that is the gas sensor's hot plate, at 320 °C),
+and reads them together. The shell thread waits; nothing else does. An error
+is `Error: env_err=<negative errno>`: `-19` (`ENODEV`) for no part, and
+anything else from the read, `-11` (`EAGAIN`) for a measurement that did not
+finish, or `-34` (`ERANGE`) for a value no BME680 can give.
+`unoq.MCU.env()` returns an `EnvReading`, and raises `EnvError` with the errno
+for either; a firmware without the command is a plain `MCUError` that says to
+update it.
+
+**Cost.** `CONFIG_SENSOR` was already on for the die temperature;
+`CONFIG_BME680` adds the driver. Against the same tree without it, the build
+grows by 2376 bytes of flash (114576 to 116952) and 80 bytes of RAM (42960 to
+43040).
+
 ## Debugging
 
 Open this folder in VS Code and pick **Debug (attach to running MCU)** or
@@ -856,7 +928,7 @@ The serial tasks (FOTA, confirm, console, status) need the port: stop
 Use `native_sim/native/64`; plain `native_sim` is 32-bit and fails on aarch64
 with a `CONFIG_64BIT` error.
 
-Eight suites run. `ztest.sh` ends by saying how many cases passed; the number
+Nine suites run. `ztest.sh` ends by saying how many cases passed; the number
 is not repeated here, where it would be wrong the next time one was added.
 
 - **`bars`** compiles [`mcu/app/src/bars.c`](../../mcu/app/src/bars.c) — the
@@ -899,6 +971,13 @@ is not repeated here, where it would be wrong the next time one was added.
   a count, prescaler as small as will do), the burst's bookkeeping (nothing
   readable while the DMA writes, after a failure, or across two captures),
   and how long the shell lets a capture hold `adc1`.
+- **`env`** compiles [`mcu/app/src/env.c`](../../mcu/app/src/env.c), the half
+  of `app env` with no device in it, and hands it the `sensor_value`s the
+  BME680 driver builds, since Zephyr has no emulator for the part: the units
+  `app env` prints, the sign of a temperature below zero in both halves of a
+  `sensor_value`, the humidity cap, every value refused and the reading left
+  alone when one is, the widest line fitting its buffer, and a buffer one
+  byte short refused rather than cut.
 
 ### The MCU suite tests the firmware, not a copy of it
 

@@ -120,10 +120,11 @@ echo "=== Python tooling -> $VENV ==="
 # Installed from the [dev] and [docs] extras so the versions live in
 # pyproject.toml. [docs] is here as well as in provisioning because the docs
 # build is a quality gate (tools/check.sh docs) - a broken link should fail for
-# whoever is editing, not only on the board.
+# whoever is editing, not only on the board. [ble] because the tests import
+# unoq.blesensor, which imports jeepney.
 uv pip install --python "$VENV/bin/python" -q -c "$PROJECT/python/requirements-lock.txt" \
   -b "$PROJECT/python/requirements-lock.txt" \
-  -e "$PROJECT/python[dev,docs]"
+  -e "$PROJECT/python[dev,docs,ble]"
 echo "  ruff $("$VENV"/bin/ruff --version | awk '{print $2}'), mypy $("$VENV"/bin/mypy --version | awk '{print $2}'), zensical $("$VENV"/bin/zensical --version | awk '{print $NF}')"
 
 echo "=== shellcheck $SHELLCHECK_VERSION -> $BIN ==="

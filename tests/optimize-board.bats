@@ -279,6 +279,21 @@ revert() {
   done
 }
 
+@test "a board running the Bluetooth sensor keeps Bluetooth, and only Bluetooth" {
+  # 68-ble-sensor.sh is the exception to TIER 2. A re-run of bootstrap comes
+  # through here before 68, and Bluetooth off would stop the sensor with it.
+  stock_board
+  : >"$FLAGS/enabled-unoq-ble-sensor.service"
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  refute ran "systemctl disable --now bluetooth.service"
+  [ -e "$FLAGS/enabled-bluetooth.service" ]
+  [ -e "$FLAGS/active-bluetooth.service" ]
+  [[ "$output" == *"bluetooth.service kept: unoq-ble-sensor is enabled"* ]]
+  ran "systemctl disable --now blueman-mechanism.service"
+  ran "systemctl disable --now udisks2.service"
+}
+
 @test "UNOQ_KEEP_DOCKER_IMAGES=1 keeps the images" {
   stock_board
   UNOQ_KEEP_DOCKER_IMAGES=1 run "$STEP"
