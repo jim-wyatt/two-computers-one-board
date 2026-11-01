@@ -74,6 +74,10 @@ BLOCKS_AUTOMATION=(
   linuxjourney.com # 403 to curl with any User-Agent; fine in a browser
   wiki.osdev.org   # same - sits behind a bot challenge
   st.com           # 403 or a hang, depending on the day; fine in a browser
+  # 403 to GitHub's runners only: 200 from a home connection, plain curl and a
+  # browser User-Agent alike (checked from the board, 2026-11-01, #192).
+  cppreference.com
+  explainshell.com
 )
 
 TMP="$(mktemp -d)"
