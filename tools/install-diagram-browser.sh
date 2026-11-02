@@ -56,7 +56,8 @@ case "$(uname -m)" in
   x86_64 | amd64) ;;
   *)
     echo "no pinned browser for $(uname -m) - install your distribution's chromium" >&2
-    echo "  (on the board: it is already there, and check-diagrams.sh will find it)" >&2
+    echo "  (on the board it is already there, and check-diagrams.sh will find it," >&2
+    echo "  unless provision/56-slim-root.sh removed it: sudo apt-get install chromium)" >&2
     exit 1
     ;;
 esac

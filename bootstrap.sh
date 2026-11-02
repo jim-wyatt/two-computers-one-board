@@ -36,6 +36,10 @@
 # ---------------------------------------
 #   - purge the Arduino packages (--with-purge; it is the one step you cannot
 #     casually undo, and the stock MCU firmware is not ours to redistribute)
+#   - remove the browser, the desktop, Docker and the GPU compute tools, about
+#     1.6 GB of the root (--with-slim). Nothing here uses them, and the list
+#     of what went is saved first, but a monitor gets no desktop afterwards
+#     and App Lab would need Docker back
 #   - keep the microcontroller's temperature log on Linux, with a graph on the
 #     web server (--with-temp-log). It takes the serial port over from the
 #     CPU-bars demo, so it is that demo's alternative and not an addition
@@ -69,6 +73,7 @@ cd "$PROJECT" || exit 1
 . "$PROJECT/provision/lib.sh"
 
 WITH_PURGE=0
+WITH_SLIM=0
 WITH_CPU_BARS=1
 WITH_USB_GADGET=1
 WITH_LEARNING=1
@@ -95,6 +100,12 @@ Leave out something that is on by default:
 
 Add something that is not:
   --with-purge        also remove the Arduino Debian packages (55)
+  --with-slim         also remove the browser, the desktop, Docker and the GPU
+                      compute tools (56): about 1.6 GB of the root. The list
+                      of what goes is saved first, in
+                      ~/uno-q-backup/slim-removed-packages.txt, and it refuses
+                      if apt would take anything the board needs. No desktop
+                      on a monitor afterwards; App Lab would need Docker back.
   --with-temp-log     keep the microcontroller's temperature log on Linux
                       instead of running the CPU-bars demo (66), with a graph
                       at http://<board>:8080/data/. The two cannot share the
@@ -145,6 +156,9 @@ EOF
 for arg in "$@"; do
   case "$arg" in
     --with-purge) WITH_PURGE=1 ;;
+    # Not in --everything: it takes away the desktop someone with a monitor
+    # may be using, and that is asked for by name.
+    --with-slim) WITH_SLIM=1 ;;
     --no-cpu-bars) WITH_CPU_BARS=0 ;;
     --no-usb-gadget) WITH_USB_GADGET=0 ;;
     --no-learning) WITH_LEARNING=0 ;;
@@ -275,6 +289,8 @@ echo "  - install the Zephyr SDK and workspace into $HOME (~3 GB)"
   echo "  - REPLACE THE FIRMWARE ON THE MICROCONTROLLER (the stock image is saved first)"
 [ "$WITH_PURGE" = 1 ] &&
   echo "  - REMOVE THE ARDUINO PACKAGES (--with-purge; hard to undo)"
+[ "$WITH_SLIM" = 1 ] &&
+  echo "  - REMOVE THE BROWSER, THE DESKTOP, DOCKER AND THE GPU TOOLS, about 1.6 GB (--with-slim; the list is saved first, to put them back)"
 [ "$WITH_CPU_BARS" = 1 ] &&
   echo "  - run the CPU-bars demo from boot, which holds the serial port to the microcontroller (--no-cpu-bars to leave it out)"
 if [ "$TEMP_LOG_KEPT" = 1 ]; then
@@ -474,6 +490,10 @@ run_step "50  status LEDs (root)" sudo "$PROJECT/provision/50-status-leds.sh"
 
 [ "$WITH_PURGE" = 1 ] &&
   run_step "55  purge Arduino packages (root)" sudo "$PROJECT/provision/55-purge-arduino.sh"
+# After 10, which deletes Docker's images and needs the daemon to do it, and
+# 15, which switches Docker off: both are then done with it.
+[ "$WITH_SLIM" = 1 ] &&
+  run_step "56  browser, desktop, Docker and GPU tools removed (root)" sudo "$PROJECT/provision/56-slim-root.sh"
 
 # --- MCU firmware ----------------------------------------------------------
 
@@ -672,6 +692,8 @@ fi
   echo "  A Bluetooth sensor:       sudo bash provision/68-ble-sensor.sh   (instead of the demo; needs a BME680)"
 [ "$WITH_PURGE" = 0 ] &&
   echo "  Reclaim the Arduino disk: sudo bash provision/55-purge-arduino.sh"
+[ "$WITH_SLIM" = 0 ] &&
+  echo "  1.6 GB of unused desktop: sudo bash provision/56-slim-root.sh"
 [ "$WITH_USB_GADGET" = 0 ] &&
   echo "  IP over USB + fileshare:  sudo bash provision/95-usb-gadget.sh"
 echo
