@@ -54,7 +54,8 @@ PAGE_TIMEOUT="${UNOQ_DIAGRAM_PAGE_TIMEOUT:-45}"
 # Which browser. Anything Chromium-based that understands
 # --remote-debugging-pipe, which is all of them:
 #
-#   the board    Debian's `chromium`, aarch64
+#   the board    Debian's `chromium`, aarch64, unless provision/56-slim-root.sh
+#                removed it: `sudo apt-get install chromium` puts it back
 #   CI           a pinned chrome-headless-shell, handed over in
 #                UNOQ_DIAGRAM_BROWSER - see the diagrams job in ci.yml for why
 #                it is not whatever the runner image happens to ship
@@ -80,6 +81,7 @@ else
 fi
 if [ -z "$BROWSER" ]; then
   echo "no chromium/chrome on PATH - cannot check whether the diagrams render" >&2
+  echo "  (on a board slimmed by provision/56-slim-root.sh: sudo apt-get install chromium)" >&2
   echo "  install one, or point UNOQ_DIAGRAM_BROWSER at one, or skip this gate with:" >&2
   echo "  tools/check.sh python shell c docs workflows" >&2
   exit 1

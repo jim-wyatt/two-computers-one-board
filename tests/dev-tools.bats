@@ -254,6 +254,27 @@ revert() {
   refute ran_like '^systemctl disable'
 }
 
+@test "Docker purged by 56-slim-root.sh is not an error, and a re-run is still clean" {
+  # 56 removes the packages, unit files and all. This step still asks for
+  # the units to be switched off on every run, so it must take their absence
+  # as done, on the first run after the purge and every one after it.
+  stock_board
+  with_clangd
+  for u in $DOCKER; do rm -f "$FLAGS/unit-$u" "$FLAGS/enabled-$u" "$FLAGS/active-$u"; done
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  for u in $DOCKER; do
+    [[ "$output" == *"$u not present"* ]]
+    refute ran "systemctl disable --now $u"
+  done
+  ran "systemctl disable --now arduino-router.service"
+  : >"$STUB_LOG"
+  run "$STEP"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"0 changed,"* ]]
+  [[ "$output" == *"docker.service not present"* ]]
+}
+
 # --- when switching off does not take ---------------------------------------
 
 @test "a router something starts again is a warning about the port, not 'stopped'" {

@@ -451,6 +451,26 @@ revert() {
   refute ran "docker image prune -af"
 }
 
+@test "Docker removed by 56-slim-root.sh is not reported as a fault" {
+  # No docker on PATH at all: the stub's gone, and so is the machine's own,
+  # which on the board running these tests would otherwise answer.
+  stock_board
+  rm -f "$STUB_DIR/docker"
+  local d f n sysbin="$BATS_TEST_TMPDIR/sysbin"
+  mkdir -p "$sysbin"
+  for d in /usr/local/bin /usr/bin /bin; do
+    for f in "$d"/*; do
+      n="${f##*/}"
+      [ "$n" = docker ] && continue
+      [ -e "$sysbin/$n" ] || ln -s "$f" "$sysbin/$n"
+    done
+  done
+  PATH="$STUB_DIR:$sysbin" run "$STEP"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"docker not installed"* ]]
+  refute ran_like '^docker '
+}
+
 @test "an image without a gpiod group says so, and is not an error" {
   stock_board
   rm "$FLAGS/group-gpiod"

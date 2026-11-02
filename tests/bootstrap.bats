@@ -176,6 +176,7 @@ bootstrap() {
   [[ "$output" == *"--with-buildlight"* ]]
   [[ "$output" == *"--with-ble-sensor"* ]]
   [[ "$output" == *"--with-root-slots"*"It only"*"reads"* ]]
+  [[ "$output" == *"--with-slim"*"slim-removed-packages.txt"* ]]
   [[ "$output" == *"TIME AND SPACE"* ]]
   [[ "$output" != *"set -uo pipefail"* ]]
   [[ "$output" != *"PROJECT="* ]]
@@ -386,6 +387,7 @@ line_of() { grep -nE "$1" "$STUB_LOG" | head -1 | cut -d: -f1; }
   bootstrap
   [ "$status" -eq 0 ]
   refute ran_step provision/55-purge-arduino.sh
+  refute ran_step provision/56-slim-root.sh
   refute ran_step provision/80-watchdog.sh
   refute ran_step provision/85-esp-permissions.sh
   refute ran_step provision/82-boot-counting.sh
@@ -445,6 +447,24 @@ line_of() { grep -nE "$1" "$STUB_LOG" | head -1 | cut -d: -f1; }
   [ "$slots" -lt "$clean" ]
   [[ "$output" == *"--with-root-slots"* ]]
   [[ "$output" == *"nothing on the disk is changed"* ]]
+}
+
+@test "the slimming step runs by name only, after 15 and 55 and before the firmware, and is not in --everything" {
+  # It takes away a desktop someone with a monitor may be using.
+  bootstrap --everything
+  [ "$status" -eq 0 ]
+  refute ran_step provision/56-slim-root.sh
+  : >"$STUB_LOG"
+  bootstrap --with-slim --with-purge
+  [ "$status" -eq 0 ]
+  ran_step provision/56-slim-root.sh
+  slim="$(line_of "^sudo -E bash $PROJECT/provision/56-slim-root\.sh\$")"
+  dev="$(line_of "^sudo -E bash $PROJECT/provision/15-dev-tools\.sh\$")"
+  purge="$(line_of "^sudo -E bash $PROJECT/provision/55-purge-arduino\.sh\$")"
+  [ "$dev" -lt "$slim" ]
+  [ "$purge" -lt "$slim" ]
+  [ "$slim" -lt "$(line_of "^bash $PROJECT/mcu/zbuild\.sh ")" ]
+  [[ "$output" == *"REMOVE THE BROWSER, THE DESKTOP, DOCKER"*"--with-slim"* ]]
 }
 
 @test "--with-recovery is boot counting and then the rescue entry, both before the clean-up and the USB link" {
