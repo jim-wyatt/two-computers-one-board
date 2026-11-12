@@ -14,7 +14,7 @@ dictionary = tools/spelling-extra.txt,-
 # tools/check-spelling.sh, which is what the gate runs, takes other people's
 # text out of the file list itself. These are for running codespell by hand
 # on the whole tree, where it walks directories and `skip` does apply.
-skip = ./.git,./.venv,./share/learn,./LICENSE,./LICENSES,./docs/assets/javascripts/lunr,*.svd,*.svg,*.png,*.ico,*.pem,./python/requirements-lock.txt,./mcu/requirements-zephyr-lock.txt,./mcu/requirements-zephyr.in
+skip = ./.git,./.venv,./share/learn,./LICENSE,./LICENSES,./docs/assets/javascripts/lunr,*.svd,*.svg,*.png,*.ico,*.pem,./python/requirements-lock.txt,./mcu/requirements-zephyr-lock.txt,./mcu/requirements-zephyr.in,./python/unoq/dashboard_static,./web/dashboard/package-lock.json,./web/dashboard/node_modules
 # A word that only looks like a misspelling, in one place: end that line with
 # a comment containing  codespell:ignore <the word>  (the old anchors beside
 # five renamed headings are marked that way). Everywhere:

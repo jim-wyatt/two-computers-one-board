@@ -30,8 +30,10 @@ CODESPELL="${UNOQ_CODESPELL:-$PROJECT/.venv/bin/codespell}"
 }
 
 # Not this project's words: license texts, a vendored search library, a
-# chip vendor's register description, and files a tool writes.
-NOT_OURS='^(LICENSE$|LICENSES/|docs/assets/javascripts/lunr/|\.vscode/.*\.svd$|python/requirements-lock\.txt$|mcu/requirements-zephyr-lock\.txt$|mcu/requirements-zephyr\.in$)|\.(svg|png|ico|pem)$'
+# chip vendor's register description, and files a tool writes - among them
+# the dashboard's built page, which is React and ECharts minified, and npm's
+# lock file beside its source.
+NOT_OURS='^(LICENSE$|LICENSES/|docs/assets/javascripts/lunr/|\.vscode/.*\.svd$|python/requirements-lock\.txt$|mcu/requirements-zephyr-lock\.txt$|mcu/requirements-zephyr\.in$|python/unoq/dashboard_static/|web/dashboard/package-lock\.json$)|\.(svg|png|ico|pem)$'
 
 mapfile -t FILES < <(git ls-files | grep -vE "$NOT_OURS")
 [ "${#FILES[@]}" -gt 0 ] || {

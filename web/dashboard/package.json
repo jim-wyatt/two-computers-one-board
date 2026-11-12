@@ -1,0 +1,28 @@
+{
+  "name": "unoq-dashboard",
+  "private": true,
+  "version": "1.0.0",
+  "description": "The page unoq-dashboard serves: the BME680 and the board's own stats over time",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": "24.22.2"
+  },
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "echarts": "6.1.0",
+    "echarts-for-react": "3.0.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "typescript": "6.0.3",
+    "vite": "8.3.5"
+  }
+}
