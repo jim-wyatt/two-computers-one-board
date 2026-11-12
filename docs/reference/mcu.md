@@ -282,8 +282,11 @@ The app runs a Zephyr shell on the same UART.
 
 ```bash
 tio /dev/ttyHS1 -b 115200      # Ctrl-T then q to exit
-mcucon                         # or the env.sh helper (Ctrl-C)
 ```
+
+`mcucon`, the `env.sh` helper, only reads: it prints what the MCU sends and
+never sends what you type, so a command typed into it goes nowhere and nothing
+comes back. Use `tio` to type commands, or `MCU().cmd("...")` from Python.
 
 ```
 unoq:~$ app status
@@ -821,10 +824,14 @@ line Linux reads, and [`env_sensor.c`](../../mcu/app/src/env_sensor.c) is the
 device and the command. The wiring, and what Linux makes of it, are in
 [mpu.md](mpu.md#bluetooth-sensor).
 
-> **Untested on hardware.** No BME680 has been fitted yet, and Zephyr has no
-> emulator for it, so `mcu/tests/env` feeds `env.c` the values the driver
-> would build. That the driver finds the part and reads it is still to be
-> seen.
+> **Tried on hardware on 2026-11-12**, with a Waveshare BME680 Environmental
+> Sensor on four wires and its ADDR pin left loose. The scan found it at 0x77,
+> the driver took it at boot, and three readings two seconds apart were
+> 23.6 °C, 54.5 %RH and 975 hPa, steady to within 0.06 °C, 0.15 %RH and 4 Pa.
+> The gas resistance climbed from 1.6 to 2.9 kΩ over the same four seconds,
+> which is a hot plate warming up on a cold start, not a fault. Zephyr has no
+> emulator for the part, so `mcu/tests/env` still feeds `env.c` the values the
+> driver would build.
 
 **The bus and the address.** `i2c2`, which the board file already enables at
 400 kHz on PB10 (SCL) and PB11 (SDA), the header pins past AREF. The overlay
