@@ -825,12 +825,12 @@ the firmware half), and serves it over Bluetooth Low Energy as the standard
 GATT **Environmental Sensing** service, which phone apps already understand.
 The MCU does the bus and the timing; Linux does a radio stack and a phone.
 
-> **None of this has run on hardware yet.** The part is on order. Everything
-> below is built and tested against fakes: the firmware's formatting by ztest
-> on `native_sim`, the parser, the GATT encodings and the D-Bus conversation
-> by pytest, and the step by bats. Whether the driver finds the part, BlueZ
-> takes the service and a phone shows the values is the first thing to try
-> when it arrives.
+> **Half of this has run on hardware.** The MCU half has: a Waveshare BME680
+> on the header was found at 0x77 and read on 2026-11-12
+> ([mcu.md](mcu.md#the-bme680-app-env) has the readings). The Linux half has
+> not yet: that BlueZ takes the service and a phone shows the values is still
+> the next thing to try. That half is tested against fakes: the parser, the
+> GATT encodings and the D-Bus conversation by pytest, and the step by bats.
 
 ### Wiring
 
@@ -851,6 +851,13 @@ unless the breakout says otherwise; on most boards CS is pulled up (I2C) and
 SDO chooses the address. The firmware looks at **0x77**, where Adafruit's and
 SparkFun's boards answer. Pimoroni's, and many unbranded ones, answer at
 **0x76**; for those, build with `mcu/zbuild.sh -- -DUNOQ_BME680_ADDR=0x76`.
+
+Waveshare's BME680 Environmental Sensor, the one this was tried with, labels
+its six pins VCC, GND, SDA/MOSI, SCL/SCK, ADDR/MISO and CS, and its cable
+colors them red, black, blue, yellow, orange and green. Wire the first four.
+Its ADDR pin left loose answers at 0x77, the default here. Keep the loose
+orange and green ends off anything metal: ADDR touching ground moves the part
+to 0x76.
 The MCU's shell says which you have, with the sensor wired and the board
 powered up afterwards:
 
