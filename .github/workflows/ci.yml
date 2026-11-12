@@ -3,18 +3,20 @@
 name: checks
 
 # Runs the same gates as tools/check.sh, so a green CI means the same thing as
-# a clean local run. Four jobs:
+# a clean local run. Five jobs:
 #
-#   changes    seconds. Decides whether the two gated ones below run at all.
+#   changes    seconds. Decides whether the three gated ones below run at all.
 #   checks     lint, format, types, tests, coverage, docs, units, workflows.
 #   diagrams   opens every page that has a diagram in a pinned headless
 #              browser and checks that each one drew. Under a minute.
+#   dashboard  rebuilds unoq-dashboard's page from web/dashboard/ and fails if
+#              it is not the one committed. Under a minute.
 #   firmware   compiles for the real Cortex-M33 and runs the MCU suites. ~5
 #              minutes, because it needs a Zephyr workspace and the SDK.
 #
 # THE SHAPE HERE IS DELIBERATE. `checks` is the one that runs on everything, so
 # it is kept to the gates that are fast and need nothing downloaded but their
-# own tools. The other two are each gated on `changes`, and neither holds
+# own tools. The other three are each gated on `changes`, and neither holds
 # `checks` up - a documentation pull request should not wait on a Zephyr
 # download to find out its links are fine.
 #
@@ -158,6 +160,39 @@ jobs:
         timeout-minutes: 5
         run: tools/check.sh diagrams
 
+  # Is the dashboard's committed page the one its source builds? The board has
+  # no Node.js, so the built page is in git (web/dashboard/README.md), and
+  # nothing else would notice a change to web/dashboard/src that was never
+  # built, or a build edited by hand. Its own job, gated on `changes`, for the
+  # reason `diagrams` is: a Node download should not hold up every pull
+  # request, and almost none touch the page.
+  dashboard:
+    needs: changes
+    if: needs.changes.outputs.dashboard == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Read the pinned Node version
+        id: node
+        # web/dashboard/package.json's "engines" is the one place it is
+        # written; tools/build-dashboard.sh refuses any other.
+        run: echo "version=$(jq -r .engines.node web/dashboard/package.json)" >>"$GITHUB_OUTPUT"
+
+      - name: Install Node
+        # Pinned to a commit, with the release in the trailing comment, as
+        # every action here is.
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ steps.node.outputs.version }}
+
+      - name: Build the page, and compare it with the committed one
+        run: tools/build-dashboard.sh --check
+
   # Does this change touch anything the firmware is built from? Anything the
   # site is?
   #
@@ -182,6 +217,7 @@ jobs:
     outputs:
       firmware: ${{ steps.filter.outputs.firmware }}
       diagrams: ${{ steps.filter.outputs.diagrams }}
+      dashboard: ${{ steps.filter.outputs.dashboard }}
     steps:
       - id: filter
         env:
@@ -216,9 +252,12 @@ jobs:
           # a push builds it. A push that touches none of it cannot have
           # changed the binary the last such push proved.
           all() {
-            echo "firmware=true" >>"$GITHUB_OUTPUT"
-            echo "diagrams=true" >>"$GITHUB_OUTPUT"
-            echo "$1 - building, and rendering the diagrams"
+            {
+              echo "firmware=true"
+              echo "diagrams=true"
+              echo "dashboard=true"
+            } >>"$GITHUB_OUTPUT"
+            echo "$1 - building, rendering the diagrams, and rebuilding the dashboard"
             exit 0
           }
           case "$EVENT" in
@@ -269,6 +308,16 @@ jobs:
           else
             echo "diagrams=false" >>"$GITHUB_OUTPUT"
             echo "nothing the site is built from changed - skipping the browser"
+          fi
+
+          # The dashboard's page: its source, what it builds into, the script
+          # that builds and compares them, and this workflow.
+          if grep -qE '^(web/dashboard/|python/unoq/dashboard_static/|tools/build-dashboard\.sh|\.github/workflows/ci\.yml)' <<<"$files"; then
+            echo "dashboard=true" >>"$GITHUB_OUTPUT"
+            echo "dashboard inputs changed - rebuilding the page"
+          else
+            echo "dashboard=false" >>"$GITHUB_OUTPUT"
+            echo "nothing the dashboard is built from changed - skipping Node"
           fi
 
 

@@ -122,6 +122,29 @@ which is why they are listed.
 None of it is in this repository — `share/learn/` is generated output and is in
 `.gitignore`. Rebuild it with `tools/build-docs.sh`.
 
+## Inside the dashboard's page
+
+`unoq-dashboard`'s page is built from npm packages, and the build is committed
+in `python/unoq/dashboard_static/` and served from every board that runs it, so
+it is redistribution. The build writes their license and notice texts, in
+full, to `python/unoq/dashboard_static/licenses.txt`, which the page links to.
+
+| Package | Owner | License |
+|---|---|---|
+| `echarts`, which embeds parts of d3 | The Apache Software Foundation; d3 by Mike Bostock | Apache-2.0; BSD-3-Clause |
+| `zrender` | Baidu, Inc. | BSD-3-Clause |
+| `react`, `react-dom`, `scheduler` | Meta Platforms, Inc. and affiliates | MIT |
+| `echarts-for-react` | hustcc | MIT |
+| `size-sensor` | hustcc | ISC |
+| `fast-deep-equal` | Evgeny Poberezkin | MIT |
+| `tslib` | Microsoft Corporation | 0BSD |
+
+`size-sensor` ships no license file. Its `package.json` names the ISC license
+and its author, so `licenses.txt` carries that license's text with that name.
+
+The packages that only build the page - Vite, TypeScript and the React plugin -
+are not in it and are not listed.
+
 ## Downloaded onto your board, never redistributed
 
 `share/fetch-vscode.sh` downloads Microsoft's official Visual Studio Code

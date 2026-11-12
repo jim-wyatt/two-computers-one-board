@@ -15,6 +15,7 @@ dependencies = ["pyserial", "gpiod", "smpclient"]
 unoq-ble-sensor = "unoq.blesensor:main"
 unoq-buildlight = "unoq.buildlight:main"
 unoq-cpu-bars = "unoq.cpubars:main"
+unoq-dashboard = "unoq.dashboard:main"
 unoq-jitter = "unoq.jitter:main"
 unoq-learn = "unoq.learn:main"
 unoq-powerlog = "unoq.powerlog:main"
@@ -37,7 +38,7 @@ Issues = "https://github.com/jim-wyatt/two-computers-one-board/issues"
 # Same reasoning as the shellcheck and shfmt pins in tools/install-dev-tools.sh.
 # types-Markdown: mypy --strict over tests/test_site_markdown.py, which drives
 # Python-Markdown (from the [docs] extra) the way the site build does.
-dev = ["pytest>=8", "pytest-cov", "mypy", "ruff", "clang-format==23.1.3", "codespell", "types-Markdown"]
+dev = ["pytest>=8", "pytest-cov", "mypy", "ruff", "clang-format==23.1.3", "codespell", "types-Markdown", "httpx2"]
 # The documentation site (tools/build-docs.sh). Separate from `dev` because it
 # is the only part of the toolchain the board needs at PROVISIONING time - the
 # drive and the web server are built from it - while `dev` is only needed by
@@ -60,6 +61,12 @@ board = ["smbus2", "spidev"]
 # Installed on the board by provision/user/35-python-venv.sh and for the tests
 # by tools/install-dev-tools.sh; only unoq.blesensor imports it.
 ble = ["jeepney"]
+# unoq-dashboard's web API (provision/69-dashboard.sh): FastAPI, served by
+# uvicorn. uvicorn without its [standard] extra, so pure Python on top of
+# h11 - no uvloop or httptools to build on the board. pydantic, which FastAPI
+# is built on, is already here for smpclient. httpx2, in [dev], is what
+# FastAPI's TestClient drives the API with in python/tests/test_dashboard.py.
+dashboard = ["fastapi", "uvicorn"]
 
 [build-system]
 requires = ["hatchling"]

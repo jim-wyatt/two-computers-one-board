@@ -956,6 +956,116 @@ The unit reads them from `/etc/unoq/ble-sensor.env` if you create it.
 
 ---
 
+## The dashboard
+
+`unoq-dashboard` records the BME680 and the board's own state every ten
+seconds, keeps a week of it, and graphs it in a browser: the air at the
+breakout, and the board's load, memory, temperatures, clocks, network and disks
+beside it, on one time axis. Point at a moment on one chart and every chart
+shows that moment.
+
+The API is Python, with FastAPI; the page is React with Apache ECharts, built
+once and served from the board's own disk. Nothing is fetched from the
+internet, so it works on a cable to a laptop with no network at all.
+
+> **Tried on a board on 2026-11-12**, with the Waveshare BME680 from the
+> [Bluetooth sensor](#bluetooth-sensor) section on the header: readings from
+> the part and from Linux, in light and dark mode, at desktop and phone widths,
+> and with the serial port held by the CPU-bars demo, which it reported and
+> waited out.
+
+### Running it
+
+It needs the serial port for the MCU half, which the CPU-bars demo holds
+from boot, so stop the demo first:
+
+```bash
+sudo systemctl stop unoq-cpu-bars
+mkdir -p ~/dashboard
+unoq-dashboard --db ~/dashboard/samples.db    # then open http://<board name>.local:8090/
+```
+
+Ctrl-C stops it; `sudo systemctl start unoq-cpu-bars` gives the demo back the
+port. `unoq-dashboard --no-mcu` never opens the port, so it runs beside the
+demo and records the Linux half alone. `--help` has the rest: `--port`,
+`--interval`, `--keep-days`, and where it reads each source.
+
+### What it records
+
+One sample is every metric that could be read, as a flat set of names:
+
+| Metric | Unit | From |
+|---|---|---|
+| `env.temp_c`, `env.humidity_pct`, `env.pressure_hpa`, `env.gas_kohm` | °C, %RH, hPa, kΩ | the BME680, by `app env` ([mcu.md](mcu.md#the-bme680-app-env)) |
+| `mcu.die_c` | °C | the STM32's own sensor, by `app temp` |
+| `cpu.0` to `cpu.3` | % busy | `/proc/stat`, between two samples |
+| `load.1`, `load.5`, `load.15` | | `/proc/loadavg` |
+| `mem.used_mib`, `mem.used_pct`, `swap.used_mib` | MiB, % | `/proc/meminfo`, counted as `free` does |
+| `temp.<zone>` | °C | every zone in `/sys/class/thermal`, ten on this kernel |
+| `freq.policy0_mhz`, `freq.gpu_mhz` | MHz | cpufreq, and the GPU's devfreq |
+| `net.<interface>.rx_kbps`, `.tx_kbps` | kbit/s | `/proc/net/dev`, between two samples, loopback left out |
+| `disk.root_pct`, `disk.home_pct` | % used | the root and home filesystems, as `df` counts them |
+
+A metric that cannot be read is left out of that sample, never written as
+zero, and the chart shows a gap there. The page folds the ten thermal zones
+into the hottest of them, so a chart has at most four lines; every zone is in
+the table of the latest reading under the charts.
+
+### When something is missing
+
+The two halves fail separately. With the port held by another program, with
+the MCU silent, or with a firmware that has no `app env`, the Linux half
+records as before, the page says what is missing in a sentence, and the MCU is
+tried again a minute later. With no BME680, the die temperature is still
+recorded and the page says the sensor did not answer at boot. A page whose
+newest sample is more than three intervals old says the recorder has stopped.
+
+### The API
+
+```bash
+curl http://<board>:8090/api/meta       # host, version, interval, days kept
+curl http://<board>:8090/api/latest     # the newest sample, and what was not read
+curl "http://<board>:8090/api/history?since=$(( $(date +%s) - 86400 ))&points=500"
+```
+
+`/api/history` takes `since` and `until` in Unix seconds (until defaults to
+now, since to an hour before it) and `points`, up to 5000, and answers with
+columns: `t`, a list of times, and `series`, one list per metric as long as
+`t`, with `null` where nothing was read. A `null` also goes in wherever the
+record has a gap, so a line is broken there. `/openapi.json` describes all
+three. FastAPI's own `/docs` page is turned off, because it loads its scripts
+from a CDN.
+
+### Where it keeps it
+
+SQLite, in the file `--db` names: a row per sample, its metrics as JSON, and a
+week of them is about 60 000 rows and 75 MB. Older ones are deleted once an
+hour.
+
+Beside the samples, each minute and each quarter hour is averaged once, when
+it ends, and kept as long. A history request reads the coarsest of the three
+that still gives the points it asks for. That is what makes a week cheap: read
+sample by sample, a week took this board 7.7 s per request, every ten seconds
+while a page was open on it. Read from the quarter hours, it takes 0.13 s.
+
+### Cost
+
+Measured on 2026-11-12, with a week of samples and a page open on the 7-day
+range, polling every ten seconds: 2.5 % of one core and 64 MB of memory.
+FastAPI and uvicorn, in the `[dashboard]` extra, are about a dozen pure-Python
+packages on top of the pydantic that `smpclient` already brings.
+
+### The page
+
+The page's source is `web/dashboard/`, and what it builds is committed, in
+`python/unoq/dashboard_static/`: the board has no Node.js, and the page has
+to be on its disk. [web/dashboard/README.md](../../web/dashboard/)
+says why that one generated thing is in git, how to change the page, and how
+CI checks that the committed build is what the source builds. The licenses of
+what it is built from are served beside it, at `/licenses.txt`.
+
+---
+
 ## Jitter
 
 `unoq-jitter` measures how well Linux keeps a schedule, using the MCU as the

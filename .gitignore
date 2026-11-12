@@ -29,6 +29,12 @@ htmlcov/
 # content diff unreadable and goes stale the moment someone forgets to rebuild.
 /share/learn/
 
+# The dashboard's npm packages: package-lock.json pins them, and
+# tools/build-dashboard.sh installs them. What they build IS committed, in
+# python/unoq/dashboard_static/ - web/dashboard/README.md says why that one
+# generated thing is in git when the site above is not.
+node_modules/
+
 # Claude Code keeps per-session worktrees and local settings here. Never part
 # of the project.
 .claude/

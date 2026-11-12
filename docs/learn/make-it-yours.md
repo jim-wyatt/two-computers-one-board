@@ -74,6 +74,14 @@ this project's architecture applied to something new. The BME680 behind
 `--with-ble-sensor` is one worked example of the wiring; your sensor and
 your split can be different.
 
+**Put your own reading on the dashboard.** `unoq-dashboard` graphs whatever
+its samplers return, so a new line on its page is two changes: a metric added
+in `python/unoq/dashboard.py`, and a chart or tile that names it in
+`web/dashboard/src/metrics.ts`. The sensor you wired up above is the obvious
+one. On the way you will meet the one generated file this project commits,
+and the CI job that refuses it when it is stale; the
+[dashboard's README](../../web/dashboard/) says why it is there.
+
 **Add a serial console over USB.** The kernel has a CDC-ACM gadget function. Add
 it and your laptop gets a COM port that is the MCU's console — no SSH needed.
 
@@ -151,7 +159,7 @@ The four places a newcomer edits first:
 |---|---|
 | `mcu/app/` | The firmware: `main.c`, `matrix.c` (the driver), `bars.c` (the arithmetic) |
 | `mcu/app/include/app_proto.h` | The contract both sides agree on |
-| `python/unoq/` | The Linux side: `cpu.py`, `thermal.py`, `mcu.py`, `fota.py`, `link.py`, the daemons `cpubars.py` and `learn.py`, and one module per later chapter's tool — `templog.py`, `jitter.py`, `heat.py`, `buildlight.py`, `blesensor.py` among them |
+| `python/unoq/` | The Linux side: `cpu.py`, `thermal.py`, `mcu.py`, `fota.py`, `link.py`, the daemons `cpubars.py` and `learn.py`, and one module per later chapter's tool — `templog.py`, `jitter.py`, `heat.py`, `buildlight.py`, `blesensor.py`, `dashboard.py` among them |
 | `docs/` | This course, and the reference it links into |
 
 The rest — `usb/`, `status/`, `provision/`, `share/`, `tools/`, `tests/` — is

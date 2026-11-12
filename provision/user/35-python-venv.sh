@@ -103,6 +103,8 @@ step "unoq package (editable)"
 # a board without zensical produces a USB drive and a web server with no content.
 # And [ble], jeepney, which unoq-ble-sensor needs (68-ble-sensor.sh): pure
 # Python and small, so every board has it rather than only the ones that ask.
+# And [dashboard], FastAPI and uvicorn, which unoq-dashboard needs
+# (69-dashboard.sh): pure Python too, for the same reason.
 #
 # Every entry point pyproject.toml declares, not a sample of them. The check
 # used to name unoq-cpu-bars alone, so a board set up before unoq-temp-log,
@@ -124,12 +126,12 @@ if [ "$LOCKED" = 1 ] && "$VENV/bin/python" -c 'import unoq' 2>/dev/null &&
   [ -z "$NOT_ON_PATH" ]; then
   skip "unoq importable, its $(wc -w <<<"$SCRIPTS") commands and zensical on PATH"
 else
-  uv pip install --python "$VENV/bin/python" -q -c "$LOCK" -b "$LOCK" -e "$PROJECT/python[docs,ble]" ||
+  uv pip install --python "$VENV/bin/python" -q -c "$LOCK" -b "$LOCK" -e "$PROJECT/python[docs,ble,dashboard]" ||
     fail "could not install the unoq package"
   if [ -n "$NOT_ON_PATH" ] && [ "$LOCKED" = 1 ]; then
     did "unoq reinstalled for the commands it was missing: $NOT_ON_PATH"
   else
-    did "unoq installed editable from $PROJECT/python (with the docs and ble extras)"
+    did "unoq installed editable from $PROJECT/python (with the docs, ble and dashboard extras)"
   fi
 fi
 
