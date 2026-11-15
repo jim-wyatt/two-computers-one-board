@@ -194,3 +194,102 @@
 #error "UNOQ_BME680_ADDR: a BME680 answers only on 0x76 or 0x77"
 #endif
 };
+
+/*
+ * `app lcd` (lcd.h, lcd_hw.c): a Waveshare 3.5" 320x480 touch LCD on the
+ * header's SPI, spi2, with the wiring #225 records:
+ *
+ *   SCLK D13 PB13, MISO D12 PB14, MOSI D11 PB15   spi2, the board file's pins
+ *   LCD_CS  D10 PB9    chip select, as a GPIO (below)
+ *   LCD_DC  D9  PB8    data/command
+ *   LCD_RST D8  PB4    the panel controller's reset
+ *   SD_CS   D7  PB2    the module's microSD slot, held deselected
+ *   LCD_BL  D6  PB1    the backlight, on or off
+ *   TP_SDA/TP_SCL      i2c2, shared with the BME680; touch is a later step
+ *   INT D4 PA12, RST D5 PA11   the touch controller's, not claimed here yet
+ *
+ * None of these is in the panel's PF0..PF10, spi3's PG9/PG10/PB5/PG12,
+ * lpuart1's PG5..PG8, usart1's PB6/PB7, i2c2's PB10/PB11, the status LEDs'
+ * PH10..PH15, jitter's PB0/PB3 or the scope's PA4. PB4 comes out of reset as
+ * NJTRST, which SWD does not use. PA11/PA12 are the USB pins, and the board
+ * file leaves USB disabled.
+ */
+
+/* The board file gives spi2 its hardware NSS on PB9. That pin drops between
+ * transfers, and reading a register is two of them - the command, then the
+ * answer - which the controller only accepts with its select held low across
+ * both. So NSS leaves the pinctrl, and D10 becomes a GPIO the SPI driver
+ * holds for as long as it is asked to. */
+&spi2 {
+	pinctrl-0 = <&spi2_sck_pb13 &spi2_miso_pb14 &spi2_mosi_pb15>;
+	cs-gpios = <&gpiob 9 GPIO_ACTIVE_LOW>;
+};
+
+/* The microSD slot shares the bus. Its select is driven high from GPIO init
+ * on, before anything uses spi2, so the card never answers along with the
+ * panel. A hog, because nothing reads the slot yet. */
+&gpiob {
+	sd_cs_hog: sd-cs-hog {
+		gpio-hog;
+		gpios = <2 GPIO_ACTIVE_HIGH>;
+		output-high;
+		line-name = "lcd-sd-cs";
+	};
+};
+
+/ {
+	zephyr,user {
+		lcd-bl-gpios = <&gpiob 1 GPIO_ACTIVE_HIGH>;
+	};
+
+	lcd_dbi: lcd-dbi {
+		compatible = "zephyr,mipi-dbi-spi";
+		spi-dev = <&spi2>;
+		dc-gpios = <&gpiob 8 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpiob 4 GPIO_ACTIVE_LOW>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		/* Started from `app lcd on`, not at boot: the driver's init
+		 * pulses reset and waits 200 ms, and writes to a panel it has
+		 * no way to see. Deferred, a board with no LCD boots exactly as
+		 * it did, and `app lcd id` can ask the controller what it is
+		 * before the driver has said anything to it.
+		 *
+		 * 10 MHz on jumper wires. The part takes writes far faster; how
+		 * much faster these wires carry is for a later step to measure.
+		 * The gamma, power and timing values are NXP's for their
+		 * 320x480 ST7796S (boards/shields/lcd_par_s035) - a starting
+		 * point, not this panel's tuning.
+		 *
+		 * madctl 0x40 is portrait, mirrored in X as these panels are
+		 * mounted, in RGB order. With MADCTL's BGR bit clear the driver
+		 * asks for RGB565X, red's byte first, which is the order the
+		 * controller reads off the wire. A BGR panel then shows red as
+		 * blue; `app lcd cmd 36 48` tries BGR without a rebuild, and the
+		 * lasting fix is madctl 0x48 with rgb-is-inverted, which keeps
+		 * the bytes in the same order. */
+		lcd_panel: st7796s@0 {
+			compatible = "sitronix,st7796s";
+			reg = <0>;
+			mipi-max-frequency = <10000000>;
+			mipi-mode = "MIPI_DBI_MODE_SPI_4WIRE";
+			width = <320>;
+			height = <480>;
+			invert-mode = "1-dot";
+			frmctl1 = [80 10];
+			bpc = [1f 50 00 20];
+			dfc = [8a 07 3b];
+			pwr1 = [80 64];
+			pwr2 = <0x13>;
+			pwr3 = <0xa7>;
+			vcmpctl = <0x09>;
+			doca = [40 8a 00 00 29 19 a5 33];
+			pgc = [f0 06 0b 07 06 05 2e 33 47 3a 17 16 2e 31];
+			ngc = [f0 09 0d 09 08 23 2e 33 46 38 13 13 2c 32];
+			madctl = <0x40>;
+			color-invert;
+			zephyr,deferred-init;
+		};
+	};
+};

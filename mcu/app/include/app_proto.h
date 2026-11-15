@@ -12,6 +12,8 @@
  *   - mcu/tests/templog/        tests the log's sequence, gap and batch rules
  *   - mcu/app/src/env.c         formats the `app env` line
  *   - mcu/tests/env/            tests it, with the driver's values faked
+ *   - mcu/app/src/lcd.c         formats the `app lcd id` line
+ *   - mcu/tests/lcd/            tests it, with the ID registers' bytes faked
  *   - mcu/app/src/jitter.c      keeps the jitter histograms `app jitter` prints
  *   - mcu/tests/jitter/         tests their bins, clamp and tick bookkeeping
  *   - mcu/app/src/scope_hw.c    runs `app scope`, the DAC and ADC on PA4
@@ -186,6 +188,33 @@ static inline bool app_parse_int(const char *s, int *out)
 #define APP_ENV_FMT               "temp_mc=%d humidity_mpct=%u pressure_pa=%u gas_ohm=%u"
 #define APP_ENV_ERR_FMT           "env_err=%d"
 #define APP_ENV_HUMIDITY_MPCT_MAX 100000
+
+/* --- a touch LCD on the header's SPI: `app lcd` ---------------------------
+ *
+ * A 320x480 panel on spi2, its controller most likely an ST7796S - see
+ * mcu/app/include/lcd.h. Nothing on Linux parses these yet; they are pinned
+ * here, like every other reply, so that whatever does later agrees with them.
+ *
+ * `app lcd id` reads two of the controller's ID registers over MISO and says
+ * which controller answered. rddid is RDDID (0x04), id4 is RDID4 (0xD3), each
+ * the four bytes read straight after its command, in hex, as they came - a
+ * dummy bit or byte included. controller is a name from lcd_id_name() in
+ * lcd.c, "none" when every byte read the same (MISO not driven: no panel, or
+ * a module that does not wire its controller's output), or "unknown". dummy
+ * is how many bits into id4 the ID started, or -1 when it was not found.
+ *
+ * `app lcd on` starts the panel's driver, if it has not been, and turns the
+ * backlight on; `app lcd fill` does that first too. The fill's reply says
+ * what was sent and how long the whole screen took, which at 10 MHz is
+ * about a quarter of a second.
+ *
+ * Every failure is APP_ERR then APP_LCD_ERR_FMT with the negative errno:
+ * -19 (ENODEV) when the bus or the driver did not come up.
+ */
+#define APP_LCD_ID_FMT   "rddid=%02x%02x%02x%02x id4=%02x%02x%02x%02x controller=%s dummy=%d"
+#define APP_LCD_ON_FMT   "width=%u height=%u"
+#define APP_LCD_FILL_FMT "rgb565=%04x ms=%u"
+#define APP_LCD_ERR_FMT  "lcd_err=%d"
 
 /* --- why the MCU last reset ----------------------------------------------
  *

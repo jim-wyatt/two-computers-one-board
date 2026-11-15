@@ -17,6 +17,8 @@ target_sources(app PRIVATE src/main.c src/matrix.c src/bars.c src/status_leds.c 
 		   src/guard.c src/spi_link.c src/spi_proto.c src/jitter.c src/scope.c src/scope_hw.c)
 # `app env`: the pure half is also compiled by mcu/tests/env/.
 target_sources(app PRIVATE src/env.c src/env_sensor.c)
+# `app lcd`: the pure half is also compiled by mcu/tests/lcd/.
+target_sources(app PRIVATE src/lcd.c src/lcd_hw.c)
 # app_proto.h holds the MPU <-> MCU contract, shared with mcu/tests/, and
 # bars.c, templog.c, spi_proto.c, jitter.c and scope.c are compiled a second time by
 # mcu/tests/ to run on the host.
