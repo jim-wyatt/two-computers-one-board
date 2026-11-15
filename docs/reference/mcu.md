@@ -889,6 +889,108 @@ update it.
 grows by 2376 bytes of flash (114576 to 116952) and 80 bytes of RAM (42960 to
 43040).
 
+### A touch LCD: `app lcd`
+
+A Waveshare 3.5" capacitive touch LCD, 320x480, on the header's SPI. Its
+panel controller is most likely a Sitronix ST7796S, which Zephyr drives over
+MIPI DBI on SPI (`drivers/display/display_st7796s.c` on
+`drivers/mipi_dbi/mipi_dbi_spi.c`), and its touch controller a FocalTech
+FT6336U at 0x38 on `i2c2`, which this step does not use yet.
+[`lcd.c`](../../mcu/app/src/lcd.c) is the pure half: colors, bytes on the
+wire, and which controller answered. [`lcd_hw.c`](../../mcu/app/src/lcd_hw.c)
+is the bus, the driver, the backlight and the command. The steps after this
+one (touch, LVGL pages, a screen for when Linux stops answering) are in
+[#225](https://github.com/jim-wyatt/two-computers-one-board/issues/225).
+
+> **Not tried on the panel yet.** The module is wired as below, and the stock
+> firmware's `i2c scan i2c@40005800` found the touch controller at 0x38, which
+> proves its power, ground and I2C. Everything on spi2 is built and unit
+> tested, and has not been run against the panel.
+
+**The wiring.** The module's 15-pin header, to the UNO Q:
+
+| LCD pin | UNO Q | MCU | |
+|---|---|---|---|
+| VCC | 3V3 | | |
+| 3V3 | not connected | | the module's regulator output, not an input |
+| GND | GND | | |
+| SCLK, MOSI, MISO | D13, D11, D12 | PB13, PB15, PB14 | `spi2` |
+| LCD_CS | D10 | PB9 | a GPIO chip select (below) |
+| LCD_DC | D9 | PB8 | data/command |
+| LCD_RST | D8 | PB4 | the panel controller's reset |
+| SD_CS | D7 | PB2 | the microSD slot, held high from GPIO init |
+| LCD_BL | D6 | PB1 | the backlight, on or off |
+| TP_SDA, TP_SCL | SDA, SCL | PB11, PB10 | `i2c2`, shared with the BME680 |
+| INT, RST (touch) | D4, D5 | PA12, PA11 | not claimed yet |
+
+None is claimed by anything else the firmware runs. PA11/PA12 are the MCU's
+USB pins, which the board file leaves disabled; PB1's PWM is TIM3_CH4,
+which `app jitter` already runs at 1 MHz, so the backlight is on or off.
+
+**The chip select.** The board file gives `spi2` its hardware NSS on PB9.
+That pin rises between transfers, and reading a register is two of them, the
+command and then its answer, which the controller only takes with its select
+held low across both. The overlay drops NSS from `spi2`'s pinctrl and makes
+PB9 `cs-gpios`, which the SPI driver holds for as long as it is asked to.
+
+**Deferred.** The panel's node is `zephyr,deferred-init`. Its driver's init
+pulses reset, waits 200 ms, and writes a panel it cannot see, so at boot it
+does none of that: a board with no LCD boots exactly as before, and
+`app lcd id` can ask the controller what it is before the driver has said
+anything to it. `app lcd on` runs the init with `device_init()`.
+
+**The commands.** The lines are `APP_LCD_*` in
+[`app_proto.h`](../../mcu/app/include/app_proto.h), pinned by `mcu/tests/lcd`.
+Nothing on Linux reads them yet.
+
+```
+unoq:~$ app lcd id
+rddid=007c89f0 id4=00007796 controller=st7796s dummy=16
+unoq:~$ app lcd on
+width=320 height=480
+unoq:~$ app lcd fill red
+rgb565=f800 ms=270
+unoq:~$ app lcd cmd 36 48
+ok
+unoq:~$ app lcd off
+ok
+```
+
+(The replies are examples of the format, not a measurement.)
+
+- **`id`** reads RDDID (`0x04`) and RDID4 (`0xD3`) at 2.5 MHz, four bytes
+  each, and prints them as they came. On an ST7796S, RDID4 is a dummy byte
+  and `00 77 96`; `controller` names the part whose ID turns up at any bit
+  offset (`dummy`), so a part that clocks out a dummy bit rather than a byte
+  is still found. `none` means every byte was the same: MISO idle, which is
+  no panel, or a module that does not wire its controller's output.
+- **`on`** starts the driver and turns the backlight on. **`fill`** does that
+  first, then paints the screen 16 rows at a time, by name (`red`, `green`,
+  `blue`, `white`, `black`, `yellow`, `cyan`, `magenta`) or as `rrggbb`, and
+  says how long it took. At 10 MHz a full screen is 300 KB, about a quarter of a
+  second.
+- **`cmd`** sends one raw command with up to 16 parameter bytes, in hex. It is
+  for bring-up: MADCTL (`36`) for orientation and color order, INVON and
+  INVOFF (`21`, `20`) for inversion, without a rebuild.
+- An error is `Error: lcd_err=<negative errno>`, `-19` (`ENODEV`) when the bus
+  or the driver did not come up.
+
+**Colors.** `madctl` is `0x40`: portrait, mirrored in X, RGB order. With
+MADCTL's BGR bit clear the driver asks for `PIXEL_FORMAT_RGB_565X`, red's
+byte first, which is the order the controller reads off the wire, and `fill`
+packs its bytes in whichever order the driver reports. If `fill red` comes
+out blue, the panel is BGR: `app lcd cmd 36 48` shows it right, and the
+lasting fix is `madctl = <0x48>` with `rgb-is-inverted`, which keeps the
+bytes in the same order. If it comes out cyan, inversion is the wrong way
+round: try `app lcd cmd 20`, then drop `color-invert` from the overlay. The
+gamma, power and timing tables are NXP's for their own 320x480 ST7796S
+(`boards/shields/lcd_par_s035`): a starting point, not this panel's tuning.
+
+**Cost.** `CONFIG_DISPLAY` and the devicetree bring in the ST7796S, MIPI DBI
+SPI and GPIO hog drivers. Against the same tree without them, the build grows
+by 5052 bytes of flash (116948 to 122000) and 10316 bytes of RAM (43042 to
+53358), 10 KB of which is `fill`'s buffer.
+
 ## MicroPython, as a test image
 
 MicroPython has no release for this chip. Its Zephyr port does build for
@@ -1137,6 +1239,11 @@ is not repeated here, where it would be wrong the next time one was added.
   `sensor_value`, the humidity cap, every value refused and the reading left
   alone when one is, the widest line fitting its buffer, and a buffer one
   byte short refused rather than cut.
+- **`lcd`** compiles [`mcu/app/src/lcd.c`](../../mcu/app/src/lcd.c), the
+  half of `app lcd` with no bus in it: color names and `rrggbb` to RGB565,
+  everything else refused and the color left alone, RGB565 to bytes in both
+  orders, the ST7796S's ID behind a dummy byte and behind one more dummy bit,
+  an idle MISO read as no controller, and the `app lcd id` line.
 
 ### The MCU suite tests the firmware, not a copy of it
 

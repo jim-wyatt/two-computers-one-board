@@ -40,6 +40,7 @@
 #include "app_proto.h"
 #include "bars.h"
 #include "env.h"
+#include "lcd.h"
 #include "guard.h"
 #include "jitter.h"
 #include "matrix.h"
@@ -712,6 +713,16 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
 	SHELL_SUBCMD_SET_END);
 
 SHELL_STATIC_SUBCMD_SET_CREATE(
+	lcd_cmds, SHELL_CMD(id, NULL, "Read the controller's ID registers", cmd_app_lcd_id),
+	SHELL_CMD(on, NULL, "Start the panel, backlight on", cmd_app_lcd_on),
+	SHELL_CMD_ARG(fill, NULL, "The whole screen one color: app lcd fill <name|rrggbb>",
+		      cmd_app_lcd_fill, 2, 0),
+	SHELL_CMD(off, NULL, "Blank the panel, backlight off", cmd_app_lcd_off),
+	SHELL_CMD_ARG(cmd, NULL, "One raw controller command: app lcd cmd <hex> [hex ...]",
+		      cmd_app_lcd_cmd, 2, 16),
+	SHELL_SUBCMD_SET_END);
+
+SHELL_STATIC_SUBCMD_SET_CREATE(
 	app_cmds,
 	SHELL_CMD(status, NULL, "uptime, panel orientation, refresh sweeps", cmd_app_status),
 	SHELL_CMD(temp, &temp_cmds, "die temp in millidegrees C", cmd_app_temp),
@@ -724,7 +735,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
 		      cmd_app_hang, 2, 0),
 	SHELL_CMD(jitter, &jitter_cmds, "how well Linux keeps a schedule", NULL),
 	SHELL_CMD(scope, &scope_cmds, "a wave out of A0, sampled back in", NULL),
-	SHELL_SUBCMD_SET_END);
+	SHELL_CMD(lcd, &lcd_cmds, "3.5\" touch LCD on spi2", NULL), SHELL_SUBCMD_SET_END);
 SHELL_CMD_REGISTER(app, &app_cmds, "UNO Q application commands", NULL);
 
 /* --- main ---------------------------------------------------------------- */
@@ -792,6 +803,10 @@ int main(void)
 	/* The BME680's driver came up, or not, before main(); this only says
 	 * which. A board with no breakout runs everything else the same. */
 	env_report();
+
+	/* The panel's driver is deferred; this turns the backlight off and says
+	 * the panel is there to be started. */
+	lcd_report();
 
 	return 0;
 }
